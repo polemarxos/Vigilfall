@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.9.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.10.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -16463,6 +16463,7 @@ void main() {
         w.aggroT -= A;
         let Q = w.target ? this.targetPos(w.target) : null;
         w.target && !Q && (w.target = null);
+        w._wp && Q && (Q = w._wp);
         let s = null,
           D = g.speed * C * (this.env.bloodActive ? 1.15 : 1);
         if (Q && !g.boss && !g.ranged) {
@@ -33594,8 +33595,15 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.9.0";
+  X.VERSION = "1.10.0";
   X.CHANGELOG = {
+    "1.10.0": [
+      "Online: STUN/TURN relays so strict home networks can connect, automatic rejoin after a dropped connection (migration only when the host is really gone), smoother movement of other players, a connection indicator (bottom left) and a reconnecting notice.",
+      "Mythic+: clearing a dungeon awards a Keystone; press F at its portal to run it on Mythic +N with affixes (Fortified, Tyrannical, Bolstering, Sanguine, Quaking), a par timer, keystone upgrades and tier-scaled loot.",
+      "The Great Vault: Vault Keeper Edith in Dawnmere offers one weekly reward for timed Mythic+ runs and raid kills.",
+      "Duels: aim at a player and press U (or use the Social panel). Invasions: every ~25 minutes a nearby village is attacked in three waves — defend the ward or it falls for 90 seconds.",
+      "Depth: enemies steer around walls, instance bosses use Shockwave and Hunter's Mark, four item sets with 2/4-piece bonuses from dungeons and raids, Broker Garrick (buy/sell materials, open your stash) and 12 new quests in the inner kingdom.",
+    ],
     "1.9.0": [
       "Graphics: filmic grade, god rays and a real sun, soft shore foam and deeper water, wind in the trees, sharper textures, 4K shadows on High/Ultra.",
       "Animation: weapon trails, hit flinches, NPCs turn their heads to you, footstep dust and splashes, camera roll when strafing and landing.",
@@ -34131,6 +34139,909 @@ Object.assign(rw.unbound, { hp: 240000 });
   css.textContent = `.ptabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}.ptabs .tab{border-left:3px solid var(--c)}.pskill{background:rgba(0,0,0,.3);padding:8px 10px;border-radius:6px;margin-bottom:10px}.pskill .pbar{height:8px;background:#222;border-radius:4px;margin:4px 0}.pskill .pbar div{height:100%;border-radius:4px}
   .pcols{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}.recipe{display:flex;justify-content:space-between;align-items:center;gap:10px;background:rgba(0,0,0,.28);padding:6px 10px;margin:4px 0;border-radius:4px}.recipe.no{opacity:.7}.recipe select{max-width:220px}
   .matgrid{display:flex;flex-wrap:wrap;gap:6px}.mat{background:rgba(0,0,0,.3);border:1px solid;border-radius:4px;padding:4px 8px;font-size:12px}.mat small{display:block;opacity:.6}.dgrid{display:flex;flex-wrap:wrap;gap:6px}.dgrid button{border:1px solid}.gslots{display:flex;gap:8px}.gslot2{flex:1;background:rgba(0,0,0,.3);padding:8px;border-radius:4px;min-height:60px}`;
+  document.head.appendChild(css);
+}
+
+/* ---- D0_netrel.js ---- */
+// ===== Online reliability: STUN/TURN, rejoin the same host after a blip, movement prediction, connection indicator =====
+{
+  let P = SC.prototype,
+    app = () => window.__app;
+  X.ICE = {
+    iceServers: [
+      { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
+      { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+      { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+      { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+    ],
+    iceCandidatePoolSize: 4,
+  };
+  // every peer we create gets the ICE config (players and lobbies)
+  {
+    let Ks0 = Ks;
+    Ks = class extends Ks0 {
+      constructor(id, opts = {}) {
+        super(id, { ...opts, config: { ...(opts.config || {}), ...X.ICE } });
+      }
+    };
+  }
+  // ---- rejoin the same host after a short connection loss; migrate only when the host is really gone ----
+  let mig0 = X.migrate;
+  X.migrate = async function (ap) {
+    let g = ap.game,
+      net = ap.net,
+      hostPid = net.hostPid;
+    if (!g?.running || g.migrating || !hostPid || hostPid === net.pid) return mig0(ap);
+    g.ui.banner("CONNECTION LOST", "Reconnecting…", "#ffb060");
+    X.conn.state = "reconnecting";
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      try {
+        net.peer?.disconnected && net.peer.reconnect();
+      } catch {}
+      let pong = await net.ping(hostPid);
+      if (pong && pong.host === hostPid) {
+        let r = await X.switchSession(ap, hostPid, { tries: 2 });
+        if (r === !0) {
+          X.conn.state = "ok";
+          g.ui.banner("RECONNECTED", "Back in the Vigil", "#8affc0");
+          return;
+        }
+      }
+    }
+    X.conn.state = "ok";
+    return mig0(ap);
+  };
+  // ---- latency / snapshot age + prediction for other players ----
+  X.conn = { rtt: 0, age: 0, state: "ok", bars: 4 };
+  let on0 = P.onNet;
+  P.onNet = function (from, m) {
+    if (m.t === "pq") {
+      this.isHost ? this.sendTo(from, { t: "pp", ts: m.ts }) : this.net.send({ t: "pp", ts: m.ts, to: from });
+      return;
+    }
+    if (m.t === "pp") {
+      let rtt = performance.now() - m.ts;
+      X.conn.rtt = X.conn.rtt ? X.conn.rtt * 0.7 + rtt * 0.3 : rtt;
+      return;
+    }
+    if (m.t === "snap" || m.t === "me") X.conn.lastPkt = performance.now();
+    return on0.call(this, from, m);
+  };
+  let us0 = P.updateSystems;
+  P.updateSystems = function (dt) {
+    us0.call(this, dt);
+    if (!this.net || this.net.offline) return;
+    this._pqT = (this._pqT || 0) + dt;
+    if (this._pqT > 2) {
+      this._pqT = 0;
+      if (!this.isHost) this.net.send({ t: "pq", ts: performance.now() });
+      else {
+        // the host measures against the slowest guest
+        for (let id of this.remotes.keys()) id.startsWith("bot-") || this.sendTo(id, { t: "pq", ts: performance.now() });
+      }
+    }
+    X.conn.age = this.isHost || !this.remotes.size ? 0 : (performance.now() - (X.conn.lastPkt || performance.now())) / 1000;
+    let bars = X.conn.rtt < 80 ? 4 : X.conn.rtt < 160 ? 3 : X.conn.rtt < 300 ? 2 : 1;
+    X.conn.age > 1.5 && (bars = 0);
+    X.conn.bars = bars;
+    let el = document.getElementById("conn-ind");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "conn-ind";
+      document.getElementById("hud")?.appendChild(el);
+    }
+    let n = this.remotes.size,
+      txt = this.net.offline ? "offline" : n === 0 ? "alone" : `${Math.round(X.conn.rtt)} ms`;
+    el.innerHTML = `<i class="b${bars}"></i><span>${txt}</span>`;
+    el.className = X.conn.state === "reconnecting" || X.conn.age > 3 ? "bad" : bars <= 1 ? "warn" : "";
+    let ov = document.getElementById("conn-over");
+    if (!ov) {
+      ov = document.createElement("div");
+      ov.id = "conn-over";
+      ov.textContent = "Connection lost — reconnecting…";
+      document.getElementById("hud")?.appendChild(ov);
+    }
+    ov.classList.toggle("on", !this.isHost && !this.migrating && X.conn.age > 3 && n > 0);
+  };
+  // prediction: remotes keep moving along their last known velocity until the next packet
+  let ur0 = P.updateRemote;
+  P.updateRemote = function (id, pkt) {
+    let r0 = this.remotes.get(id),
+      now = performance.now(),
+      prev = r0 ? r0.netPrev : null;
+    ur0.call(this, id, pkt);
+    let r = this.remotes.get(id);
+    if (!r || r.bot) return;
+    if (prev && now - prev.t > 20 && now - prev.t < 1000) {
+      let dtp = (now - prev.t) / 1000;
+      r.netVel = ii((pkt.p[0] - prev.p[0]) / dtp, 0, (pkt.p[2] - prev.p[2]) / dtp);
+      r.netVel.length() > 12 && r.netVel.set(0, 0, 0);
+    }
+    r.netPrev = { p: pkt.p, t: now };
+    r.netAt = now;
+  };
+  let urs0 = P.updateRemotes;
+  P.updateRemotes = function (dt) {
+    let now = performance.now();
+    for (let r of this.remotes.values()) {
+      if (r.bot || !r.netVel || !r.target) continue;
+      let age = Math.min(0.25, (now - (r.netAt || now)) / 1000);
+      r.target.x = r.netPrev.p[0] + r.netVel.x * age;
+      r.target.z = r.netPrev.p[2] + r.netVel.z * age;
+      r.target.y = this.world.groundAt(r.target.x, r.target.z);
+    }
+    urs0.call(this, dt);
+  };
+  X.hooks.session.push(() => {
+    X.conn.rtt = 0;
+    X.conn.lastPkt = performance.now();
+  });
+  let css = document.createElement("style");
+  css.textContent = `#conn-ind{position:absolute;left:16px;bottom:128px;display:flex;align-items:center;gap:6px;font-size:11px;color:#c8d8e8;opacity:.85}#conn-ind i{display:inline-block;width:14px;height:10px;background:linear-gradient(to right,#8affc0 0 2px,transparent 2px 4px,#8affc0 4px 6px,transparent 6px 8px,#8affc0 8px 10px,transparent 10px 12px,#8affc0 12px 14px)}#conn-ind i.b3{background:linear-gradient(to right,#c8e070 0 2px,transparent 2px 4px,#c8e070 4px 6px,transparent 6px 8px,#c8e070 8px 10px,transparent 10px 14px)}#conn-ind i.b2{background:linear-gradient(to right,#ffb060 0 2px,transparent 2px 4px,#ffb060 4px 6px,transparent 6px 14px)}#conn-ind i.b1{background:linear-gradient(to right,#ff6a5a 0 2px,transparent 2px 14px)}#conn-ind i.b0{background:#ff3a3a}#conn-ind.warn span{color:#ffb060}#conn-ind.bad span{color:#ff6a5a}
+  #conn-over{position:absolute;left:50%;top:40%;transform:translateX(-50%);background:rgba(20,10,10,.85);border:1px solid #ff6a5a;color:#ffd0c0;padding:10px 18px;border-radius:6px;display:none;font-size:15px;letter-spacing:1px}#conn-over.on{display:block}`;
+  document.head.appendChild(css);
+}
+
+/* ---- D1_endgame.js ---- */
+// ===== Endgame: Mythic+ keystones with affixes & timers, weekly vault, duels, settlement invasions =====
+{
+  let P = SC.prototype,
+    U = XC.prototype,
+    app = () => window.__app,
+    me = () => app()?.net?.id;
+  // ---------------- Mythic+ ----------------
+  X.AFFIX = [
+    { tier: 2, id: "fortified", name: "Fortified", desc: "Non-boss enemies have 20% more health and deal 15% more damage.", color: "#ffb060" },
+    { tier: 4, id: "tyrannical", name: "Tyrannical", desc: "Bosses have 30% more health and deal 20% more damage.", color: "#ff6a5a" },
+    { tier: 6, id: "bolstering", name: "Bolstering", desc: "When an enemy dies, others within 12 m gain 10% health and damage.", color: "#c090ff" },
+    { tier: 8, id: "sanguine", name: "Sanguine", desc: "Dying enemies leave a pool that heals other enemies standing in it.", color: "#ff3a5a" },
+    { tier: 10, id: "quaking", name: "Quaking", desc: "Every 20 s the ground shakes under each player: step out of the circle.", color: "#9ad0ff" },
+  ];
+  X.affixes = (tier) => X.AFFIX.filter((a) => tier >= a.tier);
+  X.parTime = (d) => (d.raid ? 0 : 60 * (9 + (d.rooms || 3) * 2));
+  X.keys = () => (app().profile.keys ||= {});
+  // the LFG queue carries the chosen tier; lobbies are per tier so groups match on the same difficulty
+  let lob0 = X.lobbyId;
+  X.lobbyId = (inst) => lob0(inst) + (X.lfg.st?.tier ? "-m" + X.lfg.st.tier : "");
+  // portal: choose Normal or Mythic+ when you hold a keystone
+  let si0 = P.sysInteract;
+  P.sysInteract = function (n) {
+    if (n.kind === "portal" && !X.lfg.st && !X.INST[n.id].raid) {
+      let key = X.keys()[n.id] || 0,
+        gs = X.group.mine();
+      if (key >= 2 && (!gs || gs.lead === me())) {
+        this.ui.mplusDialog(n.id, key);
+        return !0;
+      }
+    }
+    return si0.call(this, n);
+  };
+  U.mplusDialog = function (id, key) {
+    let d = X.INST[id],
+      g = this.app.game;
+    this.openModal(`<div class="lore mplus"><div class="lore-t">${d.name}</div><div class="lore-x">
+      <p>You hold a <b>Keystone +${key}</b> for this dungeon. Choose the difficulty for the Dungeon Finder:</p>
+      <div class="row"><button data-mt="0" class="big">Normal</button><button data-mt="${key}" class="big" style="border-color:#c090ff">Mythic +${key}</button></div>
+      <div class="affx">${X.affixes(key).map((a) => `<div><b style="color:${a.color}">${a.name}</b> — ${a.desc}</div>`).join("") || "<div>No affixes at this tier.</div>"}</div>
+      <p class="small">Par time ${Math.round(X.parTime(d) / 60)} min. Finish in time to upgrade the keystone (+1, or +2 under 60% of par); fail and it drops by one. Loot scales with the tier.</p>
+      <button class="close">Cancel</button></div></div>`);
+    let M = document.getElementById("modal");
+    M.querySelectorAll("[data-mt]").forEach((b) => (b.onclick = () => ((X.lfg._tier = +b.dataset.mt), this.closeModal(), X.lfg.start(id))));
+    M.querySelector(".close").onclick = () => this.closeModal();
+  };
+  let st0 = X.lfg.start;
+  X.lfg.start = async function (instId) {
+    let r = await st0.call(this, instId);
+    X.lfg.st && ((X.lfg.st.tier = X.lfg._tier || 0), (X.lfg._tier = 0), X.lfg.st.tier && X.lfg.ui());
+    return r;
+  };
+  let tv0 = X.lfg.travel;
+  X.lfg.travel = function (instId, hostPid, roster, botsFill) {
+    let tier = X.lfg.st?.tier || 0;
+    app().game._lfgTier = tier;
+    return tv0.call(this, instId, hostPid, roster, botsFill);
+  };
+  let ui0 = X.lfg.ui;
+  X.lfg.ui = function () {
+    ui0.call(this);
+    let st = X.lfg.st,
+      el = document.getElementById("lfg-box");
+    st && el && st.tier && !el.querySelector(".mt") && el.insertAdjacentHTML("beforeend", `<div class="mt" style="color:#c090ff">Mythic +${st.tier} · ${X.affixes(st.tier).map((a) => a.name).join(", ") || "no affixes"}</div>`);
+  };
+  // entering with a tier
+  let ei0 = P.enterInstance;
+  P.enterInstance = function (id, fromNet) {
+    ei0.call(this, id, fromNet);
+    if (!this.inst) return;
+    let tier = this.isHost ? this._lfgTier || 0 : this._netTier || 0;
+    this.inst.mtier = tier;
+    this.inst.t0 = this.t;
+    this.inst.par = X.parTime(this.inst.def);
+    tier && this.ui.banner(`MYTHIC +${tier}`, X.affixes(tier).map((a) => a.name).join(" · ") || "No affixes", "#c090ff");
+    this._lfgTier = 0;
+  };
+  // host tells guests the tier through the snapshot
+  let ns0 = P.netSend;
+  P.netSend = function () {
+    if (!this.isHost) return ns0.call(this);
+    let b0 = this.net.broadcast;
+    this.net.broadcast = (m, ex) => (m.t === "snap" && this.inst && (m.mt = this.inst.mtier || 0), b0.call(this.net, m, ex));
+    try {
+      ns0.call(this);
+    } finally {
+      this.net.broadcast = b0;
+    }
+  };
+  let as0 = P.applySnap;
+  P.applySnap = function (s) {
+    s.mt !== void 0 && (this._netTier = s.mt);
+    as0.call(this, s);
+    this.inst && s.mt !== void 0 && this.inst.mtier !== s.mt && ((this.inst.mtier = s.mt), s.mt && this.ui.banner(`MYTHIC +${s.mt}`, X.affixes(s.mt).map((a) => a.name).join(" · "), "#c090ff"));
+  };
+  // affixes on spawn
+  let se0 = P.spawnEnemy;
+  P.spawnEnemy = function (type, x, z, lv, opts = {}) {
+    let e = se0.call(this, type, x, z, lv, opts),
+      I = this.inst;
+    if (!e || !this.isHost || !I?.mtier) return e;
+    let t = I.mtier,
+      boss = !!e.def.boss,
+      hpM = 1 + 0.12 * (t - 1),
+      dmM = 1 + 0.07 * (t - 1);
+    t >= 2 && !boss && ((hpM *= 1.2), (dmM *= 1.15));
+    t >= 4 && boss && ((hpM *= 1.3), (dmM *= 1.2));
+    ((e.maxHp *= hpM), (e.hp = e.maxHp), (e.dmgMul = (e.dmgMul || 1) * dmM), (e.level = Math.min(60, e.level + Math.floor(t / 2))));
+    return e;
+  };
+  let ke0 = P.killEnemy;
+  P.killEnemy = function (e, by) {
+    let I = this.inst,
+      pos = e.pos.clone();
+    ke0.call(this, e, by);
+    if (!this.isHost || !I?.mtier || e.def.boss) return;
+    if (I.mtier >= 6)
+      for (let o of this.enemies.values())
+        if (o.alive && o.pos.distanceTo(pos) < 12) {
+          ((o.maxHp *= 1.1), (o.hp = Math.min(o.maxHp, o.hp + o.maxHp * 0.1)), (o.dmgMul = (o.dmgMul || 1) * 1.1));
+          this.floatText(o.pos.clone().setY(o.pos.y + 2.2), "BOLSTERED", "#c090ff");
+        }
+    if (I.mtier >= 8) {
+      (this._sang ||= []).push({ pos, t: 10 });
+      this.addZone?.({ pos: pos.clone(), r: 3, dur: 10, color: 0xff3a5a, kind: "sanguine" });
+      this.net?.broadcast({ t: "zone", p: pos.toArray(), r: 3, d: 10, c: 0xff3a5a, k: "sanguine" });
+    }
+  };
+  let us0 = P.updateSystems;
+  P.updateSystems = function (dt) {
+    us0.call(this, dt);
+    let I = this.inst;
+    if (!I) return;
+    // timer HUD (everyone)
+    let el = document.getElementById("mplus-hud");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "mplus-hud";
+      document.getElementById("hud")?.appendChild(el);
+    }
+    if (I.mtier && I.par && !I.done) {
+      let left = I.par - (this.t - (I.t0 || this.t)),
+        m = Math.floor(Math.abs(left) / 60),
+        s = Math.floor(Math.abs(left) % 60);
+      el.innerHTML = `<b>MYTHIC +${I.mtier}</b> <span class="${left < 0 ? "over" : left < 60 ? "warn" : ""}">${left < 0 ? "-" : ""}${m}:${String(s).padStart(2, "0")}</span><small>${X.affixes(I.mtier).map((a) => a.name).join(" · ")}</small>`;
+      el.classList.add("on");
+    } else el.classList.remove("on");
+    if (!this.isHost || !I.mtier || I.done) return;
+    // sanguine pools heal enemies
+    if (this._sang?.length) {
+      for (let z of this._sang) {
+        z.t -= dt;
+        for (let o of this.enemies.values()) o.alive && o.pos.distanceTo(z.pos) < 3 && (o.hp = Math.min(o.maxHp, o.hp + o.maxHp * 0.03 * dt));
+      }
+      this._sang = this._sang.filter((z) => z.t > 0);
+    }
+    // quaking
+    if (I.mtier >= 10) {
+      I.quakeT = (I.quakeT ?? 20) - dt;
+      if (I.quakeT <= 0) {
+        I.quakeT = 20;
+        for (let tg of this.playerTargets()) {
+          let p = tg.pos.clone();
+          this.telegraphEnemy(p, 4, 2.2, 0x9ad0ff, () => {
+            for (let t2 of this.playerTargets()) {
+              let q = this.targetPos(t2.id);
+              q && Math.hypot(q.x - p.x, q.z - p.z) < 4 && this.damagePlayer(t2.id, 0.22 * (t2.id === "self" ? this.player.maxHp : this.remotes.get(t2.id)?.maxHp || 1000), { pure: !0, src: { x: p.x, z: p.z } });
+            }
+            this.shake?.(0.6);
+          });
+        }
+        this.toast("The ground shakes — move out of the circles!", "#9ad0ff");
+      }
+    }
+  };
+  let ci0 = P.completeInstance;
+  P.completeInstance = function () {
+    let I = this.inst,
+      d = I.def,
+      tier = I.mtier || 0,
+      el = this.t - (I.t0 || this.t),
+      keys = X.keys();
+    ci0.call(this);
+    if (d.raid) return;
+    if (!tier) {
+      // a normal clear awards a keystone
+      !keys[d.id] && ((keys[d.id] = 2), this.toast(`You found a Keystone +2 for ${d.name} — press F at its portal to run it on Mythic`, "#c090ff"));
+      return;
+    }
+    let inTime = el <= I.par,
+      fast = el <= I.par * 0.6,
+      up = fast ? 2 : inTime ? 1 : -1;
+    keys[d.id] = Math.max(2, tier + up);
+    let p = this.profile;
+    (p.vault ||= {}).week !== X.weekKey() && (p.vault = { week: X.weekKey(), best: 0, raid: 0, taken: !1, offer: null });
+    inTime && (p.vault.best = Math.max(p.vault.best || 0, tier));
+    this.setStat("mplus_best", Math.max(this.profile.stats.mplus_best || 0, inTime ? tier : 0));
+    this.track("mplus_runs");
+    // tier loot
+    let lvl = Math.min(60, d.lv + 2 + tier),
+      Q = this.player.pos.clone();
+    this.dropItem(Q, this.gen(lvl, 2 + tier * 0.3, tier >= 8 ? "legendary" : "epic"));
+    tier >= 5 && this.dropItem(Q, this.gen(lvl, 2.5, "epic"));
+    p.marks += tier * 15;
+    this.ui.banner(inTime ? `+${tier} ${fast ? "SMASHED" : "TIMED"}` : `+${tier} DEPLETED`, inTime ? `Keystone upgraded to +${keys[d.id]} · +${tier * 15} marks` : `Over the par time — keystone drops to +${keys[d.id]}`, inTime ? "#c090ff" : "#ff9a6a");
+    this.save();
+  };
+  // raid bosses count for the vault
+  let ob0 = P.onBossDefeated;
+  ob0 &&
+    (P.onBossDefeated = function (type, ...a) {
+      let r = ob0.call(this, type, ...a);
+      if (this.inst?.def?.raid) {
+        let p = this.profile;
+        (p.vault ||= {}).week !== X.weekKey() && (p.vault = { week: X.weekKey(), best: 0, raid: 0, taken: !1, offer: null });
+        p.vault.raid = (p.vault.raid || 0) + 1;
+      }
+      return r;
+    });
+  // ---------------- weekly vault ----------------
+  qI.push({ id: "edith", name: "Vault Keeper Edith", title: "Keeper of the Great Vault", pos: [14, 330], shop: "vault", look: { robe: 0x3a3a5a, trim: 0xd0d0ff, sex: "f", hair: "bun", hairC: 0xd0d0d0 }, greet: "The Vault remembers every deed of the week. Come back when the week turns.", loc: "Dawnmere" });
+  Object.assign(ZM, { edith: { m: "mage", tint: 0xd0d0ff } });
+  X.npcExtra = X.npcExtra || {};
+  X.npcBind = X.npcBind || {};
+  X.npcExtra.vault = function (g) {
+    let p = g.profile;
+    (p.vault ||= {}).week !== X.weekKey() && (p.vault = { week: X.weekKey(), best: 0, raid: 0, taken: !1, offer: null });
+    let V = p.vault,
+      slots = [
+        { ok: V.best >= 2, need: "Time a Mythic +2 or higher", lvl: 50 + Math.min(10, V.best) },
+        { ok: V.best >= 6, need: "Time a Mythic +6 or higher", lvl: 54 + Math.min(10, V.best) },
+        { ok: V.raid >= 1, need: "Defeat a raid boss", lvl: 58 },
+      ];
+    if (!V.offer && slots.some((s) => s.ok)) {
+      V.offer = slots.map((s, i) => (s.ok ? Object.assign(g.gen(Math.min(60, s.lvl), 2.5, i === 2 || V.best >= 8 ? "legendary" : "epic"), { vault: !0 }) : null));
+      g.save();
+    }
+    return `<h3>The Great Vault <small>resets weekly \xB7 this week: best Mythic +${V.best || 0} \xB7 raid bosses ${V.raid || 0}</small></h3><div class="shop">${slots
+      .map((s, i) => {
+        let it = V.offer?.[i];
+        if (!s.ok) return `<div class="shop-i" style="opacity:.6"><div class="tip-n">Locked</div><div class="tip-r">${s.need}</div></div>`;
+        if (V.taken) return `<div class="shop-i" style="opacity:.6"><div class="tip-n">Claimed</div><div class="tip-r">Come back next week.</div></div>`;
+        let R = ui.find((x) => x.id === it.rarity);
+        return `<div class="shop-i" style="border-color:${R.color}"><div class="tip-n" style="color:${R.color}">${it.name}</div><div class="tip-r">${R.name} ${it.slot} \xB7 item level ${it.level}</div>${Object.entries(it.stats).map(([k, v]) => `<div class="tip-s">${vg[k].fmt(v)}</div>`).join("")}<button data-vault="${i}">Take this one</button></div>`;
+      })
+      .join("")}</div><p class="small">Choose one reward per week. Mythic+ runs count only when timed.</p>`;
+  };
+  X.npcBind.vault = function (g, root, redo) {
+    root.querySelectorAll("[data-vault]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          let V = g.profile.vault,
+            it = V.offer[+b.dataset.vault];
+          if (!it || V.taken) return;
+          if (g.profile.inventory.length >= 40) return g.toast("Inventory full", "#ff4a3a");
+          ((V.taken = !0), g.profile.inventory.push(it), g.ui.lootToast(it, g), g.audio.play("legendary"), g.save(), redo());
+        }),
+    );
+  };
+  // ---------------- duels ----------------
+  X.duel = {
+    cur: null,
+    request(id) {
+      let g = app().game,
+        r = g.remotes.get(id);
+      if (!r || r.bot) return;
+      if (X.duel.cur) return g.toast("Already duelling");
+      if (X.domeAt(g.world, g.player.pos.x, g.player.pos.z)) return g.toast("No duels inside a ward — step outside the village", "#ff9a6a");
+      g.sendTo(id, { t: "dreq", name: g.profile.name });
+      g.toast(`Duel request sent to ${r.name}`);
+      X.duel.pendingOut = id;
+    },
+    start(id) {
+      let g = app().game,
+        r = g.remotes.get(id);
+      X.duel.cur = { with: id, t: 180, count: 3, name: r?.name || "?" };
+      g.ui.banner("DUEL", `${r?.name || "?"} — begins in 3`, "#ff8a6a");
+      g.audio.play("bell");
+    },
+    end(result) {
+      let g = app().game,
+        D = X.duel.cur;
+      if (!D) return;
+      X.duel.cur = null;
+      g.player.hp = g.player.maxHp;
+      g.ui.banner(result === "win" ? "VICTORY" : result === "loss" ? "DEFEAT" : "DRAW", result === "win" ? `You bested ${D.name}` : result === "loss" ? `${D.name} bested you` : "The duel ends", result === "win" ? "#ffd070" : "#c0c0c0");
+      result === "win" && g.track("duels_won");
+      g.track("duels");
+    },
+    hit(amt) {
+      let D = X.duel.cur,
+        g = app().game;
+      if (!D || D.count > 0) return;
+      g.sendTo(D.with, { t: "pvp", amt: Math.round(amt) });
+    },
+  };
+  let on0 = P.onNet;
+  P.onNet = function (from, m) {
+    switch (m.t) {
+      case "dreq":
+        X.social.ask(`${m.name} challenges you to a duel`, "Accept [Y] \xB7 Decline [N]", () => {
+          this.sendTo(from, { t: "dacc" });
+          X.duel.start(from);
+        });
+        return;
+      case "dacc":
+        X.duel.pendingOut === from && X.duel.start(from);
+        return;
+      case "pvp": {
+        let D = X.duel.cur;
+        if (!D || D.with !== from) return;
+        this.hurtPlayer(m.amt, { src: this.remotes.get(from)?.pos ? { x: this.remotes.get(from).pos.x, z: this.remotes.get(from).pos.z } : null, melee: !0 });
+        if (this.player.hp <= this.player.maxHp * 0.15) {
+          this.sendTo(from, { t: "dend", r: "win" });
+          X.duel.end("loss");
+        }
+        return;
+      }
+      case "dend":
+        X.duel.cur?.with === from && X.duel.end(m.r === "win" ? "win" : "draw");
+        return;
+    }
+    return on0.call(this, from, m);
+  };
+  // duel damage: melee arcs and projectiles reach the opponent at half strength
+  let ma0 = P.meleeArc;
+  P.meleeArc = function (A, i, I, w = {}) {
+    let r = ma0.call(this, A, i, I, w),
+      D = X.duel.cur;
+    if (D) {
+      let o = this.remotes.get(D.with);
+      if (o) {
+        let v = o.pos.clone().sub(this.player.pos),
+          d = v.length();
+        v.y = 0;
+        v.normalize();
+        d < A * this.skMod("rad") + 1 && v.dot(this.flatFwd()) > Math.cos((i * Math.PI) / 360) && X.duel.hit(I * this.dmgMul() * 0.5);
+      }
+    }
+    return r;
+  };
+  let up0 = P.updateProjectiles;
+  P.updateProjectiles = function (dt) {
+    up0.call(this, dt);
+    let D = X.duel.cur;
+    if (!D) return;
+    let o = this.remotes.get(D.with);
+    if (!o) return;
+    for (let I of this.projectiles) {
+      if (I.ghost || I.stuck || I.team !== "player" || !I.dmg || I.life <= 0 || I.pvpHit) continue;
+      if (I.pos.distanceTo(o.pos.clone().setY(o.pos.y + 1)) < 1.1) {
+        ((I.pvpHit = !0), (I.life = 0), X.duel.hit(I.dmg * this.dmgMul() * 0.5));
+        this.particles.burst(I.pos.x, I.pos.y, I.pos.z, 8, { color: new _(0xff8a6a), speed: 2, life: 0.3, size: 0.1 });
+      }
+    }
+  };
+  let us1 = P.updateSystems;
+  P.updateSystems = function (dt) {
+    us1.call(this, dt);
+    let D = X.duel.cur;
+    if (!D) return;
+    if (D.count > 0) {
+      let c0 = Math.ceil(D.count);
+      D.count -= dt;
+      let c1 = Math.ceil(D.count);
+      c1 < c0 && c1 > 0 && this.toast(`${c1}…`, "#ff8a6a");
+      D.count <= 0 && this.toast("FIGHT!", "#ff8a6a");
+      return;
+    }
+    D.t -= dt;
+    let o = this.remotes.get(D.with);
+    if (!o || D.t <= 0 || o.pos.distanceTo(this.player.pos) > 45) {
+      this.sendTo(D.with, { t: "dend", r: "draw" });
+      X.duel.end("draw");
+    }
+    if (this.player.dead || this.player.downed) {
+      this.sendTo(D.with, { t: "dend", r: "win" });
+      X.duel.end("loss");
+    }
+  };
+  let ok0 = P.onKey;
+  P.onKey = function (code, down) {
+    if (down && code === "KeyU" && this.running) {
+      let r = this.aimedRemote(10);
+      if (r) return X.duel.request(r.id);
+      return this.toast("Aim at a player within 10 m to challenge them");
+    }
+    return ok0.call(this, code, down);
+  };
+  let ph0 = X.social.panelHTML;
+  X.social.panelHTML = function () {
+    return ph0.call(this).replace(/<button data-tr="([^"]+)">Trade<\/button>/g, (m, id) => `${m}<button data-duel="${id}">Duel</button>`).replace("<b>X</b> to trade.", "<b>X</b> to trade, <b>U</b> to duel.");
+  };
+  let bp0 = X.social.bindPanel;
+  X.social.bindPanel = function () {
+    bp0.call(this);
+    document.querySelectorAll("[data-duel]").forEach((b) => (b.onclick = () => (app().ui.closeModal(), X.duel.request(b.dataset.duel))));
+  };
+  // ---------------- invasions ----------------
+  X.INV = { every: 1500, waves: [6, 8, 11], wardHp: 100 };
+  let inv = {
+    start(g, S) {
+      let Z = X.OUT[S.zone],
+        lv = Yg(S.pos[0], S.pos[1]);
+      g.invasion = { S, wave: 0, t: 0, wardHp: X.INV.wardHp, left: 0, total: 0, done: !1, timer: 240, lv };
+      g.ui.banner("INVASION", `${S.name} is under attack! Defend the ward.`, "#ff6a5a");
+      g.audio.play("dark");
+      g.net?.broadcast({ t: "inv", s: S.id, on: !0 });
+      inv.spawnWave(g);
+    },
+    spawnWave(g) {
+      let I = g.invasion,
+        S = I.S,
+        n = X.INV.waves[I.wave],
+        pack = fn[Vi(S.pos[0], S.pos[1])] || fn.hamlet,
+        types = pack.map((p) => (Array.isArray(p) ? p[0] : p)).filter((t) => rw[t] && !rw[t].boss);
+      types.length || (types = ["hollow"]);
+      for (let i = 0; i < n; i++) {
+        let a = Math.random() * 6.28,
+          r = S.rad + 25 + Math.random() * 15,
+          x = S.pos[0] + Math.cos(a) * r,
+          z = S.pos[1] + Math.sin(a) * r,
+          e = g.spawnEnemy(types[(Math.random() * types.length) | 0], x, z, I.lv);
+        if (!e) continue;
+        e.invader = !0;
+        i === n - 1 && I.wave === 2 && g.makeRare?.(e, Hw[(Math.random() * Hw.length) | 0]);
+      }
+      I.left = n;
+      I.total += n;
+      g.ui.banner(`WAVE ${I.wave + 1} / 3`, `${n} attackers approach ${S.name}`, "#ff9a6a");
+    },
+    tick(g, dt) {
+      let I = g.invasion;
+      if (!I) return;
+      I.t += dt;
+      I.timer -= dt;
+      let S = I.S,
+        D = g.world.domes?.find((d) => d.S === S),
+        alive = [...g.enemies.values()].filter((e) => e.alive && e.invader);
+      // attackers push on the ward
+      if (D && !D.down)
+        for (let e of alive) {
+          let d = Math.hypot(e.pos.x - D.cx, e.pos.z - D.cz);
+          if (d < D.r + 3.5) {
+            ((e.target = null), (e.wardT = (e.wardT || 0) + dt));
+            if (e.wardT > 1) {
+              ((e.wardT = 0), (I.wardHp -= e.def.elite ? 4 : 2), X.domeHit(g.world, D, e.pos.x, e.pos.y + 1, e.pos.z));
+              g.audio.play("hitmetal", e.pos, 0.3);
+            }
+          }
+          // invaders march at the ward instead of wandering
+          !e.target && d > D.r + 4 && (e._wp = ii(D.cx + ((e.pos.x - D.cx) / d) * (D.r + 2), 0, D.cz + ((e.pos.z - D.cz) / d) * (D.r + 2)));
+        }
+      if (D && I.wardHp <= 0 && !D.down) {
+        ((D.down = !0), (D.downT = 90), (D.mesh.visible = !1));
+        g.ui.banner("THE WARD HAS FALLEN", `${S.name} is open for 90 seconds — drive them out!`, "#ff3a3a");
+        g.net?.broadcast({ t: "ward", s: S.id, down: !0 });
+      }
+      if (!alive.length && I.wave < 2) {
+        I.wave++;
+        inv.spawnWave(g);
+      } else if (!alive.length && I.wave === 2) inv.finish(g, !0);
+      else if (I.timer <= 0) inv.finish(g, !1);
+      g.ui.setWardBar?.(S.name, Math.max(0, I.wardHp) / X.INV.wardHp, alive.length, I.wave + 1);
+    },
+    finish(g, won) {
+      let I = g.invasion,
+        S = I.S;
+      g.invasion = null;
+      g.net?.broadcast({ t: "inv", s: S.id, on: !1, won });
+      g.ui.setWardBar?.(null);
+      for (let e of [...g.enemies.values()]) e.invader && g.removeEnemy(e);
+      if (won) {
+        let Q = ii(S.pos[0], 0, S.pos[1]).setY(g.world.heightAt(S.pos[0], S.pos[1]));
+        g.dropItem(Q, g.gen(Math.min(60, I.lv + 2), 2, "epic"));
+        g.dropItem(Q, g.gen(Math.min(60, I.lv + 1), 1));
+        g.profile.marks += 30;
+        g.track("invasions");
+        g.ui.banner("INVASION REPELLED", `${S.name} stands · +30 marks · loot at the well`, "#ffd070");
+        g.audio.play("levelup");
+      } else g.ui.banner("INVASION OVER", `${S.name} survived, barely`, "#c0c0c0");
+    },
+  };
+  X.invasion = inv;
+  let us2 = P.updateSystems;
+  P.updateSystems = function (dt) {
+    us2.call(this, dt);
+    // ward recovery
+    for (let D of this.world.domes || []) D.down && ((D.downT -= dt), D.downT <= 0 && ((D.down = !1), (D.mesh.visible = !0), this.isHost && this.net?.broadcast({ t: "ward", s: D.S.id, down: !1 })));
+    if (!this.isHost || this.inst || this.home) return;
+    if (this.invasion) return inv.tick(this, dt);
+    this._invT = (this._invT ?? X.INV.every * 0.4) - dt;
+    if (this._invT <= 0) {
+      this._invT = X.INV.every;
+      // nearest warded settlement to any player, within 350 m
+      let ps = [this.player.pos, ...[...this.remotes.values()].filter((r) => !r.bot).map((r) => r.pos)],
+        best = null,
+        bd = 350;
+      for (let S of X.SETTLE) {
+        if (!S.dome) continue;
+        for (let p of ps) {
+          let d = Math.hypot(p.x - S.pos[0], p.z - S.pos[1]);
+          d < bd && ((bd = d), (best = S));
+        }
+      }
+      best && inv.start(this, best);
+    }
+  };
+  // domes that are down let enemies through
+  let da0 = X.domeAt;
+  X.domeAt = (world, x, z) => {
+    let D = da0(world, x, z);
+    return D && D.down ? null : D;
+  };
+  let on1 = P.onNet;
+  P.onNet = function (from, m) {
+    if (m.t === "inv") {
+      let S = X.SETTLE.find((s) => s.id === m.s);
+      S && (m.on ? (this.ui.banner("INVASION", `${S.name} is under attack! Defend the ward.`, "#ff6a5a"), (this._invS = S)) : (this.ui.banner(m.won ? "INVASION REPELLED" : "INVASION OVER", S.name, m.won ? "#ffd070" : "#c0c0c0"), this.ui.setWardBar?.(null), (this._invS = null)));
+      return;
+    }
+    if (m.t === "ward") {
+      let D = this.world.domes?.find((d) => d.S.id === m.s);
+      D && ((D.down = !!m.down), (D.mesh.visible = !m.down), (D.downT = 90));
+      return;
+    }
+    if (m.t === "wardbar") {
+      this.ui.setWardBar?.(m.n, m.hp, m.left, m.w);
+      return;
+    }
+    return on1.call(this, from, m);
+  };
+  // ward bar in the boss bar slot (host mirrors it to guests twice a second)
+  U.setWardBar = function (name, hp, left, wave) {
+    let b = document.getElementById("boss");
+    if (!b) return;
+    if (!name) {
+      this._wardOn && (b.classList.add("hide"), (this._wardOn = !1));
+      return;
+    }
+    this._wardOn = !0;
+    b.classList.remove("hide");
+    document.getElementById("bossname").textContent = `Ward of ${name} · wave ${wave}/3 · ${left} attackers`;
+    document.getElementById("bossfill").style.width = `${hp * 100}%`;
+    let g = this.app.game;
+    if (g.isHost && g.net && (!this._wbT || g.t - this._wbT > 0.5)) {
+      this._wbT = g.t;
+      g.net.broadcast({ t: "wardbar", n: name, hp, left, w: wave });
+    }
+  };
+  WB.push(
+    { id: "ach_mplus", name: "Keystone Master", desc: "Time a Mythic +10 dungeon", stat: "mplus_best", goal: 10, reward: 100 },
+    { id: "ach_duel", name: "Duellist", desc: "Win 10 duels", stat: "duels_won", goal: 10, reward: 40 },
+    { id: "ach_inv", name: "Shieldwall", desc: "Repel 5 invasions", stat: "invasions", goal: 5, reward: 60 },
+  );
+  let css = document.createElement("style");
+  css.textContent = `#mplus-hud{position:absolute;left:50%;top:60px;transform:translateX(-50%);background:rgba(20,10,30,.7);border:1px solid #c090ff;border-radius:6px;padding:4px 12px;color:#e0d0ff;font-size:14px;display:none;text-align:center}#mplus-hud.on{display:block}#mplus-hud b{letter-spacing:2px;margin-right:8px}#mplus-hud span.warn{color:#ffb060}#mplus-hud span.over{color:#ff5a5a}#mplus-hud small{display:block;opacity:.75;font-size:11px}
+  .mplus .affx div{margin:4px 0;text-align:left}.mplus .row{display:flex;gap:10px;justify-content:center;margin:10px 0}`;
+  document.head.appendChild(css);
+}
+
+/* ---- D2_depth.js ---- */
+// ===== Depth & polish: obstacle avoidance, extra boss mechanics, item sets, the Broker (bank/market), inner-kingdom quests =====
+{
+  let P = SC.prototype,
+    U = XC.prototype,
+    app = () => window.__app;
+  // ---------------- enemies steer around walls and obstacles ----------------
+  // a stuck enemy picks a detour waypoint (tested with pointBlocked) and follows it for a moment
+  let ue0 = P.updateEnemies;
+  P.updateEnemies = function (dt) {
+    if (this.isHost)
+      for (let e of this.enemies.values()) {
+        if (!e.alive || e.def.flying) continue;
+        if (e._wp) {
+          e._wpT -= dt;
+          let d = Math.hypot(e._wp.x - e.pos.x, e._wp.z - e.pos.z);
+          (d < 1.3 || e._wpT <= 0) && (e._wp = null);
+          continue;
+        }
+        if (!e.target || e.stun > 0 || e.root > 0) {
+          e._stuck = 0;
+          continue;
+        }
+        let tp = this.targetPos(e.target);
+        if (!tp) continue;
+        let dist = Math.hypot(tp.x - e.pos.x, tp.z - e.pos.z);
+        if (dist < e.def.range + 1.5 || (e.def.ranged && dist < 14)) {
+          e._stuck = 0;
+          continue;
+        }
+        // progress check every 0.5 s
+        e._pt = (e._pt || 0) + dt;
+        if (e._pt < 0.5) continue;
+        e._pt = 0;
+        let moved = e._lp ? Math.hypot(e.pos.x - e._lp[0], e.pos.z - e._lp[1]) : 9;
+        e._lp = [e.pos.x, e.pos.z];
+        if (moved > 0.9) {
+          e._stuck = 0;
+          continue;
+        }
+        if (++e._stuck < 2) continue;
+        e._stuck = 0;
+        // try detours: rotate the desired direction by increasing angles, pick the first clear probe
+        let base = Math.atan2(tp.x - e.pos.x, tp.z - e.pos.z),
+          r = e.def.radius * e.scale + 0.3;
+        for (let a of [0.8, -0.8, 1.4, -1.4, 2.2, -2.2, 3.0]) {
+          let ang = base + a,
+            clear = !0;
+          for (let s = 1.5; s <= 5; s += 1.5) if (this.world.pointBlocked(e.pos.x + Math.sin(ang) * s, r, e.pos.z + Math.cos(ang) * s)) ((clear = !1), (s = 99));
+          if (clear) {
+            e._wp = ii(e.pos.x + Math.sin(ang) * 5, 0, e.pos.z + Math.cos(ang) * 5);
+            e._wpT = 1.6;
+            break;
+          }
+        }
+      }
+    ue0.call(this, dt);
+  };
+  // ---------------- extra boss mechanics (instances): Shockwave ring, Hunter's Mark ----------------
+  let bai0 = P.bossAI;
+  P.bossAI = function (A, i, I) {
+    let r = bai0.call(this, A, i, I);
+    if (!this.inst || !i || !A.alive || A.stun > 0) return r;
+    A.mechT = (A.mechT ?? 14) - I;
+    if (A.mechT > 0) return r;
+    A.mechT = 18 + Math.random() * 6;
+    let pos = A.pos.clone(),
+      ts = this.playerTargets();
+    if (Math.random() < 0.5) {
+      // Shockwave: a ring that expands after a telegraph; stand far (or jump the ring is not possible) → step out of the band
+      this.ui.banner(A.def.name, "raises a SHOCKWAVE — get out of the red ring", "#ff6a5a");
+      this.telegraphEnemy(pos, 9, 2.4, 0xff4a3a, () => {
+        for (let t of ts) {
+          let q = this.targetPos(t.id);
+          if (!q) continue;
+          let d = Math.hypot(q.x - pos.x, q.z - pos.z);
+          d > 3 && d < 9 && this.damagePlayer(t.id, A.def.dmg * (A.dmgMul || 1) * 1.6, { src: { x: pos.x, z: pos.z }, pure: !0 });
+        }
+        this.fx("nova", pos, { color: 0xff4a3a, r: 9 });
+        this.shake(0.8);
+      });
+    } else {
+      // Hunter's Mark: one player is marked; after 3 s a blast hits everyone within 5 m of them → spread out
+      let t = ts[(Math.random() * ts.length) | 0];
+      if (!t) return r;
+      let name = t.id === "self" ? "You are" : (this.remotes.get(t.id)?.name || "An ally") + " is";
+      this.ui.banner(A.def.name, `${name} MARKED — spread out!`, "#c090ff");
+      t.id === "self" ? this.toast("MARKED — move away from your allies!", "#c090ff") : this.sendTo(t.id, { t: "mark" });
+      let follow = { t: 0 },
+        tele = (pp) => this.telegraphEnemy(pp, 5, 3, 0xc090ff, null);
+      let q0 = this.targetPos(t.id);
+      q0 && tele(q0.clone());
+      this.after?.(3, () => {
+        let q = this.targetPos(t.id);
+        if (!q) return;
+        for (let t2 of ts) {
+          let p2 = this.targetPos(t2.id);
+          p2 && Math.hypot(p2.x - q.x, p2.z - q.z) < 5 && this.damagePlayer(t2.id, A.def.dmg * (A.dmgMul || 1) * 1.2, { src: { x: q.x, z: q.z }, pure: !0 });
+        }
+        this.fx("explosion", q.clone(), { color: 0xc090ff, r: 5 });
+      });
+    }
+    return r;
+  };
+  let on0 = P.onNet;
+  P.onNet = function (from, m) {
+    if (m.t === "mark") {
+      this.toast("MARKED — move away from your allies!", "#c090ff");
+      this.ui.banner("MARKED", "Spread out!", "#c090ff");
+      return;
+    }
+    return on0.call(this, from, m);
+  };
+  // ---------------- item sets ----------------
+  X.SETS = {
+    frost: { name: "Rimeguard", zone: "frost", color: "#9ad0ff", b2: { stat: "vitality", val: 60, text: "+60 vitality" }, b4: { stat: "power", val: 8, text: "+8% damage" } },
+    waste: { name: "Sunwrought", zone: "waste", color: "#ffd060", b2: { stat: "crit", val: 5, text: "+5% critical" }, b4: { stat: "haste", val: 8, text: "+8% haste" } },
+    thorn: { name: "Thornweave", zone: "thorn", color: "#8aff9a", b2: { stat: "leech", val: 4, text: "+4% lifesteal" }, b4: { stat: "vitality", val: 120, text: "+120 vitality" } },
+    storm: { name: "Stormcrown", zone: "storm", color: "#c0a0ff", b2: { stat: "power", val: 6, text: "+6% damage" }, b4: { stat: "crit", val: 8, text: "+8% critical" } },
+  };
+  X.setPieces = (g, id) => XB.filter((s) => g.hsave.gear[s]?.set === id).length;
+  // dungeon, raid, vault and Mythic+ loot in a zone has a chance to belong to that zone's set
+  let di0 = P.dropItem;
+  P.dropItem = function (pos, it) {
+    if (it && this.inst && !it.set) {
+      let z = this.inst.def.zone,
+        S = X.SETS[z === "citadel" || z === "ossuary" ? "storm" : z];
+      S && it.slot !== "relic" && Math.random() < (this.inst.def.raid ? 0.5 : 0.3) && ((it.set = S.zone), (it.name = `${S.name} ${it.name.split(" ").slice(-1)[0]}`));
+    }
+    return di0.call(this, pos, it);
+  };
+  let gs0 = P.gearStat;
+  P.gearStat = function (A) {
+    let v = gs0.call(this, A);
+    for (let id in X.SETS) {
+      let n = X.setPieces(this, id),
+        S = X.SETS[id];
+      n >= 2 && S.b2.stat === A && (v += S.b2.val);
+      n >= 4 && S.b4.stat === A && (v += S.b4.val);
+    }
+    return v;
+  };
+  let ih0 = U.itemHTML;
+  U.itemHTML = function (A, i) {
+    let h = ih0.call(this, A, i);
+    if (!A?.set) return h;
+    let S = X.SETS[A.set],
+      g = this.app.game,
+      n = g ? X.setPieces(g, A.set) : 0,
+      line = `<div class="tip-a" style="color:${S.color}">${S.name} set (${n}/4) · 2: ${S.b2.text} · 4: ${S.b4.text}</div>`;
+    return h.includes('<div class="tip-c">') ? h.replace('<div class="tip-c">', line + '<div class="tip-c">') : h + line;
+  };
+  // ---------------- the Broker: buys/sells materials, opens your stash anywhere ----------------
+  qI.push({ id: "garrick", name: "Broker Garrick", title: "Materials & Banking", pos: [-16, 332], shop: "broker", look: { robe: 0x5a3a2a, trim: 0xe0c080, apron: !0, prop: "pack", sex: "m", hair: "short", hairC: 0x3a2a1a, beard: !0 }, greet: "Ore, herbs, hides — I buy what you dig and sell what you lack. Your stash is here too, for a small fee.", loc: "Dawnmere" });
+  Object.assign(ZM, { garrick: { m: "barbarian", body: "rogue", tint: 0xe0c080 } });
+  X.matPrice = (id) => {
+    let m = X.MATS[id],
+      base = { herb: 18, ore: 18, hide: 24, bar: 45, leather: 55, dust: 60, essence: 220, ink: 50, vellum: 70 }[m.kind] || 30;
+    return Math.round(base * (1 + m.tier * 1.4));
+  };
+  X.npcExtra = X.npcExtra || {};
+  X.npcBind = X.npcBind || {};
+  X.npcExtra.broker = function (g) {
+    let mats = X.mats(),
+      p = g.profile,
+      rows = Object.values(X.MATS)
+        .filter((m) => ["herb", "ore", "hide"].includes(m.kind))
+        .map((m) => `<div class="shop-i"><div class="tip-n" style="color:${m.color}">${m.name} <small>${X.TIERS[m.tier].name}</small></div><div class="tip-r">you have ${mats[m.id] || 0} · buy ${X.matPrice(m.id) * 3} ◆ · sell ${X.matPrice(m.id)} ◆</div><div class="row"><button data-buy="${m.id}" ${p.shards < X.matPrice(m.id) * 3 ? "disabled" : ""}>Buy 1</button><button data-sell="${m.id}" ${(mats[m.id] || 0) < 1 ? "disabled" : ""}>Sell 1</button><button data-sellall="${m.id}" ${(mats[m.id] || 0) < 1 ? "disabled" : ""}>Sell all</button></div></div>`)
+        .join("");
+    return `<h3>Broker <small>raw materials at three times the sell price · crafted goods are not traded here</small></h3><div class="shop">${rows}</div>
+    <h3>Bank</h3><div class="shop-i"><div class="tip-n">Your house stash</div><div class="tip-r">${X.houseTier(p) ? `Open your stash here for 50 ◆ (${X.HOUSE.tiers[X.houseTier(p)].stash} slots, shared by all your heroes)` : "Buy a house from Tobin first"}</div><button data-bank="1" ${X.houseTier(p) && p.shards >= 50 ? "" : "disabled"}>Open stash · 50 ◆</button></div>`;
+  };
+  X.npcBind.broker = function (g, root, redo) {
+    let mats = X.mats(),
+      p = g.profile;
+    root.querySelectorAll("[data-buy]").forEach((b) => (b.onclick = () => ((p.shards -= X.matPrice(b.dataset.buy) * 3), (mats[b.dataset.buy] = (mats[b.dataset.buy] || 0) + 1), g.audio.play("coin"), g.save(), redo())));
+    root.querySelectorAll("[data-sell]").forEach((b) => (b.onclick = () => ((p.shards += X.matPrice(b.dataset.sell)), mats[b.dataset.sell]--, mats[b.dataset.sell] <= 0 && delete mats[b.dataset.sell], g.audio.play("coin"), g.save(), redo())));
+    root.querySelectorAll("[data-sellall]").forEach((b) => (b.onclick = () => ((p.shards += X.matPrice(b.dataset.sellall) * (mats[b.dataset.sellall] || 0)), delete mats[b.dataset.sellall], g.audio.play("coin"), g.save(), redo())));
+    let bk = root.querySelector("[data-bank]");
+    bk && (bk.onclick = () => ((p.shards -= 50), g.save(), app().ui.closeModal(), app().ui.panel("stash")));
+  };
+  // ---------------- inner-kingdom quests ----------------
+  let Q = (o) => gB.push(o);
+  Q({ id: "q_herbs", npc: "marta", req: "q_first", name: "Silverleaf for the Sick", type: "abs", stat: "herbs", goal: 10, lvl: 2, text: "The glowing green herbs in the meadows are Silverleaf. Ten of them and I can brew a tincture for the children's cough. Anyone can pick them — try it.", obj: "Gather 10 herbs (Herbalism)", rw: { xp: 260, shards: 200 } });
+  Q({ id: "q_ore", npc: "brannoc", req: "q_first", name: "Copper in the Hills", type: "abs", stat: "ores", goal: 8, lvl: 3, text: "There's copper in the rocks around the hamlet if you have the eye for it. Bring me eight lumps and I'll show you the forge.", obj: "Mine 8 ore (Mining)", rw: { xp: 320, shards: 220 } });
+  Q({ id: "q_hides", npc: "tamsin", req: "q_first", name: "Wolf Pelts", type: "abs", stat: "skins", goal: 5, lvl: 3, text: "Dire Wolves have been at the sheep again. Skin five of them for me — waste not.", obj: "Skin 5 beasts (Skinning)", rw: { xp: 340, shards: 240, item: "rare" } });
+  Q({ id: "q_craft1", npc: "brannoc", req: "q_ore", name: "First Forging", type: "abs", stat: "crafts", goal: 3, lvl: 4, text: "Smelt what you mined and make something of it at my anvil. Three pieces of honest work.", obj: "Craft 3 things (any profession)", rw: { xp: 500, shards: 300, item: "rare" } });
+  Q({ id: "q_wolves2", npc: "tamsin", req: "q_hides", name: "The Pack Leader", type: "kill", stat: "kill_hound", goal: 20, lvl: 4, text: "Twenty wolves. Then the pack breaks and the shepherds sleep.", obj: "Kill 20 Dire Wolves", rw: { xp: 700, shards: 400 } });
+  Q({ id: "q_chapel", npc: "edda", req: "q_matron", name: "Bells of the Drowned Chapel", type: "kill", stat: "kill_wraith", goal: 8, lvl: 5, text: "The wraiths ring the chapel bells at night. Eight fewer wraiths, eight fewer sleepless nights.", obj: "Kill 8 Wraiths (Weeping Mire)", rw: { xp: 800, shards: 450, item: "rare" } });
+  Q({ id: "q_tavern", npc: "hobb", req: "q_first", name: "A Round for the Road", type: "collect", from: "hollow", item: "Hollow Coin", chance: 0.5, goal: 10, lvl: 2, text: "The Hollow still carry the coins they died with. Ten coins settles your tab and the next three rounds.", obj: "Collect Hollow Coins from Hollow Skeletons", rw: { xp: 300, shards: 260 } });
+  Q({ id: "q_bones2", npc: "oswin", req: "q_vhal", name: "Ossuary Relics", type: "collect", from: "boneknight", item: "Bone Sigil", chance: 0.5, goal: 8, lvl: 8, text: "The Bone Knights carry sigils of the old orders. Bring me eight and I will read what the dead still remember.", obj: "Collect Bone Sigils from Bone Knights (Ossuary)", rw: { xp: 1200, shards: 700, marks: 10, item: "epic" } });
+  Q({ id: "q_cathedral2", npc: "oswin", req: "q_bishop", name: "Ashes to Ashes", type: "kill", stat: "kill_cultist", goal: 15, lvl: 11, text: "The Archmage is dead but his cult still chants in the Ember Spire. Fifteen cultists, and the chanting stops.", obj: "Kill 15 Cultists (Ember Spire)", rw: { xp: 1800, shards: 900, marks: 15, item: "epic" } });
+  Q({ id: "q_invasion", npc: "oswin", req: "q_king", name: "Hold the Ward", type: "abs", stat: "invasions", goal: 1, lvl: 16, text: "The Dark Lord's armies still test our wards. When the bell rings for an invasion, stand with the village until the last wave breaks.", obj: "Repel an invasion at any settlement", rw: { xp: 4000, shards: 1500, marks: 40, item: "epic" } });
+  Q({ id: "q_duel", npc: "tamsin", req: "q_king", name: "Steel Sharpens Steel", type: "abs", stat: "duels", goal: 1, lvl: 16, text: "Fight a friend. Aim at them and press U — you'll both walk away, and both be better for it.", obj: "Complete a duel", rw: { xp: 2000, shards: 800 } });
+  Q({ id: "q_keystone", npc: "edith", req: "q_crypt", name: "The Keystone", type: "abs", stat: "mplus_runs", goal: 1, lvl: 14, text: "Clear a dungeon and you will find a Keystone. Bring it back to its portal and the Vault will remember your deed.", obj: "Complete a Mythic+ dungeon", rw: { xp: 5000, shards: 2000, marks: 40, item: "epic" } });
+  let css = document.createElement("style");
+  css.textContent = ``;
   document.head.appendChild(css);
 }
 
