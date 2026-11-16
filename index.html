@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.8.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.9.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33016,6 +33016,1110 @@ Object.assign(rw.unbound, { hp: 240000 });
     }
     return cv;
   };
+}
+
+/* ---- C0_graphics2.js ---- */
+// ===== Graphics 2: filmic tone mapping, soft shadows, god rays, sun, better water, wind, sharper textures =====
+{
+  let AP = bE.prototype,
+    GP = SC.prototype;
+  // settings
+  let s0 = ZE;
+  ZE = () => ({ ...s0(), godrays: !0, softShadows: !1, wind: !0 });
+  // ---- renderer: AgX tone mapping (filmic), VSM soft shadows, god-ray pass ----
+  let GR = {
+    uniforms: { tDiffuse: { value: null }, uSun: { value: new $(0.5, 0.5) }, uStr: { value: 0 }, uCol: { value: new _(1, 0.9, 0.75) } },
+    vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }",
+    fragmentShader: `uniform sampler2D tDiffuse; uniform vec2 uSun; uniform float uStr; uniform vec3 uCol; varying vec2 vUv;
+    void main(){ vec3 col = texture2D(tDiffuse, vUv).rgb; if (uStr <= 0.001) { gl_FragColor = vec4(col, 1.0); return; }
+      vec2 d = (uSun - vUv) / 40.0; vec2 uv = vUv; float w = 1.0; vec3 acc = vec3(0.0);
+      float dith = fract(sin(dot(vUv, vec2(12.9898,78.233)))*43758.5453); uv += d * dith;
+      for (int i = 0; i < 40; i++) { uv += d; vec3 s = texture2D(tDiffuse, clamp(uv, 0.0, 1.0)).rgb; float l = dot(s, vec3(0.3,0.59,0.11)); acc += s * smoothstep(0.55, 1.1, l) * w; w *= 0.965; }
+      float dist = length(uSun - vUv); float rad = 1.0 - smoothstep(0.2, 1.1, dist);
+      gl_FragColor = vec4(col + acc * (uStr / 40.0) * uCol * (0.2 + rad * 0.8), 1.0); }`,
+  };
+  let ir0 = AP.initRenderer;
+  AP.initRenderer = function () {
+    ir0.call(this);
+    let r = this.renderer,
+      S = this.settings;
+    r.toneMapping = 4; // ACES filmic (AgX turns saturated HDR highlights black in this build)
+    r.toneMappingExposure = S.exposure * 1.3;
+    S.softShadows === !0 && S.quality !== "low" && (r.shadowMap.type = TC); // VSM (opt-in)
+    this.godrays = new Ng(GR);
+    let idx = this.composer.passes.indexOf(this.bloom);
+    this.composer.insertPass(this.godrays, idx >= 0 ? idx + 1 : this.composer.passes.length - 1);
+    this.bloom && ((this.bloom.strength = 0.45), (this.bloom.radius = 0.5), (this.bloom.threshold = 0.88));
+    this.anisotropy = Math.min(8, r.capabilities.getMaxAnisotropy?.() || 1);
+  };
+  let as0 = AP.applySettings;
+  AP.applySettings = function () {
+    as0.call(this);
+    this.renderer.toneMappingExposure = this.settings.exposure * 1.3;
+    this.godrays && (this.godrays.enabled = this.settings.godrays !== !1);
+  };
+  // colour grade: gentle filmic S-curve and a touch more saturation
+  SO.fragmentShader = SO.fragmentShader.replace("gl_FragColor = vec4(col, 1.0);", "col = mix(col, col*col*(3.0-2.0*col), 0.22); float l2 = dot(col, vec3(0.299,0.587,0.114)); col = mix(vec3(l2), col, 1.08); gl_FragColor = vec4(col, 1.0);");
+
+  // ---- shadows & textures after the game is built ----
+  let st0 = GP.start;
+  GP.start = function (...a) {
+    st0.apply(this, a);
+    let app = window.__app,
+      q = this.settings.quality,
+      vsm = app.renderer.shadowMap.type === TC;
+    if (this.moon) {
+      let size = { low: 1024, medium: 2048, high: 4096, ultra: 4096 }[q] || 2048,
+        ext = { low: 50, medium: 60, high: 75, ultra: 90 }[q] || 60;
+      this.moon.shadow.mapSize.set(size, size);
+      let c = this.moon.shadow.camera;
+      ((c.left = c.bottom = -ext), (c.right = c.top = ext), c.updateProjectionMatrix());
+      if (vsm) {
+        ((this.moon.shadow.radius = q === "ultra" ? 6 : 4), (this.moon.shadow.blurSamples = q === "ultra" ? 12 : 8), (this.moon.shadow.bias = -2e-4), (this.moon.shadow.normalBias = 0.02));
+        this.lantern && (this.lantern.castShadow = !1); // VSM has no point-light shadows
+      }
+      this.moon.shadow.map && (this.moon.shadow.map.dispose(), (this.moon.shadow.map = null));
+    }
+    // sharper textures everywhere
+    let an = app.anisotropy || 1,
+      seen = new Set();
+    this.scene.traverse((o) => {
+      let m = o.material;
+      if (!m || seen.has(m)) return;
+      seen.add(m);
+      for (let k of ["map", "normalMap", "roughnessMap"]) m[k] && m[k].anisotropy !== an && ((m[k].anisotropy = an), (m[k].needsUpdate = !0));
+    });
+    // sun sprite
+    if (!this.sunSprite) {
+      this.sunSprite = Zw(0xffe8c0, 120, 0.5);
+      this.sunSprite.material.depthTest = !1;
+      this.sunSprite.renderOrder = -9;
+      this.sunSprite.frustumCulled = !1;
+      this.scene.add(this.sunSprite);
+      this.sunCore = Zw(0xfffaf0, 40, 0.7);
+      this.sunCore.material.depthTest = !1;
+      this.sunCore.renderOrder = -9;
+      this.sunCore.frustumCulled = !1;
+      this.scene.add(this.sunCore);
+    }
+  };
+  // ---- per-frame: sun sprite, god rays, water time, wind ----
+  let ue0 = GP.updateEnv;
+  GP.updateEnv = function (dt) {
+    ue0.call(this, dt);
+    if (!this.player) return;
+    let app = window.__app,
+      i = this.env,
+      cam = this.camera,
+      L = i.lightDir,
+      inside = !!(this.inst || this.home);
+    if (this.sunSprite) {
+      this.sunSprite.visible = !inside && i.day > 0.02;
+      this.sunSprite.position.copy(cam.position).addScaledVector(L, 850);
+      this.sunCore.position.copy(cam.position).addScaledVector(L, 840);
+      this.sunCore.visible = this.sunSprite.visible;
+      let k = i.day * (1 - i.dusk * 0.3);
+      this.sunSprite.material.opacity = Math.min(1, k * 0.55);
+      this.sunCore.material.opacity = Math.min(1, k * 0.7);
+      this.sunSprite.material.color.setRGB(1, 0.9 - i.dusk * 0.35, 0.75 - i.dusk * 0.5);
+    }
+    if (app.godrays) {
+      let u = app.godrays.uniforms,
+        fwd = this.fwd(),
+        facing = fwd.dot(L),
+        p = new N().copy(cam.position).addScaledVector(L, 100).project(cam);
+      let onScreen = facing > 0.15 && Math.abs(p.x) < 1.6 && Math.abs(p.y) < 1.6,
+        want = inside || !onScreen ? 0 : (i.day * 0.28 + i.dusk * 0.42) * X.clamp((facing - 0.15) / 0.5, 0, 1) * (1 - i.rain * 0.6);
+      u.uStr.value += (want - u.uStr.value) * Math.min(1, dt * 4);
+      u.uSun.value.set(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5);
+      u.uCol.value.setRGB(1, 0.92 - i.dusk * 0.3, 0.78 - i.dusk * 0.4);
+      app.godrays.enabled = this.settings.godrays !== !1 && u.uStr.value > 0.003;
+    }
+    // sky: stronger daytime blue / warm dusk already in shader; water + wind clocks
+    let W = this.world;
+    W.waterU && (W.waterU.uTime.value = this.t);
+    if (W.windMats)
+      for (let sh of W.windMats) sh.uTime.value = this.t;
+  };
+  // ---- water: dual normal layers, depth-based colour and shore foam ----
+  let P = bM.prototype,
+    bw0 = P._buildWater;
+  P._buildWater = function () {
+    bw0.call(this);
+    let m = this.water.material,
+      W = this;
+    m.roughness = 0.12;
+    m.metalness = 0.2;
+    m.color.setHex(0x0e2a38);
+    m.opacity = 0.92;
+    m.onBeforeCompile = (sh) => {
+      ((sh.uniforms.uTime = { value: 0 }), (sh.uniforms.uH = { value: null }), (sh.uniforms.uWL = { value: W.waterLevel }));
+      W.waterU = sh.uniforms;
+      sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vWp;").replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWp = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+      sh.fragmentShader = sh.fragmentShader
+        .replace("#include <common>", "#include <common>\nvarying vec3 vWp; uniform float uTime, uWL; uniform sampler2D uH;")
+        .replace(
+          "#include <normal_fragment_maps>",
+          `#ifdef USE_NORMALMAP_TANGENTSPACE
+          vec3 mapN = texture2D( normalMap, vNormalMapUv ).xyz * 2.0 - 1.0;
+          vec3 mapN2 = texture2D( normalMap, vNormalMapUv * 1.63 + vec2(-uTime*0.011, uTime*0.008) ).xyz * 2.0 - 1.0;
+          vec3 mapN3 = texture2D( normalMap, vNormalMapUv * 0.37 + vec2(uTime*0.004, -uTime*0.003) ).xyz * 2.0 - 1.0;
+          mapN = normalize(vec3(mapN.xy + mapN2.xy * 0.8 + mapN3.xy * 1.2, mapN.z));
+          mapN.xy *= normalScale;
+          normal = normalize( tbn * mapN );
+          #else
+          #include <normal_fragment_maps>
+          #endif`,
+        )
+        .replace(
+          "#include <dithering_fragment>",
+          `#include <dithering_fragment>
+          { vec2 huv = (vWp.xz + ${pi}.0) / ${ao}.0 * (${zw}.0/${zw + 1}.0) + 0.5/${zw + 1}.0; float gh = texture2D(uH, huv).r; float depth = uWL - gh;
+            float shallow = 1.0 - smoothstep(0.0, 1.6, depth);
+            float foam = smoothstep(0.7, 0.0, depth) * (0.55 + 0.45 * sin(uTime*1.7 + vWp.x*0.9 + vWp.z*0.7) * sin(uTime*2.3 - vWp.x*0.4 + vWp.z*1.1));
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.08,0.32,0.36), shallow * 0.45);
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.92,0.96,1.0), clamp(foam, 0.0, 1.0) * 0.75);
+            gl_FragColor.a = mix(gl_FragColor.a, 0.42, shallow * 0.85);
+            gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.01,0.08,0.14), smoothstep(2.5, 10.0, depth) * 0.45); }`,
+        );
+    };
+    m.needsUpdate = !0;
+  };
+  // the height texture arrives with the grass (built after the water)
+  X.onWorld((world) => {
+    let fix = () => {
+      if (world.waterU && world.grassUniforms?.uH) world.waterU.uH.value = world.grassUniforms.uH.value;
+      else setTimeout(fix, 500);
+    };
+    fix();
+    // ---- wind on trees and tall scatter ----
+    world.windMats = [];
+    if (window.__app?.settings?.wind === !1) return;
+    let seen = new Set();
+    world.scene.traverse((o) => {
+      if (!o.isInstancedMesh || !o.material?.isMeshStandardMaterial) return;
+      o.geometry.boundingBox || o.geometry.computeBoundingBox();
+      let h = o.geometry.boundingBox.max.y - o.geometry.boundingBox.min.y;
+      if (h < 2.4) return;
+      let m = o.material;
+      if (seen.has(m)) return;
+      m = o.material = m.clone();
+      seen.add(m);
+      m.onBeforeCompile = (sh) => {
+        ((sh.uniforms.uTime = { value: 0 }), (sh.uniforms.uTH = { value: h }));
+        world.windMats.push(sh.uniforms);
+        sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nuniform float uTime, uTH;").replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+          #ifdef USE_INSTANCING
+          { vec3 ip = (instanceMatrix * vec4(0.0,0.0,0.0,1.0)).xyz; float k = clamp(position.y / uTH, 0.0, 1.0); k = k * k;
+            float ph = ip.x * 0.13 + ip.z * 0.11; float g = 0.6 + 0.4 * sin(uTime * 0.23 + ip.x * 0.02);
+            transformed.x += (sin(uTime * 1.3 + ph) * 0.14 + sin(uTime * 3.1 + ph * 2.3) * 0.05) * k * g;
+            transformed.z += (cos(uTime * 1.1 + ph * 1.3) * 0.11) * k * g; }
+          #endif`,
+        );
+      };
+      m.needsUpdate = !0;
+    });
+  });
+  // ---- sky: deeper blue zenith, warmer horizon by day, bigger sun glow ----
+  let bs0 = P._buildSky;
+  P._buildSky = function () {
+    bs0.call(this);
+    let m = this.sky.material;
+    m.fragmentShader = m.fragmentShader
+      .replace("col += vec3(0.55,0.2,0.06) * uDusk * pow(1.0 - h, 5.0) * 0.55 + vec3(0.5,0.16,0.05) * uDusk * pow(max(md,0.0), 4.0) * 0.3;", "col += vec3(0.75,0.28,0.08) * uDusk * pow(1.0 - h, 3.5) * 0.7 + vec3(0.9,0.35,0.1) * uDusk * pow(max(md,0.0), 3.0) * 0.45; col = mix(col, col * vec3(1.15, 0.95, 0.8), uDusk * 0.5);")
+      .replace("vec3 dcol = mix(uHorizon*1.08, vec3(0.19,0.22,0.27), pow(h, 0.5));", "vec3 dcol = mix(uHorizon*1.12, vec3(0.16,0.34,0.72), pow(h, 0.55)); dcol = mix(dcol, vec3(0.62,0.72,0.86), pow(1.0-h, 6.0)*0.6);")
+      .replace("dcol += vec3(1.0,0.96,0.88) * smoothstep(0.9993, 0.9997, md) * (1.0-cl*0.8) + vec3(0.55,0.5,0.45) * pow(max(md,0.0), 10.0) * 0.22;", "dcol += vec3(1.0,0.96,0.88) * smoothstep(0.9993, 0.9997, md) * (1.0-cl*0.8) + vec3(0.9,0.8,0.6) * pow(max(md,0.0), 14.0) * 0.5 + vec3(0.5,0.45,0.4) * pow(max(md,0.0), 3.0) * 0.12;");
+    m.needsUpdate = !0;
+  };
+  // settings UI
+  let sh0 = XC.prototype.settingsHTML;
+  XC.prototype.settingsHTML = function () {
+    let A = this.app.settings;
+    return sh0.call(this).replace(
+      '<label>Show FPS',
+      `<label>God rays (sun shafts) <input type="checkbox" id="s-gr" ${A.godrays !== !1 ? "checked" : ""}></label>
+      <label>Soft shadows (VSM, experimental, applies on next start) <input type="checkbox" id="s-vsm" ${A.softShadows === !0 ? "checked" : ""}></label>
+      <label>Wind on trees (applies on next start) <input type="checkbox" id="s-wind" ${A.wind !== !1 ? "checked" : ""}></label>
+      <label>Show FPS`,
+    );
+  };
+  let bs1 = XC.prototype.bindSettings;
+  XC.prototype.bindSettings = function () {
+    bs1.call(this);
+    let A = this.app.settings;
+    for (let [id, k] of [["s-gr", "godrays"], ["s-vsm", "softShadows"], ["s-wind", "wind"]]) {
+      let el = document.getElementById(id);
+      el && (el.oninput = () => ((A[k] = el.checked), this.app.applySettings()));
+    }
+  };
+}
+
+/* ---- C1_anim.js ---- */
+// ===== Animation polish: weapon trails, hit flinch, NPC gaze, footstep dust, camera roll, idle breathing =====
+{
+  let P = SC.prototype;
+  // ---- first-person weapon trail during strikes ----
+  const TN = 14;
+  P._wtrailInit = function () {
+    let g = new Ti(),
+      pos = new Float32Array(TN * 2 * 3),
+      col = new Float32Array(TN * 2 * 4),
+      idx = [];
+    for (let i = 0; i < TN - 1; i++) {
+      let a = i * 2;
+      idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+    g.setAttribute("position", new Yi(pos, 3));
+    g.setAttribute("color", new Yi(col, 4));
+    g.setIndex(idx);
+    let m = new si({ vertexColors: !0, transparent: !0, depthTest: !1, depthWrite: !1, side: KA, blending: 2 });
+    let mesh = new p(g, m);
+    ((mesh.frustumCulled = !1), (mesh.renderOrder = 50), (mesh.visible = !1), this.scene.add(mesh));
+    this._wtrail = { mesh, pts: [], col: new _(0xffe0a0) };
+  };
+  let box = new lI(),
+    v1 = new N(),
+    v2 = new N(),
+    corners = [];
+  for (let i = 0; i < 8; i++) corners.push(new N());
+  P.updateWeaponTrail = function (dt) {
+    this._wtrail || this._wtrailInit();
+    let T = this._wtrail,
+      S = this.swingState,
+      U = this.viewModel?.userData,
+      W = U?.weapon,
+      active = S && W && !["bow", "cast", "throw"].includes(S.kind) && S.t > 0.22 && S.t < 0.78 && this.viewModel.visible;
+    if (active) {
+      this.viewModel.updateMatrixWorld(!0);
+      W.getWorldPosition(v1);
+      box.setFromObject(W);
+      let far = null,
+        fd = 0;
+      for (let i = 0; i < 8; i++) {
+        corners[i].set(i & 1 ? box.max.x : box.min.x, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z);
+        let d = corners[i].distanceToSquared(v1);
+        d > fd && ((fd = d), (far = corners[i]));
+      }
+      far && (T.pts.push([v1.clone(), far.clone()]), T.pts.length > TN && T.pts.shift());
+      T.col.setHex(this.hero.color || 0xffe0a0).lerp(new _(0xffffff), 0.35);
+    } else if (T.pts.length) T.pts.shift();
+    let n = T.pts.length;
+    T.mesh.visible = n > 1;
+    if (n < 2) return;
+    let pa = T.mesh.geometry.attributes.position,
+      ca = T.mesh.geometry.attributes.color;
+    for (let i = 0; i < TN; i++) {
+      let k = Math.min(i, n - 1),
+        [a, b] = T.pts[k],
+        f = (k + 1) / n;
+      pa.setXYZ(i * 2, a.x, a.y, a.z);
+      pa.setXYZ(i * 2 + 1, b.x, b.y, b.z);
+      ca.setXYZW(i * 2, T.col.r, T.col.g, T.col.b, 0);
+      ca.setXYZW(i * 2 + 1, T.col.r, T.col.g, T.col.b, f * f * 0.75);
+    }
+    ((pa.needsUpdate = !0), (ca.needsUpdate = !0));
+    T.mesh.geometry.setDrawRange(0, (Math.min(n, TN) - 1) * 6);
+  };
+  // ---- camera: strafe roll, landing dip and breathing ----
+  let uc0 = P.updateCamera;
+  P.updateCamera = function (dt) {
+    uc0.call(this, dt);
+    let p = this.player,
+      c = this.camera,
+      right = ii(Math.cos(p.yaw), 0, -Math.sin(p.yaw)),
+      lat = p.vel.dot(right),
+      yawRate = X.wrapAngle(p.yaw - (this._cyaw ?? p.yaw)) / Math.max(dt, 1e-3);
+    this._cyaw = p.yaw;
+    let want = X.clamp(-lat * 0.006, -0.028, 0.028) + X.clamp(-yawRate * 0.0025, -0.02, 0.02);
+    this._roll ??= 0;
+    this._roll += (want - this._roll) * Math.min(1, dt * 6);
+    this._land = Math.max(0, (this._land || 0) - dt * 2.5);
+    !p.onGround && (this._air = !0);
+    p.onGround && this._air && ((this._air = !1), (this._land = Math.min(0.25, Math.abs(this._vy || 0) * 0.02)));
+    this._vy = p.vel.y;
+    c.rotation.z += this._roll;
+    c.position.y += Math.sin(this.t * 1.1) * 0.006 - this._land * Math.sin(Math.min(1, this._land * 4) * Math.PI) * 0.6;
+    this.updateWeaponTrail(dt);
+  };
+  // ---- enemies: flinch on hit (squash & lean), NPC gaze ----
+  let ae0 = P.animateEnemy;
+  P.animateEnemy = function (e, dt) {
+    ae0.call(this, e, dt);
+    let m = e.mesh;
+    if (!m) return;
+    e._bs ??= m.scale.x || 1;
+    let f = e.hitFlash > 0.02 ? e.hitFlash : 0,
+      sq = f * 0.09;
+    m.scale.set(e._bs * (1 + sq), e._bs * (1 - sq * 0.8), e._bs * (1 + sq));
+    if (f > 0.3 && !e.def.boss) {
+      // lean away from the last hit source (the player when unknown)
+      m.rotation.x = -f * 0.18;
+    } else m.rotation.x *= 1 - Math.min(1, dt * 8);
+  };
+  let us0 = P.updateSystems;
+  P.updateSystems = function (dt) {
+    us0.call(this, dt);
+    // NPCs look at the player with their head when close
+    let p = this.player.pos;
+    for (let C of this.npcs || []) {
+      let bones = C.mesh?.userData?.parts?.bones,
+        hb = bones && bones[X.headBone()];
+      if (!hb) continue;
+      let d = C.pos.distanceTo(p);
+      if (d > 10) {
+        C._gz && ((hb.rotation.y *= 0.9), (hb.rotation.x *= 0.9), d > 14 && (C._gz = !1));
+        continue;
+      }
+      C._gz = !0;
+      let want = X.wrapAngle(Math.atan2(p.x - C.pos.x, p.z - C.pos.z) - C.yaw),
+        pitch = X.clamp(Math.atan2(p.y + 1.2 - (C.pos.y + 1.4), d) * 0.6, -0.35, 0.35);
+      want = X.clamp(want, -1.0, 1.0);
+      hb.rotation.y += (want - hb.rotation.y) * Math.min(1, dt * 5);
+      hb.rotation.x += (-pitch - hb.rotation.x) * Math.min(1, dt * 5);
+    }
+  };
+  // ---- footstep dust / snow / splash for the player and nearby remotes ----
+  let up0 = P.updatePlayer;
+  P.updatePlayer = function (dt) {
+    let s0 = this.player.stepT;
+    up0.call(this, dt);
+    let p = this.player;
+    if (p.stepT > s0 && p.onGround) {
+      let W = this.world,
+        wet = W.isWater(p.pos.x, p.pos.z),
+        reg = Vi(p.pos.x, p.pos.z),
+        snow = reg === "frost",
+        col = wet ? 0x9ad0e8 : snow ? 0xf4f8ff : reg === "waste" ? 0xd8b880 : 0x8a7a5a;
+      this.particles.burst(p.pos.x, p.pos.y + 0.12, p.pos.z, wet ? 10 : 5, { color: new _(col), speed: wet ? 2.2 : 1.1, grav: wet ? 9 : 2, life: wet ? 0.5 : 0.7, size: wet ? 0.08 : 0.12, drag: 1.5 });
+    }
+    for (let r of this.remotes.values()) {
+      if (!r.vel || r.vel < 1.5 || r.pos.distanceTo(p.pos) > 40) continue;
+      r._stepT = (r._stepT || 0) + dt * r.vel * 0.32;
+      if (r._stepT > 1) {
+        r._stepT = 0;
+        this.particles.burst(r.pos.x, r.pos.y + 0.12, r.pos.z, 4, { color: new _(0x8a7a5a), speed: 1, grav: 2, life: 0.6, size: 0.1, drag: 1.5 });
+      }
+    }
+  };
+  // ---- remote players & bots: subtle idle sway and attack lunges ----
+  let ur0 = P.updateRemotes;
+  P.updateRemotes = function (dt) {
+    ur0.call(this, dt);
+    for (let r of this.remotes.values()) {
+      let m = r.model;
+      if (!m) continue;
+      r._fol = Math.max(0, (r._fol || 0) - dt * 3);
+      r.fol && !r._folSeen && ((r._fol = 1), (r._folSeen = !0));
+      !r.fol && (r._folSeen = !1);
+      m.position.y += Math.sin(this.t * 1.3 + (r.pos.x % 7)) * 0.004;
+      m.rotation.x = (r.downed ? -1.4 : 0) + r._fol * 0.12;
+    }
+  };
+}
+
+/* ---- C2_house_swap.js ---- */
+// ===== Housing for everyone (private per player, shared across your characters) + in-game class swap + changelog =====
+{
+  let P = SC.prototype,
+    U = XC.prototype;
+  // ---- the house is private: any player (host or guest) can enter their own; nobody else is dragged along ----
+  P.enterHome = function () {
+    if (this.inst || this.home) return;
+    if (this.player.combatT > 0) return this.toast("You cannot go home while in danger", "#ff6a5a");
+    let b = X.buildHome(this),
+      A = this.player;
+    this.dismount?.(!0);
+    ((this.world.pocket = b.bounds), (this.world.pocketY = X.HOUSE.floorY), (this._homeReturn = [A.pos.x, A.pos.z]), (this.pocket = !0), (this.home = b));
+    A.pos.set(b.entry[0], X.HOUSE.floorY + 0.2, b.entry[1]);
+    A.vel.set(0, 0, 0);
+    this.lookAt(ii(b.entry[0], 0, b.entry[1] - 10));
+    (this.world.sky.visible = !1), this.world.clouds && this.world.clouds.forEach((L) => (L.mesh.visible = !1));
+    this.ui.banner("HOME", X.HOUSE.tiers[X.houseTier(this.profile)].name, "#ffd070");
+    this.audio.play("bell", null, 0.5);
+    this.companion && (this.companion.pos.set(b.entry[0] + 1.5, X.HOUSE.floorY, b.entry[1] - 2), this.companion.model.position.copy(this.companion.pos));
+  };
+  // enemies never follow into a home (the host's own enemies simply lose the target)
+  let tp0 = P.targetPos;
+  P.targetPos = function (id) {
+    if (id === "self" && this.home) return null;
+    let r = id !== "self" && this.remotes.get(id);
+    if (r?.home) return null;
+    return tp0.call(this, id);
+  };
+  // other players inside their homes are hidden
+  let ns0 = P.netSend;
+  P.netSend = function () {
+    let w0 = this.net?.send,
+      b0 = this.net?.broadcast;
+    if (!this.net) return ns0.call(this);
+    let tag = (m) => (m && m.t === "me" && (m.hm = !!this.home), m);
+    this.net.send = (m) => w0.call(this.net, tag(m));
+    this.net.broadcast = (m, ex) => {
+      if (m?.t === "snap" && m.ps?.host) m.ps.host.hm = !!this.home;
+      return b0.call(this.net, m, ex);
+    };
+    try {
+      ns0.call(this);
+    } finally {
+      ((this.net.send = w0), (this.net.broadcast = b0));
+    }
+  };
+  let ur0 = P.updateRemote;
+  P.updateRemote = function (id, pkt) {
+    ur0.call(this, id, pkt);
+    let r = this.remotes.get(id);
+    r && ((r.home = !!pkt.hm), r.model && (r.model.visible = !r.home && !r.stealth), r.tag && (r.tag.style.display = r.home ? "none" : ""));
+  };
+  let urs0 = P.updateRemotes;
+  P.updateRemotes = function (dt) {
+    urs0.call(this, dt);
+    for (let r of this.remotes.values()) r.home && ((r.model.visible = !1), (r.light.intensity = 0), (r.tag.style.display = "none"));
+  };
+  // the stash is account-wide already (profile.stash); say so in the panel
+  let sh0 = U.stashHTML;
+  sh0 &&
+    (U.stashHTML = function (...a) {
+      return sh0.apply(this, a).replace("<h2>", '<h2 title="Shared by every character on this save">');
+    });
+
+  // ---- switch hero in-game ----
+  P.switchHero = function (id) {
+    let h = FI.find((x) => x.id === id);
+    if (!h || h.id === this.hero.id) return;
+    if (this.inst) return this.toast("You cannot change hero inside a dungeon or raid", "#ff6a5a");
+    if (this.player.combatT > 0 && !this.home) return this.toast("You cannot change hero while in danger", "#ff6a5a");
+    if (X.lfg?.st) return this.toast("Leave the Dungeon Finder queue first", "#ff6a5a");
+    this.save();
+    let I = this.profile,
+      A = this.player;
+    this.dismount?.(!0);
+    ((this.hero = h), (I.lastHero = id), (I.heroes[id] ||= { level: 1, xp: 0, gear: {}, potions: 3 }), (this.hsave = I.heroes[id]));
+    I.stats.heroesPlayed ||= [];
+    I.stats.heroesPlayed.includes(id) || (I.stats.heroesPlayed.push(id), this.setStat("heroes_played", I.stats.heroesPlayed.length));
+    ((A.buffs = []), (A.hots = []), (A.cds = {}), (A.shield = 0), (this.swingState = null), (this.blocking = !1), (this.aiming = !1));
+    this.recalcStats();
+    let r = nI[h.res];
+    ((A.hp = A.maxHp), (A.res = r.start), (A.maxRes = r.max + (this.tal?.maxRes || 0)));
+    this.viewModel && this.camera.remove(this.viewModel);
+    ((this.viewModel = To(h, I.cos, yC(this.hsave.gear))), this.camera.add(this.viewModel), (this._vm = null));
+    this.applyCosmetics();
+    this.ui.showHUD(this);
+    this.ui.banner(h.title.toUpperCase(), `${h.name} answers the Vigil`, "#ffd070");
+    this.audio.play("levelup");
+    // group entry: role and level changed
+    let s = X.group?.mine?.();
+    if (s) {
+      let e = s.m.find((x) => x.id === this.net.id);
+      e && Object.assign(e, { hero: id, lv: this.hsave.level, role: X.roleOf(id) });
+      s.lead === this.net.id ? X.group.publish() : this.sendTo(s.lead, { t: "gupd", hero: id, lv: this.hsave.level, role: X.roleOf(id) });
+    }
+    this.netSend?.();
+    this.save();
+  };
+  let on0 = P.onNet;
+  P.onNet = function (from, m) {
+    if (m.t === "gupd") {
+      let s = X.group.mine();
+      if (s && s.lead === this.net.id) {
+        let e = s.m.find((x) => x.id === from);
+        e && (Object.assign(e, { hero: m.hero, lv: m.lv, role: m.role }), X.group.publish());
+      }
+      return;
+    }
+    return on0.call(this, from, m);
+  };
+  U.heroSwitchHTML = function () {
+    let g = this.app.game,
+      p = this.app.profile;
+    return `<h2>Change hero <small>your house, stash, mounts, companions and friends are shared by every hero</small></h2><div class="roles">${["Tank", "Healer", "DPS"]
+      .map(
+        (s) =>
+          `<div class="role"><div class="role-h">${gI(Zo[s][0], Zo[s][1], 30)} ${s}</div>${FI.filter((D) => D.role === s)
+            .map((D) => `<div class="hcard ${D.id === g.hero.id ? "sel" : ""}" data-sw="${D.id}" style="--c:#${D.color.toString(16).padStart(6, "0")}">${bw(D.id, 44)}<div class="hn">${D.name}</div><div class="ht">${D.title}</div><div class="hl">Lv ${p.heroes[D.id]?.level || 1}</div></div>`)
+            .join("")}</div>`,
+      )
+      .join("")}</div><p class="small">Switching keeps you where you stand. Not possible in combat, in a dungeon or raid, or while queued.</p>`;
+  };
+  let ep0 = U.extraPanel;
+  U.extraPanel = function (B, A) {
+    if (B === "heroswitch") return this.heroSwitchHTML();
+    return ep0.call(this, B, A);
+  };
+  let be0 = U.bindExtra;
+  U.bindExtra = function (B, A, i) {
+    if (B === "heroswitch") {
+      document.querySelectorAll("#modal [data-sw]").forEach((c) => (c.onclick = () => (this.closeModal(), this.app.game.switchHero(c.dataset.sw))));
+    }
+    return be0.call(this, B, A, i);
+  };
+  let pz0 = U.pause;
+  U.pause = function (A) {
+    pz0.call(this, A);
+    if (!A) return;
+    let q = document.querySelector('#pause [data-p="quit"]');
+    if (q && !document.querySelector('#pause [data-p="heroswitch"]')) {
+      let b = document.createElement("button");
+      ((b.dataset.p = "heroswitch"), (b.textContent = "Change Hero"));
+      q.parentNode.insertBefore(b, q);
+      b.onclick = () => {
+        this.click();
+        document.getElementById("pause").classList.remove("on");
+        this.panel("heroswitch");
+      };
+    }
+  };
+  // the house wardrobe/mannequin also offers the switch
+  let si0 = P.sysInteract;
+  P.sysInteract = function (n) {
+    if (n.kind === "home_mannequin" || n.kind === "home_wardrobe") {
+      let r = si0.call(this, n);
+      setTimeout(() => this.toast("Tip: Esc → Change Hero swaps your class anywhere outside combat", "#c0d0ff"), 400);
+      return r;
+    }
+    return si0.call(this, n);
+  };
+
+  // ---- changelog popup, once per version ----
+  X.VERSION = "1.9.0";
+  X.CHANGELOG = {
+    "1.9.0": [
+      "Graphics: filmic grade, god rays and a real sun, soft shore foam and deeper water, wind in the trees, sharper textures, 4K shadows on High/Ultra.",
+      "Animation: weapon trails, hit flinches, NPCs turn their heads to you, footstep dust and splashes, camera roll when strafing and landing.",
+      "Professions: Herbalism, Mining, Skinning (gathering) and Blacksmithing, Enchanting, Inscription (crafting), skill 1–300 in zone tiers, all six on every character. Press B for the professions book.",
+      "Housing: your house, stash and upgrades are shared by all your heroes; every player visits only their own house; Change Hero from the Esc menu anywhere outside combat.",
+      "Multiplayer (1.8): online-only worlds, friend codes, groups and raids, trading, proximity voice, Dungeon Finder with companions, host migration, WoW-style threat and taunts.",
+      "World (1.8): a continent bounded by the Sundering Sea, rivers and bridges, four port towns with quests, village wards, no grass in settlements.",
+      "Mobile: touch controls and a phone HUD.",
+    ],
+  };
+  let mm0 = U.mainMenu;
+  U.mainMenu = function () {
+    mm0.call(this);
+    let S = this.app.settings,
+      menu = document.querySelector("#menu .menu-col");
+    if (menu && !menu.querySelector("[data-a=whatsnew]")) {
+      let b = document.createElement("button");
+      ((b.dataset.a = "whatsnew"), (b.className = "ghost"), (b.textContent = `What's new in ${X.VERSION}`));
+      menu.appendChild(b);
+      b.onclick = () => (this.click(), this.changelog());
+    }
+    if (S.seenVersion !== X.VERSION) {
+      ((S.seenVersion = X.VERSION), this.app.saveProfile());
+      setTimeout(() => this.changelog(), 400);
+    }
+  };
+  U.changelog = function () {
+    let list = X.CHANGELOG[X.VERSION] || [];
+    this.openModal(`<div class="lore changelog"><div class="lore-t">What's new — Vigilfall ${X.VERSION} (Alpha)</div><div class="lore-x"><ul>${list.map((l) => `<li>${l}</li>`).join("")}</ul></div><button class="close">Close</button></div>`);
+    document.querySelector("#modal .close").onclick = () => this.closeModal();
+  };
+  let css = document.createElement("style");
+  css.textContent = `.changelog ul{text-align:left;padding-left:18px;max-width:640px;line-height:1.45}.changelog li{margin:6px 0}.changelog .lore-x{max-height:60vh;overflow:auto}`;
+  document.head.appendChild(css);
+}
+
+/* ---- C3_professions.js ---- */
+// ===== Professions: Herbalism, Mining, Skinning (gathering) · Blacksmithing, Enchanting, Inscription (crafting). Skill 1–300. =====
+{
+  let P = SC.prototype,
+    U = XC.prototype,
+    app = () => window.__app;
+  X.PROF = {
+    herbalism: { name: "Herbalism", icon: "leaf", color: "#8aff9a", kind: "gather", desc: "Pick herbs across Aldmoor. Herbs become inks for Inscription." },
+    mining: { name: "Mining", icon: "rune", color: "#ffb060", kind: "gather", desc: "Mine ore veins. Smelt ore into bars for Blacksmithing." },
+    skinning: { name: "Skinning", icon: "drop", color: "#d0a070", kind: "gather", desc: "Skin slain beasts for hides. Hides become leather and vellum." },
+    blacksmithing: { name: "Blacksmithing", icon: "sword", color: "#c8d0d8", kind: "craft", desc: "Smelt bars and forge weapons and armour at an anvil (near any smith, or in your Manor)." },
+    enchanting: { name: "Enchanting", icon: "star", color: "#c090ff", kind: "craft", desc: "Disenchant unwanted gear into dust and essence; enchant weapons, chests and boots permanently." },
+    inscription: { name: "Inscription", icon: "scroll", color: "#ffe08a", kind: "craft", desc: "Mill herbs into inks. Write glyphs that change your skills, and scrolls that buff you for 30 minutes." },
+  };
+  X.TIERS = [
+    { name: "Apprentice", min: 1, lvl: 12, zones: ["hamlet", "mire", "ossuary", "cathedral", "citadel"] },
+    { name: "Journeyman", min: 75, lvl: 26, zones: ["frost"] },
+    { name: "Expert", min: 150, lvl: 40, zones: ["waste"] },
+    { name: "Artisan", min: 225, lvl: 56, zones: ["thorn", "storm"] },
+  ];
+  X.tierOfZone = (z) => Math.max(0, X.TIERS.findIndex((T) => T.zones.includes(z)));
+  X.tierOfSkill = (s) => (s >= 225 ? 3 : s >= 150 ? 2 : s >= 75 ? 1 : 0);
+  // materials
+  X.MATS = {};
+  let M = (id, name, tier, kind, color) => (X.MATS[id] = { id, name, tier, kind, color });
+  ["Silverleaf", "Frostbloom", "Sunthistle", "Thornroot"].forEach((n, t) => M("herb" + t, n, t, "herb", "#8aff9a"));
+  ["Copper Ore", "Iron Ore", "Sunsteel Ore", "Stormsilver Ore"].forEach((n, t) => M("ore" + t, n, t, "ore", "#ffb060"));
+  ["Copper Bar", "Iron Bar", "Sunsteel Bar", "Stormsilver Bar"].forEach((n, t) => M("bar" + t, n, t, "bar", "#e0c8a0"));
+  ["Light Hide", "Thick Hide", "Scaled Hide", "Storm Hide"].forEach((n, t) => M("hide" + t, n, t, "hide", "#d0a070"));
+  ["Soft Leather", "Heavy Leather", "Scaled Leather", "Storm Leather"].forEach((n, t) => M("leather" + t, n, t, "leather", "#b08050"));
+  ["Strange Dust", "Soul Dust", "Dream Dust", "Storm Dust"].forEach((n, t) => M("dust" + t, n, t, "dust", "#c090ff"));
+  ["Lesser Essence", "Greater Essence", "Eternal Essence", "Tempest Essence"].forEach((n, t) => M("ess" + t, n, t, "essence", "#ffa0ff"));
+  ["Pale Ink", "Frost Ink", "Sun Ink", "Thorn Ink"].forEach((n, t) => M("ink" + t, n, t, "ink", "#ffe08a"));
+  ["Vellum", "Fine Vellum", "Scaled Vellum", "Storm Vellum"].forEach((n, t) => M("vellum" + t, n, t, "vellum", "#f0e8d0"));
+  X.mats = () => (app().profile.mats ||= {});
+  X.addMat = (g, id, n = 1) => {
+    let m = X.mats();
+    m[id] = (m[id] || 0) + n;
+    g.toast(`+${n} ${X.MATS[id].name}`, X.MATS[id].color);
+    g.track("mats_gathered", n);
+  };
+  X.hasMats = (list) => list.every(([id, n]) => (X.mats()[id] || 0) >= n);
+  X.useMats = (list) => {
+    let m = X.mats();
+    for (let [id, n] of list) (m[id] -= n), m[id] <= 0 && delete m[id];
+  };
+  // skill per hero
+  X.prof = (g) => (g.hsave.prof ||= {});
+  X.skill = (g, id) => Math.max(1, Math.min(300, X.prof(g)[id] || 1));
+  X.skillUp = function (g, id, req) {
+    let s = X.skill(g, id),
+      d = s - req,
+      chance = d < 25 ? 1 : d < 50 ? 0.6 : d < 75 ? 0.25 : 0;
+    if (s >= 300 || Math.random() > chance) return !1;
+    X.prof(g)[id] = s + 1;
+    g.setStat("prof_" + id, s + 1);
+    g.floatText(g.player.pos.clone().setY(g.player.pos.y + 2.2), `${X.PROF[id].name} ${s + 1}`, X.PROF[id].color);
+    (s + 1) % 75 === 0 && g.ui.banner(X.PROF[id].name.toUpperCase(), `${X.TIERS[X.tierOfSkill(s + 1)].name} — new recipes and nodes unlocked`, X.PROF[id].color);
+    s + 1 === 300 && g.track("prof_300");
+    return !0;
+  };
+  X.reqColor = (g, id, req) => {
+    let d = X.skill(g, id) - req;
+    return d < 0 ? "#ff5a5a" : d < 25 ? "#ffa040" : d < 50 ? "#ffe060" : d < 75 ? "#8aff9a" : "#9a9a9a";
+  };
+
+  // ---------- gathering nodes ----------
+  X.nodes = [];
+  let herbMesh = (t) => {
+    let g = new eA(),
+      col = [0xa0e0b0, 0xb0d8ff, 0xffd060, 0x6a9a40][t],
+      leaf = PB(col),
+      stem = PB(0x3a6a2a);
+    for (let i = 0; i < 5; i++) {
+      let a = (i / 5) * Math.PI * 2,
+        l = new p(new Ai(0.09, 0.42, 4), leaf);
+      l.position.set(Math.cos(a) * 0.12, 0.25, Math.sin(a) * 0.12);
+      l.rotation.set(Math.cos(a) * 0.6, 0, -Math.sin(a) * 0.6);
+      g.add(l);
+    }
+    let s = new p(new QA(0.02, 0.03, 0.4, 5), stem);
+    s.position.y = 0.2;
+    g.add(s);
+    let fl = new p(new JA(0.07, 8, 6), mI(col, 1.6));
+    fl.position.y = 0.46;
+    g.add(fl);
+    g.add(Zw(col, 0.9, 0.25).translateY(0.4));
+    return g;
+  };
+  let oreMesh = (t) => {
+    let g = new eA(),
+      col = [0xd08040, 0xb0b8c0, 0xffc040, 0x9ad0ff][t],
+      rock = ZA("stone", 0x5a5650),
+      ore = ZA("metal", col, { metal: 0.9, rough: 0.35 });
+    for (let i = 0; i < 4; i++) {
+      let r = new p(new Pg(0.32 + Math.random() * 0.2, 0), rock);
+      r.position.set((Math.random() - 0.5) * 0.6, 0.2 + Math.random() * 0.2, (Math.random() - 0.5) * 0.6);
+      r.rotation.set(Math.random() * 3, Math.random() * 3, 0);
+      g.add(r);
+    }
+    for (let i = 0; i < 5; i++) {
+      let c = new p(new tB(0.11, 0), ore);
+      c.position.set((Math.random() - 0.5) * 0.7, 0.3 + Math.random() * 0.35, (Math.random() - 0.5) * 0.7);
+      c.rotation.set(Math.random() * 3, Math.random() * 3, 0);
+      g.add(c);
+    }
+    g.add(Zw(col, 0.8, 0.18).translateY(0.4));
+    return g;
+  };
+  X.buildNodes = function (world) {
+    let rng = sI(8181),
+      counts = { hamlet: [24, 18], mire: [22, 14], ossuary: [18, 22], cathedral: [16, 20], citadel: [6, 10], frost: [40, 36], waste: [36, 40], thorn: [44, 30], storm: [34, 44] },
+      centers = { hamlet: [0, 300, 120], mire: [0, -290, 160], ossuary: [290, 0, 150], cathedral: [-290, 0, 150], citadel: [0, 0, 90] };
+    for (let id in X.OUT) {
+      let Z = X.OUT[id];
+      centers[id] = [Z.center[0], Z.center[1], 330];
+    }
+    for (let reg in counts) {
+      let [nh, no] = counts[reg],
+        [cx, cz, R] = centers[reg],
+        tier = X.tierOfZone(reg);
+      let place = (kind, n) => {
+        let made = 0,
+          tries = 0;
+        while (made < n && tries++ < n * 40) {
+          let a = rng() * 6.283,
+            r = Math.sqrt(rng()) * R,
+            x = cx + Math.cos(a) * r,
+            z = cz + Math.sin(a) * r;
+          if (Vi(x, z) !== reg || X.land(x, z) < 0.12 || world.isWater(x, z) || _I(x, z) < 7 || X.settleAt(x, z, 8) || world.slopeAt(x, z) > 0.45) continue;
+          if (world.pointBlocked(x, 0.8, z)) continue;
+          if (X.nodes.some((q) => Math.hypot(q.pos[0] - x, q.pos[1] - z) < 10)) continue;
+          // ore likes slopes and rock, herbs like flat ground
+          if (kind === "ore" && world.slopeAt(x, z) < 0.08 && rng() < 0.6) continue;
+          let mesh = kind === "herb" ? herbMesh(tier) : oreMesh(tier);
+          mesh.rotation.y = rng() * 6.28;
+          world.place(mesh, x, z, -0.02);
+          mesh.traverse((m) => m.isMesh && (m.castShadow = !0));
+          X.nodes.push({ id: X.nodes.length, kind, tier, reg, pos: [x, z], mesh, taken: !1, t: 0 });
+          made++;
+        }
+      };
+      place("herb", nh);
+      place("ore", no);
+    }
+  };
+  X.onWorld((world) => X.buildNodes(world));
+  // respawn & prompts
+  let us0 = P.updateSystems;
+  P.updateSystems = function (dt) {
+    us0.call(this, dt);
+    this._nodeT = (this._nodeT || 0) + dt;
+    if (this._nodeT > 2) {
+      this._nodeT = 0;
+      for (let n of X.nodes) n.taken && (n.t -= 2) <= 0 && ((n.taken = !1), (n.mesh.visible = !0));
+    }
+    // gathering channel
+    let G = this._gather;
+    if (G) {
+      let p = this.player;
+      if (p.pos.distanceTo(G.from) > 0.6 || p.dead || p.downed || this.player.combatT > 0) {
+        this._gather = null;
+        this.toast("Gathering interrupted", "#ff9a6a");
+      } else {
+        G.t += dt;
+        this.ui.prompt(`${G.label}… ${Math.round((G.t / G.dur) * 100)}%`);
+        G.t >= G.dur && ((this._gather = null), G.done());
+      }
+    }
+    // scroll buffs tick
+    let sc = this.hsave.scroll;
+    sc && ((sc.t -= dt), sc.t <= 0 && ((this.hsave.scroll = null), this.recalcStats(), this.toast("Your scroll's blessing fades", "#c0c0c0")));
+  };
+  let sp0 = P.sysPrompt;
+  P.sysPrompt = function () {
+    if (this._gather) return null;
+    let r = sp0.call(this);
+    if (r) return r;
+    let A = this.player.pos;
+    for (let n of X.nodes) {
+      if (n.taken || Math.hypot(A.x - n.pos[0], A.z - n.pos[1]) > 2.6) continue;
+      let prof = n.kind === "herb" ? "herbalism" : "mining",
+        req = X.TIERS[n.tier].min,
+        mat = X.MATS[(n.kind === "herb" ? "herb" : "ore") + n.tier],
+        ok = X.skill(this, prof) >= req;
+      return { text: ok ? `[F] ${n.kind === "herb" ? "Pick" : "Mine"} ${mat.name} (${X.PROF[prof].name} ${X.skill(this, prof)})` : `${mat.name} — requires ${X.PROF[prof].name} ${req}`, near: { kind: "node", n, ok, prof, req, mat } };
+    }
+    for (let c of this.corpses || []) {
+      if (!c.skin || c.skinned) continue;
+      let pos = c.m.position;
+      if (pos.distanceTo(A) > 2.8) continue;
+      let req = X.TIERS[c.skin].min,
+        ok = X.skill(this, "skinning") >= req;
+      return { text: ok ? `[F] Skin the beast (Skinning ${X.skill(this, "skinning")})` : `Skinning ${req} required to skin this`, near: { kind: "skin", c, ok, req } };
+    }
+    return null;
+  };
+  let si0 = P.sysInteract;
+  P.sysInteract = function (n) {
+    if (n.kind === "node") {
+      if (!n.ok) return this.toast(`You need ${X.PROF[n.prof].name} ${n.req}`, "#ff6a5a"), !0;
+      if (this.player.combatT > 0) return this.toast("Not while in danger", "#ff6a5a"), !0;
+      let node = n.n;
+      this._gather = {
+        from: this.player.pos.clone(),
+        t: 0,
+        dur: 1.8,
+        label: n.kind === "node" && node.kind === "herb" ? "Picking" : "Mining",
+        done: () => {
+          ((node.taken = !0), (node.mesh.visible = !1), (node.t = 240 + Math.random() * 120));
+          let cnt = 1 + (Math.random() < 0.5 ? 1 : 0) + (Math.random() < 0.15 ? 1 : 0);
+          X.addMat(this, n.mat.id, cnt);
+          X.skillUp(this, n.prof, n.req);
+          this.audio.play(node.kind === "herb" ? "pickup" : "anvil", null, 0.5);
+          this.track(node.kind === "herb" ? "herbs" : "ores", cnt);
+          this.save();
+        },
+      };
+      this.audio.play("ui");
+      return !0;
+    }
+    if (n.kind === "skin") {
+      if (!n.ok) return this.toast(`You need Skinning ${n.req}`, "#ff6a5a"), !0;
+      let c = n.c;
+      this._gather = {
+        from: this.player.pos.clone(),
+        t: 0,
+        dur: 1.5,
+        label: "Skinning",
+        done: () => {
+          c.skinned = !0;
+          c.t = Math.min(c.t, 1);
+          let cnt = 1 + (Math.random() < 0.4 ? 1 : 0) + (c.boss ? 3 : 0);
+          X.addMat(this, "hide" + c.skin, cnt);
+          X.skillUp(this, "skinning", n.req);
+          this.audio.play("glass", null, 0.4);
+          this.track("skins", cnt);
+          this.save();
+        },
+      };
+      return !0;
+    }
+    return si0.call(this, n);
+  };
+  // beasts leave skinnable corpses
+  let kill0 = P.killEnemy;
+  P.killEnemy = function (e, by) {
+    let beast = e.type === "hound" || e.type === "rimefang" || e.type === "briar",
+      before = (this.corpses || []).length;
+    kill0.call(this, e, by);
+    if (beast && this.corpses && this.corpses.length > before) {
+      let c = this.corpses[this.corpses.length - 1];
+      ((c.skin = X.tierOfZone(Vi(e.pos.x, e.pos.z))), (c.boss = !!e.def.boss), (c.t = Math.max(c.t, 25)));
+    }
+  };
+
+  // ---------- recipes ----------
+  let slotNames = { weapon: { swordshield: "Sword", axe: "Axe", mace: "Mace", hammer: "Warhammer", staff: "Staff", totem: "Totem", flask: "Flask", orb: "Orb", bow: "Bow", daggers: "Daggers", tide: "Tidecaller", grimoire: "Grimoire" }, chest: ["Cuirass", "Hauberk", "Mail", "Hauberk"], helm: ["Helm", "Helm", "Visage", "Crown"], boots: ["Greaves", "Sabatons", "Greaves", "Sabatons"] };
+  let barNames = ["Copper", "Iron", "Sunsteel", "Stormsilver"];
+  X.RECIPES = [];
+  for (let t = 0; t < 4; t++) {
+    let T = X.TIERS[t];
+    // blacksmithing
+    X.RECIPES.push({ id: "smelt" + t, prof: "blacksmithing", name: `Smelt ${barNames[t]}`, req: T.min, mats: [["ore" + t, 2]], out: ["bar" + t, 1], text: `2 ${X.MATS["ore" + t].name} → 1 ${X.MATS["bar" + t].name}` });
+    X.RECIPES.push({ id: "weapon" + t, prof: "blacksmithing", name: `${barNames[t]} Weapon`, req: T.min + 20, mats: [["bar" + t, 4], ["leather" + t, 1]], item: { slot: "weapon", lvl: T.lvl }, text: `Forge a weapon for your class, item level ${T.lvl}` });
+    X.RECIPES.push({ id: "chest" + t, prof: "blacksmithing", name: `${barNames[t]} ${slotNames.chest[t]}`, req: T.min + 10, mats: [["bar" + t, 5]], item: { slot: "chest", lvl: T.lvl }, text: `Forge chest armour, item level ${T.lvl}` });
+    X.RECIPES.push({ id: "helm" + t, prof: "blacksmithing", name: `${barNames[t]} ${slotNames.helm[t]}`, req: T.min + 30, mats: [["bar" + t, 3]], item: { slot: "helm", lvl: T.lvl }, text: `Forge a helm, item level ${T.lvl}` });
+    X.RECIPES.push({ id: "boots" + t, prof: "blacksmithing", name: `${barNames[t]} ${slotNames.boots[t]}`, req: T.min + 40, mats: [["bar" + t, 3], ["leather" + t, 2]], item: { slot: "boots", lvl: T.lvl }, text: `Forge boots, item level ${T.lvl}` });
+    X.RECIPES.push({ id: "tan" + t, prof: "blacksmithing", name: `Tan ${X.MATS["leather" + t].name}`, req: T.min, mats: [["hide" + t, 2]], out: ["leather" + t, 1], text: `2 hides → 1 leather` });
+    // enchanting
+    let eq = [["power", 4, "Power"], ["crit", 3, "Precision"], ["vitality", 20, "Vitality"], ["speed", 0.3, "Swiftness"], ["haste", 3, "Haste"]];
+    X.RECIPES.push({ id: "ench_w" + t, prof: "enchanting", name: `Enchant Weapon — ${eq[0][2]} ${t + 1}`, req: T.min + 10, mats: [["dust" + t, 3], ["ess" + t, 1]], ench: { slot: "weapon", stat: "power", val: eq[0][1] * (t + 1) + 2 * t, label: `+${eq[0][1] * (t + 1) + 2 * t}% damage` }, text: `Weapon: +${eq[0][1] * (t + 1) + 2 * t}% damage` });
+    X.RECIPES.push({ id: "ench_wc" + t, prof: "enchanting", name: `Enchant Weapon — ${eq[1][2]} ${t + 1}`, req: T.min + 30, mats: [["dust" + t, 4], ["ess" + t, 1]], ench: { slot: "weapon", stat: "crit", val: eq[1][1] * (t + 1), label: `+${eq[1][1] * (t + 1)}% critical` }, text: `Weapon: +${eq[1][1] * (t + 1)}% critical chance` });
+    X.RECIPES.push({ id: "ench_c" + t, prof: "enchanting", name: `Enchant Chest — ${eq[2][2]} ${t + 1}`, req: T.min + 15, mats: [["dust" + t, 4]], ench: { slot: "chest", stat: "vitality", val: eq[2][1] * (t + 1) + 10 * t, label: `+${eq[2][1] * (t + 1) + 10 * t} vitality` }, text: `Chest: +${eq[2][1] * (t + 1) + 10 * t} vitality` });
+    X.RECIPES.push({ id: "ench_b" + t, prof: "enchanting", name: `Enchant Boots — ${eq[3][2]} ${t + 1}`, req: T.min + 25, mats: [["dust" + t, 3], ["ess" + t, 1]], ench: { slot: "boots", stat: "speed", val: +(eq[3][1] * (t + 1)).toFixed(1), label: `+${(eq[3][1] * (t + 1)).toFixed(1)} speed` }, text: `Boots: +${(eq[3][1] * (t + 1)).toFixed(1)} move speed` });
+    X.RECIPES.push({ id: "ench_h" + t, prof: "enchanting", name: `Enchant Helm — ${eq[4][2]} ${t + 1}`, req: T.min + 45, mats: [["dust" + t, 5], ["ess" + t, 2]], ench: { slot: "helm", stat: "haste", val: eq[4][1] * (t + 1), label: `+${eq[4][1] * (t + 1)}% haste` }, text: `Helm: +${eq[4][1] * (t + 1)}% haste` });
+    // inscription
+    X.RECIPES.push({ id: "mill" + t, prof: "inscription", name: `Mill ${X.MATS["herb" + t].name}`, req: T.min, mats: [["herb" + t, 5]], out: ["ink" + t, 2], text: `5 herbs → 2 ${X.MATS["ink" + t].name}` });
+    X.RECIPES.push({ id: "vell" + t, prof: "inscription", name: `Make ${X.MATS["vellum" + t].name}`, req: T.min, mats: [["leather" + t, 1]], out: ["vellum" + t, 2], text: `1 leather → 2 vellum` });
+    for (let [prop, per, nm] of [["dmg", 8, "Fury"], ["cd", 8, "Haste"], ["rad", 10, "Reach"], ["dur", 12, "Persistence"], ["cost", 12, "Thrift"]])
+      X.RECIPES.push({ id: `glyph_${prop}${t}`, prof: "inscription", name: `Glyph of ${nm} ${t + 1}`, req: T.min + { dmg: 20, cd: 30, rad: 10, dur: 15, cost: 25 }[prop], mats: [["ink" + t, 2], ["vellum" + t, 1]], glyph: { prop, per: per * (t + 1), name: `Glyph of ${nm} ${t + 1}` }, text: `Glyph: ${{ dmg: "+" + per * (t + 1) + "% damage/healing", cd: "-" + per * (t + 1) + "% cooldown", rad: "+" + per * (t + 1) + "% reach", dur: "+" + per * (t + 1) + "% duration", cost: "-" + per * (t + 1) + "% cost" }[prop]} on one skill (choose when inscribing)` });
+    for (let [stat, val, nm] of [["power", 4 + 2 * t, "Might"], ["vitalityPct", 4 + 2 * t, "Fortitude"], ["speedPct", 5 + 2 * t, "Wind"]])
+      X.RECIPES.push({ id: `scroll_${stat}${t}`, prof: "inscription", name: `Scroll of ${nm} ${t + 1}`, req: T.min + 35, mats: [["ink" + t, 2]], scroll: { stat, val, name: `Scroll of ${nm} ${t + 1}` }, text: `30 minutes: +${val}${stat === "power" ? "% damage" : stat === "vitalityPct" ? "% max health" : "% move speed"} (read at once)` });
+  }
+  // crafting context: anvil for blacksmithing
+  X.nearAnvil = (g) => {
+    if (g.home && X.houseTier(g.profile) >= 2) return !0;
+    for (let C of g.npcs || []) if (C.def.shop === "gear" && C.pos.distanceTo(g.player.pos) < 14) return !0;
+    return !1;
+  };
+  X.craft = function (g, r, opt = {}) {
+    let s = X.skill(g, r.prof);
+    if (s < r.req) return g.toast(`Requires ${X.PROF[r.prof].name} ${r.req}`, "#ff6a5a");
+    if (r.prof === "blacksmithing" && !X.nearAnvil(g)) return g.toast("You need an anvil: stand near a smith, or forge in your Manor", "#ff9a6a");
+    if (!X.hasMats(r.mats)) return g.toast("Not enough materials", "#ff6a5a");
+    let p = g.profile;
+    if (r.item) {
+      if (p.inventory.length >= 40) return g.toast("Inventory full", "#ff4a3a");
+      let d = s - r.req,
+        rar = d >= 60 && Math.random() < 0.35 ? "legendary" : d >= 25 || Math.random() < 0.5 ? "epic" : "rare",
+        it = g.gen(r.item.lvl, 1.5, rar);
+      it.slot = r.item.slot;
+      let t = X.tierOfSkill(r.req);
+      if (r.item.slot === "weapon") ((it.wtype = g.hero.weapon), (it.name = `Forged ${barNames[t]} ${slotNames.weapon[g.hero.weapon] || "Blade"}`));
+      else it.name = `Forged ${barNames[t]} ${slotNames[r.item.slot][t]}`;
+      it.crafted = !0;
+      p.inventory.push(it);
+      g.ui.lootToast(it, g);
+    } else if (r.out) X.addMat(g, r.out[0], r.out[1]);
+    else if (r.ench) {
+      let it = opt.target;
+      if (!it) return g.toast("Choose an item to enchant", "#ff9a6a");
+      if (it.slot !== r.ench.slot) return g.toast(`This enchant goes on a ${r.ench.slot}`, "#ff6a5a");
+      it.ench = { name: r.name, stat: r.ench.stat, val: r.ench.val, label: r.ench.label };
+      g.toast(`${it.name}: ${r.ench.label}`, "#c090ff");
+      g.recalcStats();
+    } else if (r.glyph) {
+      (p.glyphInv ||= []).push({ ...r.glyph, uid: Math.random().toString(36).slice(2) });
+      g.toast(`${r.glyph.name} written — inscribe it from the Professions book`, "#ffe08a");
+    } else if (r.scroll) {
+      g.hsave.scroll = { ...r.scroll, t: 1800 };
+      g.recalcStats();
+      g.toast(`${r.scroll.name}: ${r.text}`, "#ffe08a");
+    }
+    X.useMats(r.mats);
+    X.skillUp(g, r.prof, r.req);
+    g.track("crafts");
+    g.audio.play(r.prof === "blacksmithing" ? "anvil" : r.prof === "enchanting" ? "legendary" : "pickup", null, 0.5);
+    g.save();
+    g.ui.curPanel === "prof" && g.ui.panel("prof");
+  };
+  // disenchant
+  X.disenchant = function (g, it) {
+    let p = g.profile,
+      i = p.inventory.indexOf(it);
+    if (i < 0) return;
+    let t = it.level >= 50 ? 3 : it.level >= 34 ? 2 : it.level >= 20 ? 1 : 0,
+      ri = ui.findIndex((x) => x.id === it.rarity),
+      req = X.TIERS[t].min;
+    if (X.skill(g, "enchanting") < req) return g.toast(`Enchanting ${req} needed to disenchant this`, "#ff6a5a");
+    p.inventory.splice(i, 1);
+    ri >= 2 ? X.addMat(g, "ess" + t, 1 + (ri >= 3 ? 1 : 0)) : X.addMat(g, "dust" + t, 1 + Math.floor(Math.random() * 3));
+    X.skillUp(g, "enchanting", req);
+    g.audio.play("glass");
+    g.save();
+  };
+  // ---------- effects: enchants, glyphs, scrolls ----------
+  let gs0 = P.gearStat;
+  P.gearStat = function (A) {
+    let v = gs0.call(this, A);
+    for (let s of XB) {
+      let w = this.hsave.gear[s];
+      w?.ench && w.ench.stat === A && (v += w.ench.val);
+    }
+    let sc = this.hsave.scroll;
+    sc && sc.stat === A && (v += sc.val);
+    return v;
+  };
+  let Cd0 = Cd;
+  Cd = function (B, A) {
+    let r = Cd0(B, A),
+      g = window.__app?.game;
+    if (g && g.hero === B && g.hsave?.glyphs) {
+      for (let gl of g.hsave.glyphs) {
+        if (!gl) continue;
+        let sk = B.skills[gl.skill]?.id;
+        if (!sk) continue;
+        let o = (r.sk[sk] ||= { dmg: 0, cd: 0, cost: 0, dur: 0, rad: 0, stack: 0 });
+        o[gl.prop] += gl.per;
+        gl.prop === "cd" && (r.cd[sk] = o.cd);
+      }
+      let sc = g.hsave.scroll;
+      sc && (sc.stat === "vitalityPct" || sc.stat === "speedPct") && (r[sc.stat] = (r[sc.stat] || 0) + sc.val);
+    }
+    return r;
+  };
+  let ih0 = U.itemHTML;
+  U.itemHTML = function (A, i) {
+    let h = ih0.call(this, A, i);
+    if (!A?.ench) return h;
+    let line = `<div class="tip-a" style="color:#c090ff">\u2727 ${A.ench.label}</div>`;
+    return h.includes('<div class="tip-c">') ? h.replace('<div class="tip-c">', line + '<div class="tip-c">') : h + line;
+  };
+  // ---------- UI: professions book (B) ----------
+  U.profHTML = function (tab) {
+    let g = this.app.game,
+      p = this.app.profile,
+      cur = tab || this._profTab || "herbalism",
+      mats = X.mats(),
+      P = X.PROF[cur],
+      s = X.skill(g, cur),
+      tier = X.TIERS[X.tierOfSkill(s)],
+      head = Object.keys(X.PROF).map((id) => `<button class="tab ${id === cur ? "on" : ""}" data-ptab="${id}" style="--c:${X.PROF[id].color}">${gI(X.PROF[id].icon, X.PROF[id].color, 18)} ${X.PROF[id].name} <small>${X.skill(g, id)}</small></button>`).join(""),
+      bar = `<div class="pskill"><b style="color:${P.color}">${P.name}</b> <span>${tier.name} \xB7 ${s} / 300</span><div class="pbar"><div style="width:${(s / 300) * 100}%;background:${P.color}"></div></div><div class="small">${P.desc}</div></div>`,
+      matsHtml = `<h3>Materials <small>shared by all your heroes</small></h3><div class="matgrid">${Object.keys(mats)
+        .filter((id) => X.MATS[id])
+        .sort((a, b) => X.MATS[a].tier - X.MATS[b].tier)
+        .map((id) => `<div class="mat" style="border-color:${X.MATS[id].color}"><b>${mats[id]}</b> ${X.MATS[id].name}<small>${X.TIERS[X.MATS[id].tier].name}</small></div>`)
+        .join("") || '<div class="small">Nothing gathered yet. Herbs glow green, ore veins sparkle; beasts can be skinned after they fall.</div>'}</div>`,
+      body = "";
+    if (P.kind === "gather") {
+      let nodes = X.nodes.filter((n) => (cur === "herbalism" ? n.kind === "herb" : n.kind === "ore"));
+      body = `<h3>Where to look</h3><div class="small">${X.TIERS.map((T, t) => `<div><b style="color:${X.reqColor(g, cur, T.min)}">${T.name} (${T.min}+)</b>: ${T.zones.map((z) => UI[z]?.name || z).join(", ")} — ${cur === "skinning" ? X.MATS["hide" + t].name + " from wolves and beasts" : X.MATS[(cur === "herbalism" ? "herb" : "ore") + t].name}${cur !== "skinning" ? ` (${nodes.filter((n) => n.tier === t).length} nodes)` : ""}</div>`).join("")}</div>
+      <p class="small">Skill-ups: orange nodes always, yellow often, green rarely, grey never. Nodes regrow after a few minutes.</p>`;
+    } else {
+      let list = X.RECIPES.filter((r) => r.prof === cur).sort((a, b) => a.req - b.req),
+        inv = p.inventory;
+      body = `<h3>Recipes</h3>${list
+        .map((r) => {
+          let can = X.hasMats(r.mats) && s >= r.req,
+            m = r.mats.map(([id, n]) => `<span style="color:${(mats[id] || 0) >= n ? "#8aff9a" : "#ff8a8a"}">${n} ${X.MATS[id].name}</span>`).join(", "),
+            sel = r.ench ? `<select data-tgt="${r.id}">${inv.filter((it) => it.slot === r.ench.slot).map((it) => `<option value="${it.uid}">${it.name} (ilvl ${it.level})${it.ench ? " ✧" : ""}</option>`).join("") || "<option value=''>no " + r.ench.slot + " in your bag</option>"}</select>` : "";
+          return `<div class="recipe ${can ? "" : "no"}"><div><b style="color:${X.reqColor(g, cur, r.req)}">${r.name}</b> <small>req ${r.req}</small><div class="small">${r.text}</div><div class="small">${m}</div>${sel}</div><button data-craft="${r.id}" ${can ? "" : "disabled"}>Craft</button></div>`;
+        })
+        .join("")}`;
+      if (cur === "enchanting")
+        body += `<h3>Disenchant</h3><div class="small">Turns an item into dust (common/rare) or essence (epic and up) of its tier.</div><div class="dgrid">${inv.map((it) => `<button data-dis="${it.uid}" style="border-color:${ui.find((x) => x.id === it.rarity)?.color}">${it.name} <small>ilvl ${it.level}</small></button>`).join("") || '<div class="small">Your bag is empty.</div>'}</div>`;
+      if (cur === "inscription") {
+        let gl = g.hsave.glyphs || [null, null, null],
+          ginv = p.glyphInv || [];
+        body += `<h3>Glyph slots (${g.hero.name})</h3><div class="gslots">${gl.map((x, i) => `<div class="gslot2">${x ? `<b>${x.name}</b><div class="small">${g.hero.skills[x.skill]?.name}: ${x.prop === "dmg" ? "+" : x.prop === "cd" || x.prop === "cost" ? "-" : "+"}${x.per}% ${{ dmg: "damage/healing", cd: "cooldown", rad: "reach", dur: "duration", cost: "cost" }[x.prop]}</div><button data-gclear="${i}" class="mini-b">Remove</button>` : '<span class="small">empty slot</span>'}</div>`).join("")}</div>
+        <h3>Glyphs in your bag</h3><div class="dgrid">${ginv.map((x) => `<div class="recipe"><div><b>${x.name}</b><div class="small">${x.prop === "cd" || x.prop === "cost" ? "-" : "+"}${x.per}% ${{ dmg: "damage/healing", cd: "cooldown", rad: "reach", dur: "duration", cost: "cost" }[x.prop]}</div><select data-gsk="${x.uid}">${g.hero.skills.map((sk, i) => `<option value="${i}">[${sk.key}] ${sk.name}</option>`).join("")}</select></div><button data-ginsc="${x.uid}">Inscribe</button></div>`).join("") || '<div class="small">No glyphs written yet.</div>'}</div>
+        ${g.hsave.scroll ? `<h3>Active scroll</h3><div class="small">${g.hsave.scroll.name} — ${Math.ceil(g.hsave.scroll.t / 60)} min left</div>` : ""}`;
+      }
+    }
+    return `<h2>Professions <small>press B \xB7 every hero can learn all six</small></h2><div class="ptabs">${head}</div>${bar}<div class="pcols"><div>${body}</div><div>${matsHtml}</div></div>`;
+  };
+  U.bindProf = function () {
+    let g = this.app.game,
+      p = this.app.profile,
+      Mo = document.getElementById("modal");
+    Mo.querySelectorAll("[data-ptab]").forEach((b) => (b.onclick = () => ((this._profTab = b.dataset.ptab), this.panel("prof"))));
+    Mo.querySelectorAll("[data-craft]").forEach((b) => {
+      b.onclick = () => {
+        let r = X.RECIPES.find((x) => x.id === b.dataset.craft),
+          sel = Mo.querySelector(`[data-tgt="${r.id}"]`),
+          target = sel ? p.inventory.find((it) => it.uid === sel.value) : null;
+        X.craft(g, r, { target });
+      };
+    });
+    Mo.querySelectorAll("[data-dis]").forEach((b) => (b.onclick = () => (X.disenchant(g, p.inventory.find((it) => it.uid === b.dataset.dis)), this.panel("prof"))));
+    Mo.querySelectorAll("[data-ginsc]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          let uid = b.dataset.ginsc,
+            x = (p.glyphInv || []).find((q) => q.uid === uid),
+            skill = +Mo.querySelector(`[data-gsk="${uid}"]`).value,
+            gl = (g.hsave.glyphs ||= [null, null, null]),
+            slot = gl.findIndex((q) => !q);
+          if (slot < 0) return g.toast("All three glyph slots are used — remove one first", "#ff9a6a");
+          gl[slot] = { ...x, skill };
+          p.glyphInv = p.glyphInv.filter((q) => q.uid !== uid);
+          g.recalcStats();
+          g.toast(`${x.name} inscribed on ${g.hero.skills[skill].name}`, "#ffe08a");
+          g.save();
+          this.panel("prof");
+        }),
+    );
+    Mo.querySelectorAll("[data-gclear]").forEach((b) => (b.onclick = () => ((g.hsave.glyphs[+b.dataset.gclear] = null), g.recalcStats(), g.save(), this.panel("prof"))));
+  };
+  let ep0 = U.extraPanel;
+  U.extraPanel = function (B, A) {
+    if (B === "prof") return this.profHTML();
+    return ep0.call(this, B, A);
+  };
+  let be0 = U.bindExtra;
+  U.bindExtra = function (B, A, i) {
+    B === "prof" && this.bindProf();
+    return be0.call(this, B, A, i);
+  };
+  let ok0 = P.onKey;
+  P.onKey = function (code, down) {
+    if (down && code === "KeyB" && this.running && !this.ui.chatting) {
+      this.ui.panelOpen && this.ui.curPanel === "prof" ? this.ui.closeModal() : this.ui.panel("prof");
+      return;
+    }
+    return ok0.call(this, code, down);
+  };
+  let pz0 = U.pause;
+  U.pause = function (A) {
+    pz0.call(this, A);
+    if (!A) return;
+    let q = document.querySelector('#pause [data-p="quit"]');
+    if (q && !document.querySelector('#pause [data-p="prof"]')) {
+      let b = document.createElement("button");
+      ((b.dataset.p = "prof"), (b.textContent = "Professions"));
+      q.parentNode.insertBefore(b, q);
+      b.onclick = () => (this.click(), document.getElementById("pause").classList.remove("on"), this.panel("prof"));
+    }
+  };
+  // achievements
+  for (let id in X.PROF) WB.push({ id: "ach_" + id, name: `Master of ${X.PROF[id].name}`, desc: `Reach ${X.PROF[id].name} skill 300`, stat: "prof_" + id, goal: 300, reward: 60 });
+  WB.push({ id: "ach_crafts", name: "Made by Hand", desc: "Craft 100 things", stat: "crafts", goal: 100, reward: 40 }, { id: "ach_gather", name: "Provider", desc: "Gather 500 materials", stat: "mats_gathered", goal: 500, reward: 40 });
+  // tutorial hint & hud key
+  X.KEYHINT = (X.KEYHINT || []).concat(["B professions"]);
+  let css = document.createElement("style");
+  css.textContent = `.ptabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}.ptabs .tab{border-left:3px solid var(--c)}.pskill{background:rgba(0,0,0,.3);padding:8px 10px;border-radius:6px;margin-bottom:10px}.pskill .pbar{height:8px;background:#222;border-radius:4px;margin:4px 0}.pskill .pbar div{height:100%;border-radius:4px}
+  .pcols{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}.recipe{display:flex;justify-content:space-between;align-items:center;gap:10px;background:rgba(0,0,0,.28);padding:6px 10px;margin:4px 0;border-radius:4px}.recipe.no{opacity:.7}.recipe select{max-width:220px}
+  .matgrid{display:flex;flex-wrap:wrap;gap:6px}.mat{background:rgba(0,0,0,.3);border:1px solid;border-radius:4px;padding:4px 8px;font-size:12px}.mat small{display:block;opacity:.6}.dgrid{display:flex;flex-wrap:wrap;gap:6px}.dgrid button{border:1px solid}.gslots{display:flex;gap:8px}.gslot2{flex:1;background:rgba(0,0,0,.3);padding:8px;border-radius:4px;min-height:60px}`;
+  document.head.appendChild(css);
 }
 
   window.__app = new bE();
