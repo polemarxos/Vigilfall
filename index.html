@@ -33046,20 +33046,32 @@ Object.assign(rw.unbound, { hp: 240000 });
     r.toneMapping = 4; // ACES filmic (AgX turns saturated HDR highlights black in this build)
     r.toneMappingExposure = S.exposure * 1.3;
     S.softShadows === !0 && S.quality !== "low" && (r.shadowMap.type = TC); // VSM (opt-in)
-    this.godrays = new Ng(GR);
-    let idx = this.composer.passes.indexOf(this.bloom);
-    this.composer.insertPass(this.godrays, idx >= 0 ? idx + 1 : this.composer.passes.length - 1);
-    this.bloom && ((this.bloom.strength = 0.45), (this.bloom.radius = 0.5), (this.bloom.threshold = 0.88));
+    // god rays live inside the grade pass (no extra pass: keeps the composer's buffer order unchanged)
+    Object.assign(this.grade.uniforms, { uSun: { value: new $(0.5, 0.5) }, uStr: { value: 0 }, uCol: { value: new _(1, 0.9, 0.75) } });
+    this.godrays = { uniforms: this.grade.uniforms, enabled: !0 };
+    this.bloom && ((this.bloom.strength = 0.45), (this.bloom.radius = 0.4), (this.bloom.threshold = 1.0));
     this.anisotropy = Math.min(8, r.capabilities.getMaxAnisotropy?.() || 1);
   };
   let as0 = AP.applySettings;
   AP.applySettings = function () {
     as0.call(this);
     this.renderer.toneMappingExposure = this.settings.exposure * 1.3;
-    this.godrays && (this.godrays.enabled = this.settings.godrays !== !1);
   };
   // colour grade: gentle filmic S-curve and a touch more saturation
-  SO.fragmentShader = SO.fragmentShader.replace("gl_FragColor = vec4(col, 1.0);", "col = mix(col, col*col*(3.0-2.0*col), 0.22); float l2 = dot(col, vec3(0.299,0.587,0.114)); col = mix(vec3(l2), col, 1.08); gl_FragColor = vec4(col, 1.0);");
+  SO.uniforms.uSun = { value: new $(0.5, 0.5) };
+  SO.uniforms.uStr = { value: 0 };
+  SO.uniforms.uCol = { value: new _(1, 0.9, 0.75) };
+  SO.fragmentShader = SO.fragmentShader
+    .replace("uniform sampler2D tDiffuse;", "uniform sampler2D tDiffuse; uniform vec2 uSun; uniform float uStr; uniform vec3 uCol;")
+    .replace(
+      "float l = dot(col, vec3(0.299,0.587,0.114));",
+      `if (uStr > 0.001) { vec2 d = (uSun - vUv) / 40.0; vec2 suv = vUv; float wgt = 1.0; vec3 acc = vec3(0.0);
+        float dith = fract(sin(dot(vUv, vec2(12.9898,78.233)))*43758.5453); suv += d * dith;
+        for (int i = 0; i < 40; i++) { suv += d; vec3 s = texture2D(tDiffuse, clamp(suv, 0.0, 1.0)).rgb; float ls = dot(s, vec3(0.3,0.59,0.11)); acc += s * smoothstep(0.55, 1.1, ls) * wgt; wgt *= 0.965; }
+        float rad = 1.0 - smoothstep(0.2, 1.1, length(uSun - vUv)); col += min(acc * (uStr / 40.0) * uCol * (0.2 + rad * 0.8), vec3(0.45)); }
+      float l = dot(col, vec3(0.299,0.587,0.114));`,
+    )
+    .replace("gl_FragColor = vec4(col, 1.0);", "col = mix(col, col*col*(3.0-2.0*col), 0.22); float l2 = dot(col, vec3(0.299,0.587,0.114)); col = mix(vec3(l2), col, 1.08); gl_FragColor = vec4(col, 1.0);");
 
   // ---- shadows & textures after the game is built ----
   let st0 = GP.start;
@@ -33091,12 +33103,12 @@ Object.assign(rw.unbound, { hp: 240000 });
     });
     // sun sprite
     if (!this.sunSprite) {
-      this.sunSprite = Zw(0xffe8c0, 120, 0.5);
+      this.sunSprite = Zw(0xffe8c0, 110, 0.22);
       this.sunSprite.material.depthTest = !1;
       this.sunSprite.renderOrder = -9;
       this.sunSprite.frustumCulled = !1;
       this.scene.add(this.sunSprite);
-      this.sunCore = Zw(0xfffaf0, 40, 0.7);
+      this.sunCore = Zw(0xfffaf0, 34, 0.3);
       this.sunCore.material.depthTest = !1;
       this.sunCore.renderOrder = -9;
       this.sunCore.frustumCulled = !1;
@@ -33119,8 +33131,8 @@ Object.assign(rw.unbound, { hp: 240000 });
       this.sunCore.position.copy(cam.position).addScaledVector(L, 840);
       this.sunCore.visible = this.sunSprite.visible;
       let k = i.day * (1 - i.dusk * 0.3);
-      this.sunSprite.material.opacity = Math.min(1, k * 0.55);
-      this.sunCore.material.opacity = Math.min(1, k * 0.7);
+      this.sunSprite.material.opacity = Math.min(1, k * 0.22);
+      this.sunCore.material.opacity = Math.min(1, k * 0.3);
       this.sunSprite.material.color.setRGB(1, 0.9 - i.dusk * 0.35, 0.75 - i.dusk * 0.5);
     }
     if (app.godrays) {
@@ -33129,11 +33141,11 @@ Object.assign(rw.unbound, { hp: 240000 });
         facing = fwd.dot(L),
         p = new N().copy(cam.position).addScaledVector(L, 100).project(cam);
       let onScreen = facing > 0.15 && Math.abs(p.x) < 1.6 && Math.abs(p.y) < 1.6,
-        want = inside || !onScreen ? 0 : (i.day * 0.28 + i.dusk * 0.42) * X.clamp((facing - 0.15) / 0.5, 0, 1) * (1 - i.rain * 0.6);
+        want = inside || !onScreen ? 0 : (i.day * 0.2 + i.dusk * 0.32) * X.clamp((facing - 0.15) / 0.5, 0, 1) * (1 - i.rain * 0.6);
       u.uStr.value += (want - u.uStr.value) * Math.min(1, dt * 4);
       u.uSun.value.set(p.x * 0.5 + 0.5, p.y * 0.5 + 0.5);
       u.uCol.value.setRGB(1, 0.92 - i.dusk * 0.3, 0.78 - i.dusk * 0.4);
-      app.godrays.enabled = this.settings.godrays !== !1 && u.uStr.value > 0.003;
+      this.settings.godrays === !1 && (u.uStr.value = 0);
     }
     // sky: stronger daytime blue / warm dusk already in shader; water + wind clocks
     let W = this.world;
@@ -33230,7 +33242,7 @@ Object.assign(rw.unbound, { hp: 240000 });
     m.fragmentShader = m.fragmentShader
       .replace("col += vec3(0.55,0.2,0.06) * uDusk * pow(1.0 - h, 5.0) * 0.55 + vec3(0.5,0.16,0.05) * uDusk * pow(max(md,0.0), 4.0) * 0.3;", "col += vec3(0.75,0.28,0.08) * uDusk * pow(1.0 - h, 3.5) * 0.7 + vec3(0.9,0.35,0.1) * uDusk * pow(max(md,0.0), 3.0) * 0.45; col = mix(col, col * vec3(1.15, 0.95, 0.8), uDusk * 0.5);")
       .replace("vec3 dcol = mix(uHorizon*1.08, vec3(0.19,0.22,0.27), pow(h, 0.5));", "vec3 dcol = mix(uHorizon*1.12, vec3(0.16,0.34,0.72), pow(h, 0.55)); dcol = mix(dcol, vec3(0.62,0.72,0.86), pow(1.0-h, 6.0)*0.6);")
-      .replace("dcol += vec3(1.0,0.96,0.88) * smoothstep(0.9993, 0.9997, md) * (1.0-cl*0.8) + vec3(0.55,0.5,0.45) * pow(max(md,0.0), 10.0) * 0.22;", "dcol += vec3(1.0,0.96,0.88) * smoothstep(0.9993, 0.9997, md) * (1.0-cl*0.8) + vec3(0.9,0.8,0.6) * pow(max(md,0.0), 14.0) * 0.5 + vec3(0.5,0.45,0.4) * pow(max(md,0.0), 3.0) * 0.12;");
+      .replace("dcol += vec3(1.0,0.96,0.88) * smoothstep(0.9993, 0.9997, md) * (1.0-cl*0.8) + vec3(0.55,0.5,0.45) * pow(max(md,0.0), 10.0) * 0.22;", "dcol += vec3(0.75,0.72,0.66) * smoothstep(0.9993, 0.9997, md) * (1.0-cl*0.8) + vec3(0.6,0.52,0.4) * pow(max(md,0.0), 14.0) * 0.35 + vec3(0.4,0.36,0.32) * pow(max(md,0.0), 3.0) * 0.1;");
     m.needsUpdate = !0;
   };
   // settings UI
