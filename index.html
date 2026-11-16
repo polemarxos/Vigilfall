@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.10.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.11.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -10153,12 +10153,12 @@ void main() {
   }
   var OM = () => !!_i.knight && !!_i.skel_minion,
     lo = new Map();
-  function zM(B, A, i, I) {
+  function zM(B, A, i, I, abs) {
     if (!A && !i) return B;
-    let w = B.uuid + ":" + A + ":" + i;
+    let w = B.uuid + ":" + A + ":" + i + (abs ? ":a" : "");
     if (!lo.has(w)) {
       let g = B.clone();
-      (A && g.color.multiply(new _(A)), i && ((g.emissive = new _(i)), (g.emissiveIntensity = I || 0.35)), lo.set(w, g));
+      (A && (abs ? ((g.map = null), g.color.set(A)) : g.color.multiply(new _(A))), i && ((g.emissive = new _(i)), (g.emissiveIntensity = I || 0.35)), lo.set(w, g));
     }
     return lo.get(w);
   }
@@ -10195,7 +10195,7 @@ void main() {
         Z && A.capeTint && (f = A.capeTint),
         A.hood && s && B !== "rogue_hooded" && /_Head$/.test(m.name) && (G = !1),
         (m.visible = !!G),
-        G && (m.material = zM(m.material, m.material.name === "Glow" ? 0 : f, !z && !b && !Z ? A.glow : 0)));
+        G && (m.material = zM(m.material, m.material.name === "Glow" ? 0 : f, !z && !b && !Z ? A.glow : 0, void 0, Z && !!A.capeTint)));
     });
     let M = (m, z, b) => {
       let Z = ks(_i[m].scene),
@@ -10215,16 +10215,16 @@ void main() {
     (A.hood && s && B !== "rogue_hooded" && _i.rogue_hooded && M("rogue_hooded", /_Head_Hooded$/, 16777215),
       e && M(e, /_(Body|ArmLeft|ArmRight)$/, A.bodyTint),
       t && M(t, /_(LegLeft|LegRight)$/, A.legsTint));
-    let n = (m, z, b) => {
+    let n = (m, z, b, abs) => {
       _i[m] &&
         _i[m].scene.traverse((Z) => {
           if (Z.isMesh && !Z.isSkinnedMesh && z.test(Z.name) && Z.parent && C[Z.parent.name]) {
             let G = Z.clone();
-            ((G.visible = !0), (G.material = zM(Z.material, b || A.tint, 0)), C[Z.parent.name].add(G));
+            ((G.visible = !0), (G.material = zM(Z.material, b || A.tint, 0, void 0, abs && !!b)), C[Z.parent.name].add(G));
           }
         });
     };
-    (s && A.hat && A.hat !== !0 && !D(A.hat) && n(A.hat, ml, A.hatTint), s && A.cape && !D(A.cape) && n(A.cape, Pl, A.capeTint));
+    (s && A.hat && A.hat !== !0 && !D(A.hat) && n(A.hat, ml, A.hatTint), s && A.cape && !D(A.cape) && n(A.cape, Pl, A.capeTint, !0));
     let o = (m, z) => {
       if (!z || !_i[z] || !C[m]) return;
       let b = _i[z].scene.clone(!0);
@@ -13585,12 +13585,13 @@ void main() {
                   : ["knight", "barbarian", "mage"][J(Z[0]) % 3]),
             qi[Z[1]] && (r.hatTint = m(Z[1])));
       }
-      f && f !== Y && ((r.cape = r.set), (r.capeTint = f.color));
+      f && ((r.cape = r.set), (r.capeTint = f.color));
       {
         let R = Zi.finish.find((gA) => gA.id === A.finish);
         if (R && R !== Zi.finish[0]) {
-          let gA = new _(R.color).lerp(new _(16777215), 0.35).getHex();
-          (r.bodyTint || (r.bodyTint = gA), r.legsTint || (r.legsTint = gA), r.hatTint || (r.hatTint = gA));
+          let gA = new _(R.color).lerp(new _(16777215), 0.22).getHex(),
+            mixF = (t) => (t ? new _(t).lerp(new _(gA), 0.8).getHex() : gA);
+          ((r.bodyTint = mixF(r.bodyTint)), (r.legsTint = mixF(r.legsTint)), (r.hatTint = mixF(r.hatTint)));
         }
       }
       qi[G] && (r.glow = qi[G]);
@@ -24026,7 +24027,7 @@ a=extmap-allow-mixed`) !== -1
     void main(){
       vec2 uv = vUv; float w = smoothstep(0.45, 1.0, uInsane);
       uv += vec2(sin(uv.y*18.0 + uTime*2.0), cos(uv.x*14.0 + uTime*1.7)) * 0.004 * w;
-      vec2 c = uv - 0.5; float ca = 0.0015 + w*0.006 + uHurt*0.004;
+      vec2 c = uv - 0.5; float ca = w*0.006 + uHurt*0.004;
       vec3 col = vec3(texture2D(tDiffuse, uv + c*ca).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - c*ca).b);
       float l = dot(col, vec3(0.299,0.587,0.114));
       col = mix(col, vec3(l), -0.22);                // desaturate: bleak world
@@ -26339,9 +26340,12 @@ X.makeHat = function (kind, col, bones, k) {
     ((z.position.y = 0.42), g.add(z));
   } else if (kind === "skull") {
     let bone = ZA("bone", 0xe8e0d0);
-    g.add(v(new JA(0.19, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), bone, 0, 0.12, 0));
-    for (let s of [-1, 1]) g.add(v(new Ai(0.035, 0.14, 5), bone, s * 0.11, 0.3, 0.05).rotateZ(-s * 0.4));
-    for (let s of [-1, 1]) g.add(v(new JA(0.03, 8, 6), mI(0xff2a2a, 2.5), s * 0.07, 0.17, 0.17));
+    // full skull helm: covers the whole head, eye sockets in front, jaw open at the bottom
+    g.add(v(new JA(0.265, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.66), bone, 0, 0.1, 0.02));
+    for (let s of [-1, 1]) g.add(v(new Ai(0.045, 0.2, 5), bone, s * 0.16, 0.38, 0.0).rotateZ(-s * 0.45));
+    for (let s of [-1, 1]) g.add(v(new QA(0.055, 0.055, 0.04, 10), ZA("bone", 0x1a1010), s * 0.09, 0.11, 0.245).rotateX(Math.PI / 2));
+    for (let s of [-1, 1]) g.add(v(new JA(0.03, 8, 6), mI(0xff2a2a, 2.5), s * 0.09, 0.11, 0.255));
+    g.add(v(new iA(0.05, 0.1, 0.03), ZA("bone", 0x1a1010), 0, -0.01, 0.262));
   } else if (kind === "witch") {
     let cloth = ZA("cloth", col || 0x2a1a3a);
     g.add(v(new QA(0.26, 0.26, 0.02, 20), cloth, 0, 0.19, 0));
@@ -26356,7 +26360,8 @@ X.makeHat = function (kind, col, bones, k) {
   bone.getWorldScale(ws);
   let inv = 1 / (ws.x || 1);
   g.scale.setScalar(inv * 2);
-  g.position.y = (kind === "skull" ? 0.22 : kind === "halo" ? 0.55 : kind === "witch" || kind === "crown" || kind === "flowers" || kind === "circlet" ? 0.4 : 0.46) * inv;
+  g.position.y = (kind === "skull" ? 0.31 : kind === "halo" ? 0.55 : kind === "witch" || kind === "crown" || kind === "flowers" || kind === "circlet" ? 0.4 : 0.46) * inv;
+  kind === "skull" && (g.position.z = 0.02 * inv);
   bone.add(g);
   return g;
 };
@@ -26516,7 +26521,7 @@ X.makeAura = function (kind, col, k) {
         hatCos === "hood"
           ? (look.helm = ["hood", i.helm?.[1] || "common", "Hood"])
           : ["knight", "mage", "barbarian"].includes(hatCos)
-            ? (look.helm = [hatCos === "knight" ? "great" : "crown", i.helm?.[1] || "common", hatCos === "knight" ? "Helm" : hatCos === "mage" ? "Hat" : "Horned"])
+            ? (look.helm = [hatCos === "knight" ? "great" : hatCos === "mage" ? "crown" : "pelt", i.helm?.[1] || "common", hatCos === "knight" ? "Helm" : hatCos === "mage" ? "Hat" : "Horned"])
             : (look.helm = null);
         look.helm === null && delete look.helm;
       }
@@ -26636,7 +26641,7 @@ Zi.aura.push(
   { id: "rings", name: "Arcane Rings", color: 0xa070ff, cost: 800, style: "rings" },
   { id: "stars", name: "Starfall", color: 0xffe08a, cost: 800, style: "stars" },
   { id: "flamering", name: "Ring of Fire", color: 0xff6a20, cost: 900, style: "flamering" },
-  { id: "storm", name: "Stormcrown", color: 0xb0a0ff, cost: -1, ach: "level_60" },
+  { id: "storm", name: "Stormcrown", color: 0xb0a0ff, cost: -1, ach: "level_60", style: "storm" },
 );
 Zi.cloak.push(
   { id: "emerald", name: "Emerald", color: 0x1a6a3a, cost: 150 },
@@ -33595,8 +33600,17 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.10.0";
+  X.VERSION = "1.11.0";
   X.CHANGELOG = {
+    "1.11.0": [
+      "The Drowned Deep: a new 8-player raid at Mossend with four bosses — Morvath the Tidecaller, the Drowned Leviathan, the Abyssal Choir and Ythar, the Drowned King — each with its own mechanic, and a new Mythic loot tier above Relic.",
+      "Branching instances: raids are a hub with wings and a sealed gate before the last boss; dungeons gained hidden side rooms with treasure chests or a Vault Warden.",
+      "Collections: a new journal (Esc → Collections, or press ,) tracks mounts, companions, cosmetics, item sets, appearances and achievements. Four new mounts and four new companions from achievements, vendors and bosses.",
+      "Cosmetics pass: fuller feathered wings sitting lower on the back, a full Skull helm, fixed Horned Helm, cloak colours now true to their name, armour finishes with real surface differences, a Stormcrown aura with crackling bolts, every aura with its own particle motion, and enchanted weapons glow with their enchant's colour (motes along the blade, first person too).",
+      "World & movement: slopes steeper than ~50° can no longer be walked up (you slide back down), villages sit on terraces and houses get stone foundations — no more buildings hanging off hillsides.",
+      "Performance: the world is now drawn in chunks (vegetation, terrain, props and gathering nodes are batched per area) so only what the camera and the shadow camera can see is submitted — about 3× fewer triangles and roughly half the draw calls per frame with an identical picture.",
+      "Graphics fixes: no more colour fringing at screen edges, daylight exposure toned down (no blown-out sky), camera near plane and house collisions fixed so the view can no longer end up inside a wall; lantern shadows are now an opt-in setting (they were costing a lot of frames).",
+    ],
     "1.10.0": [
       "Online: STUN/TURN relays so strict home networks can connect, automatic rejoin after a dropped connection (migration only when the host is really gone), smoother movement of other players, a connection indicator (bottom left) and a reconnecting notice.",
       "Mythic+: clearing a dungeon awards a Keystone; press F at its portal to run it on Mythic +N with affixes (Fortified, Tyrannical, Bolstering, Sanguine, Quaking), a par timer, keystone upgrades and tier-scaled loot.",
@@ -33955,6 +33969,7 @@ Object.assign(rw.unbound, { hp: 240000 });
       if (it.slot !== r.ench.slot) return g.toast(`This enchant goes on a ${r.ench.slot}`, "#ff6a5a");
       it.ench = { name: r.name, stat: r.ench.stat, val: r.ench.val, label: r.ench.label };
       g.toast(`${it.name}: ${r.ench.label}`, "#c090ff");
+      g.applyCosmetics && g.applyCosmetics();
       g.recalcStats();
     } else if (r.glyph) {
       (p.glyphInv ||= []).push({ ...r.glyph, uid: Math.random().toString(36).slice(2) });
@@ -34482,6 +34497,7 @@ Object.assign(rw.unbound, { hp: 240000 });
     inTime && (p.vault.best = Math.max(p.vault.best || 0, tier));
     this.setStat("mplus_best", Math.max(this.profile.stats.mplus_best || 0, inTime ? tier : 0));
     this.track("mplus_runs");
+    inTime && this.track("mplus_timed");
     // tier loot
     let lvl = Math.min(60, d.lv + 2 + tier),
       Q = this.player.pos.clone();
@@ -35043,6 +35059,1585 @@ Object.assign(rw.unbound, { hp: 240000 });
   let css = document.createElement("style");
   css.textContent = ``;
   document.head.appendChild(css);
+}
+
+/* ---- E0_cosmetics2.js ---- */
+// ===== 1.11 cosmetics pass: fuller feathered wings (lower on the back), enchanted-weapon visuals =====
+{
+  // ---- gear look carries the enchant stat (4th slot) so bodies, view models and remotes rebuild with it ----
+  let yC0 = yC;
+  yC = function (B = {}) {
+    let A = yC0(B);
+    for (let s in A) B[s]?.ench?.stat && A[s].push(B[s].ench.stat);
+    return A;
+  };
+
+  // ---- wings ----
+  const WING_Y = 0.35; // was 0.56: ~15 cm lower on the back
+  let feather = (c, o = 0.97) => new xA({ color: c, transparent: o < 1, opacity: o, side: KA, roughness: 0.85, metalness: 0 });
+  // tapered, rounded feather plane: width w, length n, tip rounded
+  let featherGeo = (w, n) => {
+    let geo = new vi(w, n, 1, 6),
+      pp = geo.attributes.position;
+    for (let q = 0; q < pp.count; q++) {
+      let t = pp.getY(q) / n + 0.5; // 0 base .. 1 tip
+      let k = t < 0.15 ? 0.55 + t * 3 : t > 0.8 ? Math.sqrt(Math.max(0, 1 - ((t - 0.8) / 0.2) ** 2)) : 1;
+      pp.setX(q, pp.getX(q) * k);
+    }
+    geo.translate(0, n / 2, 0);
+    return geo;
+  };
+  X.makeFeatherWings = function (kind, parts) {
+    let c = kind === "angel" ? 0xf6f6ff : kind === "raven" ? 0x15151c : 0xff8a2a,
+      c2 = kind === "angel" ? 0xd8dcf4 : kind === "raven" ? 0x2a2a38 : 0xffc040,
+      c3 = kind === "angel" ? 0xc4c8e8 : kind === "raven" ? 0x3a3448 : 0xff5a20;
+    // fan: angle from upward (0.2 rad) to outward-down (1.9 rad); primaries longest in the middle
+    let angs = [0.2, 0.42, 0.64, 0.86, 1.08, 1.3, 1.52, 1.74, 1.94],
+      lens = [0.62, 0.8, 0.96, 1.08, 1.14, 1.1, 1.02, 0.92, 0.82];
+    for (let D of [-1, 1]) {
+      let e = new eA();
+      e.position.set(D * 0.1, WING_Y, -0.2);
+      e.rotation.y = -D * 0.35; // swept slightly back so they read as wings from the front and side
+      // silhouette underlay closes the gaps between feathers
+      let sh = new jB();
+      sh.moveTo(0, 0);
+      for (let i = 0; i < angs.length; i++) sh.lineTo(D * Math.sin(angs[i]) * lens[i] * 0.93, Math.cos(angs[i]) * lens[i] * 0.93);
+      sh.lineTo(D * 0.1, -0.15);
+      sh.lineTo(0, 0);
+      let under = new p(new YB(sh, { depth: 0.004, bevelEnabled: !1 }), feather(c3, 0.95));
+      ((under.position.z = -0.012), (under.castShadow = !1), e.add(under));
+      // primaries
+      for (let i = 0; i < angs.length; i++) {
+        let o = new p(featherGeo(0.2, lens[i]), feather(i % 2 ? c2 : c));
+        ((o.rotation.z = -D * angs[i]), (o.rotation.x = -0.12), (o.position.z = i * 0.006), (o.castShadow = !1), e.add(o));
+      }
+      // coverts: shorter overlapping row on top for fullness
+      for (let i = 0; i < 7; i++) {
+        let a = 0.3 + i * 0.24,
+          o = new p(featherGeo(0.17, 0.42 + i * 0.03), feather(i % 2 ? c : c2));
+        ((o.rotation.z = -D * a), (o.rotation.x = -0.1), (o.position.z = 0.06), (o.castShadow = !1), e.add(o));
+      }
+      // shoulder tuft
+      let tuft = new p(new JA(0.09, 10, 8), feather(c2));
+      (tuft.position.set(D * 0.03, 0.04, 0.04), tuft.scale.set(1, 0.8, 0.7), (tuft.castShadow = !1), e.add(tuft));
+      if (kind === "phoenix") {
+        let t = Zw(0xff6a20, 2.0, 0.22);
+        (t.position.set(D * 0.55, 0.45, 0), e.add(t));
+        let t2 = Zw(0xffd040, 1.0, 0.25);
+        (t2.position.set(D * 0.2, 0.3, 0.05), e.add(t2));
+      }
+      e.userData.noShadow = !0;
+      parts.body.add(e);
+      parts[D < 0 ? "wingL" : "wingR"] = e;
+    }
+  };
+  let mw0 = X.makeWings;
+  X.makeWings = function (kind, col, parts) {
+    if (kind === "angel" || kind === "raven" || kind === "phoenix") return X.makeFeatherWings(kind, parts);
+    mw0(kind, col, parts);
+    // lower the other wing sets too
+    for (let s of ["wingL", "wingR"]) parts[s] && (parts[s].position.y = WING_Y);
+  };
+
+
+  // ---- Stormcrown aura: ring of crackling bolts above the head ----
+  let ma0 = X.makeAura;
+  X.makeAura = function (kind, col, k) {
+    if (kind !== "storm") return ma0(kind, col, k);
+    let g = new eA(),
+      m = mI(col, 3);
+    for (let i = 0; i < 6; i++) {
+      let a = (i / 6) * 6.28,
+        bolt = new eA();
+      for (let j = 0; j < 4; j++) {
+        let seg = v(new iA(0.012, 0.07, 0.012), m, (j % 2 ? 0.03 : -0.03), j * 0.06, 0);
+        seg.rotation.z = j % 2 ? 0.7 : -0.7;
+        bolt.add(seg);
+      }
+      bolt.position.set(Math.cos(a) * 0.32, 1.95, Math.sin(a) * 0.32);
+      bolt.userData.flick = a;
+      g.add(bolt);
+    }
+    let ring = v(new ji(0.32, 0.01, 6, 32), m, 0, 1.95, 0);
+    ring.rotation.x = Math.PI / 2;
+    g.add(ring);
+    let z = Zw(col, 1.1, 0.35);
+    z.position.y = 2.0;
+    g.add(z);
+    g.userData.spinRings = !0;
+    g.userData.storm = !0;
+    k.add(g);
+    k.userData.auraObj = g;
+    return g;
+  };
+  let Xw2 = Xw;
+  Xw = function (B, A) {
+    Xw2(B, A);
+    let o = B.body?.parent?.userData?.auraObj;
+    if (o?.userData?.storm) for (let b of o.children) b.userData.flick !== void 0 && (b.visible = Math.sin((A.t || 0) * 17 + b.userData.flick * 5) > -0.3);
+  };
+
+  // ---- enchanted weapon visuals ----
+  X.ENCHFX = {
+    power: { col: 0xff7a30, name: "Blaze" },
+    crit: { col: 0xffe070, name: "Gleam" },
+    vitality: { col: 0x60ff80, name: "Verdant" },
+    speed: { col: 0x60c0ff, name: "Swift" },
+    haste: { col: 0xc080ff, name: "Arcane" },
+  };
+  // adds an emissive sheen, a soft glow along the blade and orbiting motes; returns the mote group
+  X.enchantFX = function (obj, stat, scale = 1) {
+    let fx = X.ENCHFX[stat] || X.ENCHFX.power;
+    if (!obj || obj.userData.enchFX) return null;
+    let col = new _(fx.col);
+    // blade sheen: tint the brightest (blade) materials with emissive
+    obj.traverse((m) => {
+      if (!m.isMesh || !m.material || m.isSprite) return;
+      let mat = m.material.clone();
+      mat.emissive = col.clone().multiplyScalar(0.55);
+      mat.emissiveIntensity = (mat.emissiveIntensity || 1) * 0.6;
+      m.material = mat;
+    });
+    // extent of the weapon in its own space: motes and glows run along its longest axis (the blade/haft)
+    obj.updateMatrixWorld(!0);
+    let box = new lI().setFromObject(obj).applyMatrix4(obj.matrixWorld.clone().invert()),
+      size = new N().subVectors(box.max, box.min),
+      ax = size.x > size.y && size.x > size.z ? "x" : size.z > size.y ? "z" : "y",
+      lo = box.min[ax],
+      len = Math.max(0.3, size[ax]),
+      mid = new N().addVectors(box.min, box.max).multiplyScalar(0.5),
+      at = (f) => {
+        let v3 = mid.clone();
+        v3[ax] = lo + len * f;
+        return v3;
+      };
+    let g = new eA();
+    for (let i = 0; i < 3; i++) {
+      let z = Zw(fx.col, (0.26 + i * 0.05) * scale, 0.2);
+      z.position.copy(at(0.4 + i * 0.22));
+      g.add(z);
+    }
+    let motes = new eA();
+    for (let i = 0; i < 6; i++) {
+      let s = v(new tB(0.016 * scale), mI(fx.col, 3), 0, 0, 0);
+      s.userData.orbit = [(i / 6) * 6.28, 0.07 * scale, 0.3 + (i / 6) * 0.65];
+      motes.add(s);
+    }
+    motes.userData.ax = ax;
+    motes.userData.at = at;
+    g.add(motes);
+    g.userData.motes = motes;
+    g.userData.len = len;
+    obj.add(g);
+    obj.userData.enchFX = g;
+    return g;
+  };
+  X.animEnch = function (g, t) {
+    if (!g) return;
+    let m = g.userData.motes;
+    if (m) {
+      let ax = m.userData.ax, p1 = ax === "x" ? "y" : "x", p2 = ax === "z" ? "y" : "z";
+      for (let s of m.children) {
+        let [a, r, f] = s.userData.orbit,
+          c = m.userData.at(f + Math.sin(t * 1.3 + a) * 0.04);
+        c[p1] += Math.cos(a + t * 2.6) * r;
+        c[p2] += Math.sin(a + t * 2.6) * r;
+        s.position.copy(c);
+      }
+    }
+    let k = 0;
+    for (let z of g.children) z.isSprite && (z.material.opacity = 0.16 + Math.sin(t * 4 + k++ * 1.7) * 0.05);
+  };
+  // third-person body: enchant on the weapon(s) held in the hand slots
+  let Rs1 = Rs;
+  const FINMAT = {
+    gilded: { rough: 0.3, metal: 0.45, em: 0x6a4400, ei: 0.45 },
+    obsidian: { rough: 0.12, metal: 0.4, em: 0x101018, ei: 0.5 },
+    bone: { rough: 0.9, metal: 0, em: 0, ei: 0 },
+    bloodsteel: { rough: 0.35, metal: 0.4, em: 0x3a0000, ei: 0.5 },
+    verdigris: { rough: 0.6, metal: 0.25, em: 0x003a2a, ei: 0.3 },
+    hollow: { rough: 0.05, metal: 0.5, em: 0x4a22e0, ei: 0.22 },
+  };
+  Rs = function (B, A = {}, i = {}) {
+    let k = Rs1(B, A, i),
+      st = i.weapon?.[3];
+    // finish: surface properties on armour pieces so each finish reads differently, not just a tint
+    let fm = A.finish && FINMAT[A.finish];
+    if (fm && k) {
+      let cache = new Map();
+      k.traverse((m) => {
+        if (!m.isMesh || !m.material || !/_(Body|ArmLeft|ArmRight|LegLeft|LegRight|Helmet|Hat)$/.test(m.name)) return;
+        let mt = cache.get(m.material);
+        if (mt) return void (m.material = mt);
+        mt = m.material.clone();
+        cache.set(m.material, mt);
+        m.material = mt;
+        mt.roughness = fm.rough;
+        mt.metalness = fm.metal;
+        fm.ei && ((mt.emissive = new _(fm.em)), (mt.emissiveIntensity = fm.ei));
+      });
+    }
+    if (st && k?.userData?.parts?.bones) {
+      let L = k.userData.parts,
+        list = [];
+      for (let bn of ["handslotr", "handslotl"]) {
+        let bone = L.bones[bn];
+        if (!bone) continue;
+        for (let ch of [...bone.children]) {
+          let fx = X.enchantFX(ch, st, 1.1);
+          fx && list.push(fx);
+        }
+      }
+      list.length && (k.userData.enchObjs = list);
+    }
+    return k;
+  };
+  let Xw1 = Xw;
+  Xw = function (B, A) {
+    Xw1(B, A);
+    let k = B.body?.parent;
+    if (k?.userData?.enchObjs) for (let g of k.userData.enchObjs) X.animEnch(g, A.t || 0);
+  };
+  // first-person view model
+  let To2 = To;
+  To = function (B, A = {}, i = {}) {
+    let n = To2(B, A, i),
+      st = i.weapon?.[3];
+    if (st && n?.userData) {
+      let list = [];
+      for (let w of [n.userData.weapon, n.userData.leftWeapon]) {
+        if (!w) continue;
+        let fx = X.enchantFX(w, st, 0.9);
+        fx && list.push(fx);
+      }
+      list.length && (n.userData.enchObjs = list);
+    }
+    return n;
+  };
+  let avm0 = SC.prototype.animateViewModel;
+  SC.prototype.animateViewModel = function (B) {
+    avm0.call(this, B);
+    let l = this.viewModel?.userData?.enchObjs;
+    if (l) for (let g of l) X.animEnch(g, this.t || 0);
+  };
+}
+// ===== unique aura particle behaviour (player + remotes) =====
+{
+  const R = Math.random;
+  // each aura: emit(particles, pos, t, col, rate multiplier) — a distinct motion signature per aura
+  X.AURAFX = {
+    embers: (P, p, c, k) => { for (let i = 0; i < k; i++) { let d = R() * 6.28, r = 0.25 + R() * 0.4; P.emit(p.x + Math.cos(d) * r, p.y + R() * 0.3, p.z + Math.sin(d) * r, { vel: [(R() - 0.5) * 0.5, 1.2 + R() * 0.8, (R() - 0.5) * 0.5], color: c, life: 1.3, size: 0.09 + R() * 0.05, size1: 0, drag: 0.3 }); } },
+    frost: (P, p, c, k) => { for (let i = 0; i < k; i++) { let d = R() * 6.28, r = 0.3 + R() * 0.6; P.emit(p.x + Math.cos(d) * r, p.y + 2.1 + R() * 0.4, p.z + Math.sin(d) * r, { vel: [(R() - 0.5) * 0.3, -0.45, (R() - 0.5) * 0.3], color: c, life: 2.4, size: 0.07, size1: 0.07, drag: 0.1 }); } },
+    void: (P, p, c, k) => { for (let i = 0; i < k; i++) { let d = R() * 6.28, r = 1.0; let x = Math.cos(d) * r, z = Math.sin(d) * r, y = 0.2 + R() * 1.4; P.emit(p.x + x, p.y + y, p.z + z, { vel: [-x * 1.1, (0.9 - y) * 0.6, -z * 1.1], color: c, life: 0.9, size: 0.1, size1: 0.02, drag: 0.1 }); } },
+    holy: (P, p, c, k) => { for (let i = 0; i < k; i++) { let d = R() * 6.28, r = 0.55; P.emit(p.x + Math.cos(d) * r, p.y + R() * 0.2, p.z + Math.sin(d) * r, { vel: [0, 0.75, 0], color: c, life: 2.2, size: 0.05, size1: 0.22, drag: 0 }); } },
+    blood: (P, p, c, k) => { for (let i = 0; i < k; i++) { let d = R() * 6.28, r = 0.2 + R() * 0.35; P.emit(p.x + Math.cos(d) * r, p.y + 1.0 + R() * 0.8, p.z + Math.sin(d) * r, { vel: [0, -0.3, 0], color: c, life: 0.8, size: 0.06, size1: 0.1, grav: 3, drag: 0 }); } },
+    leaf: (P, p, c, k) => { for (let i = 0; i < k; i++) { let d = R() * 6.28, r = 0.6; P.emit(p.x + Math.cos(d) * r, p.y + 0.1 + R() * 1.2, p.z + Math.sin(d) * r, { vel: [-Math.sin(d) * 1.6, 0.35, Math.cos(d) * 1.6], color: c, life: 1.8, size: 0.09, size1: 0.05, drag: 0.4, grav: -0.2 }); } },
+    rings: (P, p, c, k) => { R() < 0.35 * k && P.emit(p.x + (R() - 0.5) * 1.0, p.y + 0.5 + R() * 1.2, p.z + (R() - 0.5) * 1.0, { vel: [0, 0, 0], color: c, life: 0.6, size: 0.14, size1: 0, drag: 0 }); },
+    stars: (P, p, c, k) => { R() < 0.5 * k && P.emit(p.x + (R() - 0.5) * 1.4, p.y + 0.3 + R() * 1.6, p.z + (R() - 0.5) * 1.4, { vel: [0, 0.1, 0], color: c, life: 1.0, size: 0.0, size1: 0.16, drag: 0 }); },
+    flamering: (P, p, c, k) => { for (let i = 0; i < k; i++) { let d = R() * 6.28, r = 0.55; P.emit(p.x + Math.cos(d) * r, p.y + 0.05, p.z + Math.sin(d) * r, { vel: [0, 1.6 + R(), 0], color: c, life: 0.6, size: 0.12, size1: 0, drag: 1 }); } },
+    storm: (P, p, c, k) => { R() < 0.6 * k && P.emit(p.x + (R() - 0.5) * 0.8, p.y + 1.9 + (R() - 0.5) * 0.3, p.z + (R() - 0.5) * 0.8, { vel: [(R() - 0.5) * 4, (R() - 0.5) * 4, (R() - 0.5) * 4], color: c, life: 0.25, size: 0.06, size1: 0, drag: 2 }); },
+  };
+  let _col = {};
+  X.auraEmit = function (g, id, pos, dt, mul = 1) {
+    let fx = X.AURAFX[id];
+    if (!fx || !g.particles) return;
+    let def = Zi.aura.find((a) => a.id === id);
+    if (!def) return;
+    let c = _col[id] || (_col[id] = new _(def.color));
+    let want = dt * 22 * mul,
+      k = Math.floor(want) + (R() < want % 1 ? 1 : 0);
+    k > 0 && fx(g.particles, pos, c, k);
+  };
+  // disable the built-in generic emitter (same look for every aura) by hiding the id from it, keep the colour
+  let ac0 = SC.prototype.applyCosmetics;
+  SC.prototype.applyCosmetics = function () {
+    ac0.call(this);
+    let a = this.auraColor;
+    a && a.id !== "none" && (this.auraColor = { id: "none", real: a.id, color: a.color });
+  };
+  let upA = SC.prototype.update;
+  SC.prototype.update = function (dt) {
+    upA.call(this, dt);
+    if (!this.running || !this.player) return;
+    let a = this.auraColor?.real;
+    a && this.auraEmitLocal !== !1 && X.auraEmit(this, a, this.player.pos, dt, 1);
+    // other players: lighter rate, only when near
+    if (this.remotes?.size) {
+      let pp = this.player.pos;
+      for (let r of this.remotes.values()) {
+        let id = r.raw?.cos?.aura;
+        if (!id || id === "none" || r.hm) continue;
+        let d = r.pos.distanceTo(pp);
+        d < 60 && X.auraEmit(this, id, r.pos, dt, d < 25 ? 0.7 : 0.3);
+      }
+    }
+  };
+}
+
+/* ---- E1_raid3.js ---- */
+// ===== 1.11: branching instances (side rooms, hub-and-wings raids, gates), The Drowned Deep raid, Mythic loot tier =====
+// ---------- Mythic rarity ----------
+ui.push({ id: "mythic", name: "Mythic", color: "#40ffd0", w: 0, stats: 4, mult: 2.35 });
+qi.mythic = 0x40ffd0;
+X.rarityFx.mythic = [0x40ffd0, 0.6, 1.1];
+{
+  let yl0 = yl;
+  yl = function (B, A = 0, i = null, I = Math.random, w = null) {
+    let t = yl0(B, A, i, I, w);
+    if (t.rarity === "mythic") {
+      t.affix = Gs[(I() * Gs.length) | 0].id;
+      t.name = "Abyssal " + t.name.replace(/^\S+\s/, "");
+    }
+    return t;
+  };
+  let P = SC.prototype,
+    pr0 = P.price;
+  P.price = function (B, A = 1) {
+    if (B.rarity === "mythic") return Math.round((40 + B.level * 14) * 70 * A);
+    return pr0.call(this, B, A);
+  };
+}
+// ---------- The Drowned Deep ----------
+{
+  let T = X.TOWNS.thorn,
+    sd = T.seaDir || [0, 1],
+    sl = Math.hypot(sd[0], sd[1]) || 1,
+    portal = [Math.round(T.pos[0] + (sd[0] / sl) * (T.rad - 14)), Math.round(T.pos[1] + (sd[1] / sl) * (T.rad - 14))];
+  X.RAIDSPOT.deep = portal;
+  Object.assign(rw, {
+    tidecaller: { name: "Morvath the Tidecaller", hp: 210000, dmg: 240, speed: 3.8, range: 26, atkCd: 1.7, xp: 60000, armor: 75, radius: 1.7, height: 5.6, color: 0x40c0ff, boss: !0, inst: !0, ranged: !0 },
+    leviathan: { name: "The Drowned Leviathan", hp: 300000, dmg: 320, speed: 4.2, range: 5.5, atkCd: 2.0, xp: 70000, armor: 85, radius: 2.4, height: 7.5, color: 0x206a8a, boss: !0, inst: !0 },
+    choir: { name: "The Abyssal Choir", hp: 240000, dmg: 230, speed: 3.6, range: 28, atkCd: 1.5, xp: 65000, armor: 70, radius: 1.6, height: 5.2, color: 0x9a60ff, boss: !0, inst: !0, ranged: !0 },
+    drownedking: { name: "Ythar, the Drowned King", hp: 420000, dmg: 340, speed: 4.8, range: 5.5, atkCd: 1.8, xp: 160000, armor: 95, radius: 2.2, height: 8, color: 0x104050, boss: !0, inst: !0, final3: !0 },
+    drowned: { name: "Drowned Thrall", hp: 2600, dmg: 60, speed: 5.5, range: 2.2, atkCd: 1.4, xp: 400, armor: 30, radius: 0.6, height: 2, color: 0x4a8a9a },
+  });
+  for (let k of ["tidecaller", "leviathan", "choir", "drownedking"]) Ul.includes(k) || Ul.push(k);
+  Object.assign(Tl, {
+    tidecaller: { m: "skel_mage", h: 5.6, tint: 0x60d0ff, R: "w_skeleton_staff", atk: "Spellcast_Shoot", atkW: 0.55, glow: 0x40c0ff },
+    leviathan: { m: "barbarian", h: 7.5, tint: 0x2a7a9a, show: ["2H_Axe"], hat: !0, atk: "2H_Melee_Attack_Chop", idle: "2H_Melee_Idle", atkW: 0.6, glow: 0x20a0c0 },
+    choir: { m: "mage", h: 5.2, tint: 0x9a60ff, show: ["2H_Staff"], hat: !0, cape: "mage", atk: "Spellcast_Shoot", atkW: 0.5, glow: 0xb080ff },
+    drownedking: { m: "knight", h: 8, tint: 0x1a5060, show: ["2H_Sword"], hat: !0, cape: "knight", atk: "2H_Melee_Attack_Chop", idle: "2H_Melee_Idle", atkW: 0.6, glow: 0x40ffd0 },
+    drowned: { m: "skel_minion", h: 2, tint: 0x4a8a9a, R: "w_skeleton_blade", atk: "1H_Melee_Attack_Chop", atkW: 0.45 },
+  });
+  X.RAIDS.deep = { name: "The Drowned Deep", lv: 60, portal, bosses: ["tidecaller", "leviathan", "choir", "drownedking"], zone: "thorn", stat: "raid_deep", tint: 0x4a8aa0, fog: 0x06141c, mobs: ["drowned", "wraith", "cultist", "abomination"], raid: !0, deep: !0 };
+  X.INST.deep = X.RAIDS.deep;
+  let k = Object.keys(X.INST).length - 1,
+    d = X.RAIDS.deep;
+  ((d.id = "deep"), (d.pocket = [1000 + k * 320, -200 + (k % 2) * 400]), (d.floorY = 2));
+  X.portals.push({ id: "deep", pos: portal, raid: !0, name: d.name, lv: 60 });
+  mM.push({ id: "raid_deep", name: "The Drowned Deep", pos: portal, r: 20, lv: "60 Raid" });
+  X.SKIN.thorn && (X.SKIN.thorn.drowned = ["Drowned Thrall", 0x4a8a9a, 0x208090]);
+  // mounts & companions from the Deep
+  X.MOUNTS.tidesteed = { name: "Tide Steed", speed: 2.45, cost: -1, model: "horse", col: 0x3a8aa0, glow: 0x40ffd0, drop: "raid_deep", desc: "Drops from The Drowned Deep. Sea foam follows its hooves." };
+  X.COMPANIONS.deepwisp = { name: "Deep Wisp", kind: "heal", cost: -1, model: "wisp", scale: 1.1, col: 0x40d0ff, dmg: 0, drop: "raid_deep", desc: "Drops from The Drowned Deep. A drowned light that still wants to help." };
+  // achievements
+  WB.push(
+    { id: "raid_deep1", name: "Into the Deep", desc: "Clear The Drowned Deep.", stat: "raid_deep", goal: 1, reward: 600 },
+    { id: "mythic1", name: "Abyssal Relic", desc: "Find a Mythic item.", stat: "mythics", goal: 1, reward: 400 },
+    { id: "side_rooms", name: "Off the Beaten Path", desc: "Open 10 hidden treasure rooms in dungeons.", stat: "sideloot", goal: 10, reward: 300 },
+  );
+}
+// ---------- branching pocket builder ----------
+X.buildPocket = function (game, d) {
+  if (d.built) return d.built;
+  let world = game.world,
+    [px, pz] = d.pocket,
+    fy = d.floorY,
+    G = 4,
+    tint = d.tint,
+    rng = sI(d.id.length * 977 + 13),
+    grp = new eA(),
+    add = (name, o, x, z, ry = 0) => {
+      let m = X.piece(name, { w: o.w, h: o.h, center: !0, tint: o.tint || tint });
+      if (!m) return null;
+      (m.position.set(x, fy + (o.y || 0), z), (m.rotation.y = ry), grp.add(m));
+      return m;
+    },
+    torches = [],
+    rooms = [],
+    pathCells = new Set(),
+    cell = (x, z) => `${Math.round(x / G)},${Math.round(z / G)}`,
+    roomAt = (cx, cz, half, extra = {}) => {
+      let R = { x: cx, z: cz, half, boss: null, idx: rooms.length, ...extra };
+      rooms.push(R);
+      for (let i = -half; i <= half; i++) for (let j = -half; j <= half; j++) pathCells.add(cell(cx + i * G, cz + j * G));
+      return R;
+    },
+    // straight corridor from (x,z) in direction (dx,dz) for len cells (plus the room apron cells)
+    corridor = (x, z, dx, dz, len) => {
+      for (let i = 0; i <= len; i++) pathCells.add(cell(x + dx * i * G, z + dz * i * G));
+    },
+    gates = [],
+    maxX = px,
+    minZ = pz,
+    maxZ = pz;
+  let track = (R) => ((maxX = Math.max(maxX, R.x + R.half * G)), (minZ = Math.min(minZ, R.z - R.half * G)), (maxZ = Math.max(maxZ, R.z + R.half * G)));
+  if (d.raid) {
+    // entry → hub; wings off the hub (±z, then +x); the final boss behind a gate past the last wing
+    let entry = roomAt(px, pz, 3),
+      hubX = px + (3 + 5 + 5) * G,
+      hub = roomAt(hubX, pz, 5, { hub: !0 });
+    corridor(px + 3 * G, pz, 1, 0, 6);
+    track(entry);
+    track(hub);
+    let wings = d.bosses.slice(0, -1),
+      final = d.bosses[d.bosses.length - 1],
+      dirs = [
+        [0, -1],
+        [0, 1],
+        [1, 0],
+      ];
+    let lastWing = null;
+    wings.forEach((bn, i) => {
+      let [dx, dz] = dirs[i % 3],
+        ante = roomAt(hubX + dx * (5 + 4 + 3) * G, pz + dz * (5 + 4 + 3) * G, 3, { wing: i }),
+        boss = roomAt(hubX + dx * (5 + 4 + 3 + 3 + 4 + 5) * G, pz + dz * (5 + 4 + 3 + 3 + 4 + 5) * G, 5, { wing: i, boss: bn, dir: [dx, dz] });
+      corridor(hubX + dx * 5 * G, pz + dz * 5 * G, dx, dz, 5);
+      corridor(ante.x + dx * 3 * G, ante.z + dz * 3 * G, dx, dz, 5);
+      track(ante);
+      track(boss);
+      dx === 1 && (lastWing = boss);
+    });
+    // final: beyond the +x wing (or straight from the hub if there is no +x wing)
+    let fx0 = lastWing ? lastWing.x + 5 * G : hubX + 5 * G,
+      fz = pz,
+      fx = fx0 + (6 + 6) * G,
+      fin = roomAt(fx, fz, 6, { boss: final, final: !0, dir: [1, 0] });
+    corridor(fx0, fz, 1, 0, 7);
+    gates.push({ x: fx0 + 3 * G + 2, z: fz, dir: [1, 0], half: 1 });
+    track(fin);
+  } else {
+    let cx = px,
+      cz = pz,
+      n = d.rooms || 3,
+      plan = [];
+    for (let r = 0; r < n; r++) plan.push({ half: 3 });
+    plan.push({ half: 4, boss: d.boss });
+    let mains = [];
+    plan.forEach((pl, r) => {
+      let R = roomAt(cx, cz, pl.half, pl.boss ? { boss: pl.boss } : {});
+      mains.push(R);
+      track(R);
+      if (r === plan.length - 1) return;
+      let nextHalf = plan[r + 1].half,
+        len = 5,
+        dz = (rng() < 0.5 ? -1 : 1) * ((rng() * 3) | 0),
+        nx = cx + (pl.half + len + nextHalf) * G,
+        nz = cz + dz * G;
+      for (let i = pl.half; i <= pl.half + len + 1; i++) {
+        pathCells.add(cell(cx + i * G, cz));
+        if (i >= pl.half + 2) for (let j = Math.min(0, dz); j <= Math.max(0, dz); j++) pathCells.add(cell(cx + i * G, cz + j * G));
+      }
+      cx = nx;
+      cz = nz;
+    });
+    // side rooms: off the middle rooms, perpendicular, a treasure vault or an elite's lair
+    let sides = 0;
+    for (let r = 1; r < mains.length - 1 && sides < 2; r++) {
+      if (rng() < 0.3) continue;
+      let R = mains[r],
+        s = rng() < 0.5 ? -1 : 1,
+        kind = rng() < 0.5 ? "treasure" : "elite",
+        S = roomAt(R.x, R.z + s * (R.half + 4 + 2) * G, 2, { side: kind, parent: R.idx });
+      corridor(R.x, R.z + s * R.half * G, 0, s, 5);
+      track(S);
+      sides++;
+    }
+  }
+  // floors
+  for (let c of pathCells) {
+    let [i, j] = c.split(",").map(Number),
+      x = i * G,
+      z = j * G;
+    add(rng() < 0.12 ? "k_floor_tile_small_broken_A" : "k_floor_tile_large", { w: G }, x, z, ((rng() * 4) | 0) * (Math.PI / 2));
+  }
+  // walls on cells bordering the path
+  let wallSet = new Set();
+  for (let c of pathCells) {
+    let [i, j] = c.split(",").map(Number);
+    for (let [di, dj, ry] of [
+      [1, 0, Math.PI / 2],
+      [-1, 0, -Math.PI / 2],
+      [0, 1, 0],
+      [0, -1, Math.PI],
+    ]) {
+      if (pathCells.has(`${i + di},${j + dj}`)) continue;
+      let x = i * G + (di * G) / 2,
+        z = j * G + (dj * G) / 2,
+        key = `${x},${z}`;
+      if (wallSet.has(key)) continue;
+      wallSet.add(key);
+      let kind = rng() < 0.1 ? "k_wall_cracked" : rng() < 0.08 ? "k_wall_broken" : rng() < 0.1 ? "k_wall_window_open" : "k_wall";
+      let wm = add(kind, { w: G, h: null }, x, z, ry);
+      wm && (wm.scale.y *= 1.75);
+      world.addBox(x, z, di ? 0.5 : G / 2, di ? G / 2 : 0.5, 0, fy + 8, "wall");
+      if (rng() < 0.22) {
+        let tx = x - di * 0.6,
+          tz = z - dj * 0.6,
+          t = add("k_torch_mounted", { h: 1.1 }, tx, tz, ry);
+        t && (t.position.y = fy + 2.2);
+        torches.push(world.addEmitter(tx, fy + 2.9, tz, d.deep ? 0x40c0ff : 0xffa040, 2.6, 15, 0.35));
+      }
+    }
+  }
+  // gates: a portcullis across the corridor, with a collider that dies when the gate opens
+  for (let gt of gates) {
+    let g = new eA(),
+      bar = world.mat("metal", 0x2a2a30, { metal: 0.9, rough: 0.4 });
+    for (let i = -3; i <= 3; i++) {
+      let b = new p(new iA(0.12, 6.4, 0.12), bar);
+      (b.position.set(0, 3.2, i * 0.55), (b.castShadow = !0), g.add(b));
+    }
+    for (let y of [1.2, 3.2, 5.2]) g.add(v(new iA(0.14, 0.14, 3.8), bar, 0, y, 0));
+    (g.position.set(gt.x, fy, gt.z), grp.add(g));
+    gt.mesh = g;
+    gt.col = world.addBox(gt.x, gt.z, 0.3, G / 2 + 0.5, 0, fy + 8, "gate");
+    let lbl = Sg("The gate is sealed while the deep still sings", "#9ad0ff", 22);
+    (lbl.position.set(gt.x - 2, fy + 3.6, gt.z), lbl.scale.set(6, 1, 1), g.add(lbl), (gt.lbl = lbl), (lbl.position.x = -2));
+  }
+  // pillars, props and decoration per room
+  for (let R of rooms) {
+    let h = R.half;
+    if (h >= 3)
+      for (let sx of [-1, 1])
+        for (let sz of [-1, 1]) {
+          let x = R.x + sx * (h - 1) * G,
+            z = R.z + sz * (h - 1) * G;
+          add("k_pillar", { h: 6 }, x, z);
+          world.addCircle(x, z, 0.7, fy + 6, "pillar");
+        }
+    if (R.side === "treasure") {
+      let ch = add("k_chest_gold", { w: 1.5 }, R.x, R.z, Math.PI / 2);
+      ch && (ch.position.y = fy + 0.2);
+      R.chest = ch;
+      for (let [dx, dz] of [
+        [-1.6, -1.2],
+        [1.6, 1.4],
+        [-1.4, 1.6],
+      ])
+        add("k_crates_stacked", { w: 1.2 }, R.x + dx, R.z + dz, rng() * 6);
+      torches.push(world.addEmitter(R.x, fy + 2.2, R.z, 0xffd070, 3.5, 12, 0.3));
+      world.addCircle(R.x, R.z, 0.9, fy + 1.5, "prop");
+    } else if (R.side === "elite") {
+      add("k_banner_red", { h: 3.4 }, R.x - 1.5 * G, R.z - 1.5 * G, Math.PI / 4);
+      add("k_rubble_half", { w: 1.5 }, R.x + 1.4, R.z - 1.2, rng() * 6);
+    } else if (!R.boss) {
+      for (let i = 0; i < 3; i++) {
+        let x = R.x + (rng() - 0.5) * h * G * 1.2,
+          z = R.z + (rng() - 0.5) * h * G * 1.2,
+          k = ["k_keg", "k_crates_stacked", "k_barrel_large", "k_table_medium", "k_shelves", "k_rubble_half"][(rng() * 6) | 0],
+          m = add(k, { w: 1.5 }, x, z, rng() * 6);
+        m && world.addCircle(x, z, 0.7, fy + 1.5, "prop");
+      }
+      rng() < 0.6 && add(rng() < 0.5 ? "k_banner_red" : "k_banner_blue", { h: 3.4 }, R.x - (h - 0.5) * G, R.z - (h - 0.5) * G, Math.PI / 4);
+      if (R.hub) {
+        let f = world.flameMesh(2.2, d.deep ? 0x40c0ff : 0xff4a6a);
+        (f.position.set(R.x, fy + 1.4, R.z), grp.add(f));
+        let bowl = new p(new QA(1.2, 0.9, 0.7, 12), world.mat("metal", 0x3a3a3a, { metal: 0.9 }));
+        (bowl.position.set(R.x, fy + 0.9, R.z), grp.add(bowl));
+        torches.push(world.addEmitter(R.x, fy + 2.4, R.z, d.deep ? 0x40c0ff : 0xff4a6a, 5, 26, 0.3));
+        world.addCircle(R.x, R.z, 1.4, fy + 2, "prop");
+      }
+    } else {
+      // boss room: throne dais on the far side (in the wing direction), braziers, banners
+      let [dx, dz] = R.dir || [1, 0],
+        tx = R.x + dx * (h - 1.5) * G,
+        tz = R.z + dz * (h - 1.5) * G,
+        dais = new p(new QA(4.5, 5, 0.6, 24), world.mat("stone", d.deep ? 0x203a44 : 0x4a4050));
+      (dais.position.set(tx, fy + 0.3, tz), (dais.receiveShadow = !0), grp.add(dais));
+      let th = add("k_chest_gold", { w: 1.6 }, tx, tz, Math.atan2(-dx, -dz));
+      th && (th.position.y = fy + 0.6);
+      R.throne = [tx, tz];
+      for (let s of [-1, 1]) {
+        let x = R.x + dx * (h - 2) * G + dz * s * 3 * G,
+          z = R.z + dz * (h - 2) * G + dx * s * 3 * G,
+          br = world.flameMesh(1.2, d.raid ? (d.deep ? 0x40c0ff : 0xff4a6a) : 0x6ab0ff);
+        (br.position.set(x, fy + 1.2, z), grp.add(br));
+        let bowl = new p(new QA(0.6, 0.4, 0.5, 10), world.mat("metal", 0x3a3a3a, { metal: 0.9 }));
+        (bowl.position.set(x, fy + 0.9, z), grp.add(bowl));
+        torches.push(world.addEmitter(x, fy + 1.8, z, d.raid ? (d.deep ? 0x40c0ff : 0xff4a6a) : 0x6ab0ff, 4, 20, 0.3));
+        world.addCircle(x, z, 0.7, fy + 2, "prop");
+      }
+      for (let i = -2; i <= 2; i++) add("k_banner_shield_blue", { h: 3.6 }, R.x + i * G, R.z - (h - 0.4) * G, 0);
+      if (d.deep) {
+        // drowned ruin: water pools and barnacled pillars
+        let pool = new p(new fI(3.2, 20), new xA({ color: 0x0c3a4a, roughness: 0.1, metalness: 0.3, transparent: !0, opacity: 0.85 }));
+        (pool.rotation.x = -Math.PI / 2), pool.position.set(R.x - dx * 3 * G, fy + 0.03, R.z - dz * 3 * G), grp.add(pool);
+      }
+    }
+  }
+  // big dark floor + ceiling slab so nothing of the sky leaks in
+  let W = maxX - px + 240,
+    H = maxZ - minZ + 200,
+    cxm = (px + maxX) / 2,
+    czm = (minZ + maxZ) / 2,
+    big = new p(new vi(W, H), new xA({ color: d.deep ? 0x061018 : 0x0a0a0c, roughness: 1 }));
+  (big.rotation.set(-Math.PI / 2, 0, 0), big.position.set(cxm, fy - 0.1, czm), (big.receiveShadow = !0), grp.add(big));
+  let ceil = new p(new vi(W, H), new xA({ color: 0x08080a, roughness: 1, side: KA }));
+  (ceil.rotation.set(Math.PI / 2, 0, 0), ceil.position.set(cxm, fy + 7.2, czm), grp.add(ceil));
+  grp.traverse((m) => m.isMesh && (m.receiveShadow = !0));
+  world.scene.add(grp);
+  d.built = { group: grp, rooms, torches, gates, entry: [rooms[0].x - (rooms[0].half - 1) * G, rooms[0].z], bounds: { x0: px - 80, x1: maxX + 100, z0: minZ - 100, z1: maxZ + 100 } };
+  return d.built;
+};
+// ---------- director: side rooms, gates, final boss, Deep mechanics ----------
+{
+  let P = SC.prototype;
+  X.openGate = function (g, gt) {
+    if (gt.open) return;
+    gt.open = !0;
+    gt.col && (gt.col.dead = !0);
+    gt.mesh && (gt.mesh.visible = !1);
+    g.audio.play("bell");
+    g.ui.banner("", "The gate grinds open.", "#9ad0ff");
+  };
+  X.instDirector = function (g) {
+    let I = g.inst,
+      d = I.def,
+      b = d.built;
+    if (!g.playerTargets().length) return g.failInstance();
+    if (I.done) return;
+    let pos = [g.player.pos, ...[...g.remotes.values()].map((r) => r.pos)],
+      alive = (t) => [...g.enemies.values()].some((e) => e.alive && e.type === t && e.instBoss),
+      wingsDone = b.rooms.filter((R) => R.boss && !R.final).every((R) => I.spawned.has(R.idx) && !alive(R.boss));
+    // gates open once every wing boss is dead
+    if (b.gates?.length && wingsDone) for (let gt of b.gates) !gt.open && (X.openGate(g, gt), g.net?.isHost && g.net.broadcast({ t: "gate", open: !0 }));
+    for (let R of b.rooms) {
+      let near = pos.some((p) => Math.hypot(p.x - R.x, p.z - R.z) < R.half * 4 + 10);
+      if (!near || I.spawned.has(R.idx)) continue;
+      if (R.final && !wingsDone) continue;
+      I.spawned.add(R.idx);
+      if (R.boss) {
+        let [tx, tz] = R.throne || [R.x + (R.half - 2.5) * 4, R.z],
+          e = g.spawnEnemy(R.boss, tx, tz, d.lv + (d.raid ? 2 : 1));
+        ((e.home = [tx, tz]), (e.instBoss = !0), (e.target = "self"), (e.aggroT = 999));
+        g.shake(0.6);
+        R.final && g.ui.banner(rw[R.boss].name.toUpperCase(), "The deep rises to meet you.", "#40ffd0");
+      } else if (R.side === "elite") {
+        let type = d.mobs[0],
+          e = g.spawnEnemy(type, R.x, R.z, d.lv + 2, { scale: 1.5 });
+        ((e.elite = !0), (e.maxHp = e.hp = e.hp * 4), (e.dmgMul = (e.dmgMul || 1) * 1.4), (e.def = { ...e.def, name: "Vault Warden" }));
+        g.ui.banner("", "A Vault Warden guards the side chamber", "#ffb060");
+      } else if (R.side === "treasure") {
+        g.ui.banner("", "A hidden treasure room", "#ffd070");
+      } else if (R.idx > 0 || d.raid) {
+        let n = (d.raid ? 6 : 4) + ((Math.random() * 2) | 0) + g.remotes.size;
+        for (let k = 0; k < n; k++) {
+          let type = d.mobs[(Math.random() * d.mobs.length) | 0],
+            x = R.x + (Math.random() - 0.5) * (R.half * 4),
+            z = R.z + (Math.random() - 0.5) * (R.half * 4);
+          g.world.pointBlocked(x, 1, z) || g.spawnEnemy(type, x, z, d.lv + (k === 0 ? 1 : 0), { scale: k === 0 ? 1.25 : void 0 });
+        }
+        g.ui.banner("", R.hub ? `${d.name} — the hub` : `${d.name} — ${R.wing !== void 0 ? "wing " + (R.wing + 1) : "room " + R.idx}`, "#9ad0ff");
+      }
+    }
+    let bossRooms = b.rooms.filter((R) => R.boss),
+      killed = bossRooms.filter((R) => I.spawned.has(R.idx) && !alive(R.boss));
+    killed.length >= bossRooms.length && bossRooms.every((R) => I.spawned.has(R.idx)) && g.completeInstance();
+    X.deepMechanics?.(g);
+  };
+  // gate: physical block for everyone (guests included) while sealed
+  let up1 = P.updatePlayer;
+  P.updatePlayer = function (dt) {
+    up1.call(this, dt);
+    let b = this.inst?.def?.built;
+    if (!b?.gates) return;
+    let A = this.player;
+    for (let gt of b.gates) {
+      if (gt.open) continue;
+      if (Math.abs(A.pos.z - gt.z) < 2.6 && A.pos.x > gt.x - 0.9 && A.pos.x < gt.x + 3) {
+        A.pos.x = gt.x - 0.9;
+        A.vel.x = Math.min(0, A.vel.x);
+      }
+    }
+  };
+  // treasure chest: personal loot, once per client per visit
+  let sp1 = P.sysPrompt;
+  P.sysPrompt = function () {
+    let r = sp1.call(this);
+    if (r || !this.inst) return r;
+    for (let R of this.inst.def.built.rooms) if (R.side === "treasure" && !this.inst.looted?.has(R.idx) && Math.hypot(this.player.pos.x - R.x, this.player.pos.z - R.z) < 3.2) return { text: "[F] Open the treasure chest", near: { kind: "sidechest", idx: R.idx } };
+    return null;
+  };
+  let si1 = P.sysInteract;
+  P.sysInteract = function (n) {
+    if (n.kind === "sidechest" && this.inst) {
+      let I = this.inst,
+        d = I.def,
+        R = d.built.rooms[n.idx];
+      (I.looted ||= new Set()).add(n.idx);
+      let Q = ii(R.x, d.floorY + 0.5, R.z),
+        lvl = Math.min(60, d.lv + 2);
+      this.dropItem(Q, this.gen(lvl, 2, "epic"));
+      Math.random() < 0.35 && this.dropItem(Q, this.gen(lvl, 0, "legendary"));
+      this.dropShards?.(Q, 150 + d.lv * 6);
+      X.MATS && X.addMat?.(this, Object.keys(X.MATS)[(Math.random() * Math.min(4, Object.keys(X.MATS).length)) | 0], 2);
+      this.track("sideloot");
+      this.audio.play("chest");
+      this.toast("The chest creaks open.", "#ffd070");
+      return !0;
+    }
+    return si1.call(this, n);
+  };
+  // net: gate state to guests
+  let on1 = P.onNet;
+  P.onNet = function (from, m) {
+    if (m?.t === "gate" && this.inst?.def?.built?.gates) {
+      for (let gt of this.inst.def.built.gates) X.openGate(this, gt);
+      return;
+    }
+    if (m?.t === "pool" && this.inst) {
+      (this.inst.pools ||= []).push({ x: m.x, z: m.z, r: m.r, t: m.d, col: m.c });
+      return;
+    }
+    return on1.call(this, from, m);
+  };
+  // ---- The Deep: boss mechanics ----
+  // tidecaller: Drowned Thralls every 25 s; leviathan: Crush (3x hit on its target after a 2 s warning);
+  // choir: Drowning Hymn (pools under two players, move out); drowned king: Riptide pull + adds at 60 % and 30 %
+  X.deepMechanics = function (g) {
+    let I = g.inst,
+      d = I.def;
+    if (!d.deep || !g.isHost) return;
+    let t = g.t;
+    for (let e of g.enemies.values()) {
+      if (!e.alive || !e.instBoss) continue;
+      if (e.type === "drownedking") {
+        let frac = e.hp / e.maxHp;
+        if (!e._p60 && frac < 0.6) ((e._p60 = !0), X.deepPhase(g, e, d));
+        else if (!e._p30 && frac < 0.3) ((e._p30 = !0), X.deepPhase(g, e, d));
+      }
+      e._mt ??= t + 12;
+      if (t < e._mt) continue;
+      if (e.type === "tidecaller") {
+        e._mt = t + 25;
+        for (let k = 0; k < 3 + g.remotes.size; k++) {
+          let a = Math.random() * 6.28,
+            x = e.pos.x + Math.cos(a) * 5,
+            z = e.pos.z + Math.sin(a) * 5;
+          g.world.pointBlocked(x, 1, z) || g.spawnEnemy("drowned", x, z, d.lv);
+        }
+        g.ui.banner("", "Morvath calls the drowned from the tide", "#40c0ff");
+        g.audio.play("water", e.pos);
+      } else if (e.type === "leviathan") {
+        e._mt = t + 20;
+        let tgt = e.target;
+        g.ui.banner("", "The Leviathan rears up — CRUSH incoming on its target (block / shield / swap)", "#ff8a6a");
+        g.after(2, () => {
+          if (!e.alive) return;
+          let id = !tgt || tgt === "self" || tgt === "companion" ? "self" : tgt;
+          g.targetPos(id) && g.damagePlayer(id, e.def.dmg * 3 * (e.dmgMul || 1), { melee: !0, src: { x: e.pos.x, z: e.pos.z } });
+          g.shake(0.8);
+          g.audio.play("heavy", e.pos);
+        });
+      } else if (e.type === "choir") {
+        e._mt = t + 16;
+        let ps = [{ id: "self", pos: g.player.pos }, ...[...g.remotes.entries()].map(([id, r]) => ({ id, pos: r.pos }))];
+        ps.sort(() => Math.random() - 0.5);
+        for (let p of ps.slice(0, 2)) {
+          let pool = { x: p.pos.x, z: p.pos.z, r: 3.2, t: 7, col: 0x9a60ff };
+          (I.pools ||= []).push(pool);
+          g.net?.broadcast({ t: "pool", x: pool.x, z: pool.z, r: pool.r, d: pool.t, c: pool.col });
+        }
+        g.ui.banner("", "Drowning Hymn — move out of the pools", "#b080ff");
+      } else if (e.type === "drownedking") {
+        e._mt = t + 22;
+        {
+          // Riptide: everyone pulled to the king, then a shockwave — run out
+          g.ui.banner("", "RIPTIDE — you are dragged in, run out of the wave", "#40ffd0");
+          let pull = (p) => {
+            let dx = e.pos.x - p.x,
+              dz = e.pos.z - p.z,
+              L = Math.hypot(dx, dz) || 1;
+            p.x += (dx / L) * Math.max(0, L - 3.5);
+            p.z += (dz / L) * Math.max(0, L - 3.5);
+          };
+          pull(g.player.pos);
+          g.net?.broadcast({ t: "tele", x: null, pullTo: [e.pos.x, e.pos.z] });
+          g.after(2.2, () => {
+            if (!e.alive) return;
+            let pos = e.pos.clone();
+            g.telegraphEnemy(pos, 9, 2.0, 0x40ffd0, () => {
+              for (let t2 of g.playerTargets()) {
+                let q = g.targetPos(t2.id);
+                q && Math.hypot(q.x - pos.x, q.z - pos.z) < 9 && g.damagePlayer(t2.id, e.def.dmg * (e.dmgMul || 1) * 1.8, { src: { x: pos.x, z: pos.z }, pure: !0 });
+              }
+              g.fx("nova", pos, { color: 0x40ffd0, r: 9 });
+              g.shake(0.8);
+            });
+          });
+        }
+      }
+    }
+    // pools: damage inside
+    if (I.pools?.length) {
+      I.pools = I.pools.filter((p) => (p.t -= 1 / 15) > 0);
+      X.poolTick(g, I.pools, 1 / 15);
+    }
+  };
+  // immunity while submerged: hits do nothing until the thralls are dead
+  let he0 = P.hitEnemy;
+  P.hitEnemy = function (A, i, I = {}) {
+    if (A?.submerged) {
+      if (A.submerged > this.t && [...this.enemies.values()].some((x) => x.alive && x.type === "drowned")) return void this.floatText?.(A.pos.clone().setY(A.pos.y + 3), "SUBMERGED", "#40c0ff");
+      A.submerged = 0;
+    }
+    return he0.call(this, A, i, I);
+  };
+  X.deepPhase = function (g, e, d) {
+    e.submerged = g.t + 25;
+    g.fx("nova", e.pos.clone(), { color: 0x40c0ff, r: 6 });
+    g.ui.banner(rw.drownedking.name.toUpperCase(), "sinks beneath the water — kill the thralls to draw him back", "#40c0ff");
+    for (let k = 0; k < 4 + g.remotes.size; k++) {
+      let a = (k / (4 + g.remotes.size)) * 6.28,
+        x = e.pos.x + Math.cos(a) * 6,
+        z = e.pos.z + Math.sin(a) * 6;
+      g.world.pointBlocked(x, 1, z) || g.spawnEnemy("drowned", x, z, d.lv + 1, { scale: 1.2 });
+    }
+    e.aggroT = 999;
+  };
+  X.poolTick = function (g, pools, dt) {
+    let A = g.player;
+    for (let p of pools) {
+      if (Math.hypot(A.pos.x - p.x, A.pos.z - p.z) < p.r) {
+        g.hurtPlayer(A.maxHp * 0.09 * dt * 2, { pure: !0 });
+        A._poolHurt = (A._poolHurt || 0) + dt;
+      }
+    }
+  };
+  // guests tick their own pool damage and draw pools
+  let upd2 = P.update;
+  P.update = function (dt) {
+    upd2.call(this, dt);
+    let I = this.inst;
+    if (!I?.pools?.length) return;
+    if (!this.isHost) {
+      I.pools = I.pools.filter((p) => (p.t -= dt) > 0);
+      X.poolTick(this, I.pools, dt);
+    }
+    // visuals: ring particles
+    if (Math.random() < dt * 30)
+      for (let p of I.pools) {
+        let a = Math.random() * 6.28;
+        this.particles.emit(p.x + Math.cos(a) * p.r, I.def.floorY + 0.1, p.z + Math.sin(a) * p.r, { vel: [0, 0.6, 0], color: new _(p.col || 0x9a60ff), life: 0.8, size: 0.14, size1: 0, drag: 0.5 });
+      }
+  };
+  // riptide pull on guests
+  let on2 = P.onNet;
+  P.onNet = function (from, m) {
+    if (m?.t === "tele" && m.pullTo && this.inst) {
+      let p = this.player.pos,
+        dx = m.pullTo[0] - p.x,
+        dz = m.pullTo[1] - p.z,
+        L = Math.hypot(dx, dz) || 1;
+      p.x += (dx / L) * Math.max(0, L - 3.5);
+      p.z += (dz / L) * Math.max(0, L - 3.5);
+      this.ui.banner("", "RIPTIDE — run out of the wave", "#40ffd0");
+      return;
+    }
+    return on2.call(this, from, m);
+  };
+  // completion: the Deep hands out Mythic loot and the per-boss bonus; mythic drop chance on other raid bosses
+  let ci0 = P.completeInstance;
+  P.completeInstance = function () {
+    let I = this.inst,
+      d = I?.def,
+      locked = d && this.instLocked(d);
+    ci0.call(this);
+    if (d?.deep && !locked) {
+      let Q = this.player.pos.clone();
+      this.dropItem(Q, this.gen(60, 0, "mythic"));
+      this.track("mythics");
+      Math.random() < 0.5 && this.dropItem(Q, this.gen(60, 0, "mythic"));
+      this.toast("Something from the deep surfaces: a Mythic relic.", "#40ffd0");
+    }
+  };
+  let ok1 = P.onKill;
+  P.onKill = function (type, pos, lv, mine, ent, rareId) {
+    let r = ok1.call(this, type, pos, lv, mine, ent, rareId);
+    if (this.inst?.def?.deep && rw[type]?.inst && !this.instLocked(this.inst.def) && Math.random() < 0.18) {
+      this.dropItem(ii(pos.x ?? pos[0], (pos.y ?? pos[1]) + 0.5, pos.z ?? pos[2]), this.gen(60, 0, "mythic"));
+      this.track("mythics");
+    }
+    return r;
+  };
+}
+
+/* ---- E2_physics_world.js ---- */
+// ===== 1.11: slope physics, village terraces, house foundations =====
+{
+  // ---- settlements sit on a terrace: no houses hanging off hillsides, every house reachable on foot ----
+  let MO2 = MO,
+    sbase = {};
+  X.settleBase = (S) => (sbase[S.id] ??= MO2(S.pos[0], S.pos[1]));
+  MO = function (x, z) {
+    let h = MO2(x, z);
+    for (let S of X.SETTLE) {
+      if (S.town) continue; // towns already have a plateau
+      let d = Math.hypot(x - S.pos[0], z - S.pos[1]),
+        R = S.id === "dawnmere" ? S.rad + 2 : S.rad * 0.78,
+        B = S.id === "dawnmere" ? 34 : 24;
+      if (d < R + B) {
+        let base = X.settleBase(S),
+          k = X.sm(R + B, R, d);
+        // keep a little of the natural roll inside the village so it does not look like a parking lot
+        h = X.lerp(h, base + (h - base) * 0.12, k);
+      }
+    }
+    return h;
+  };
+  // ---- houses: foundation down to the lowest corner, so nothing floats on a slope ----
+  let W = bM.prototype,
+    house0 = W.house;
+  W.house = function (A, i, I, w = 7, g = 6, C = 3.5, Q = !0, s) {
+    let z = house0.call(this, A, i, I, w, g, C, Q, s);
+    try {
+      let hw = Math.max(w, g) * 0.6,
+        hd = Math.max(w, g) * 0.5,
+        cy = this.heightAt(A, i),
+        lo = cy;
+      for (let [dx, dz] of [
+        [-hw, -hd],
+        [hw, -hd],
+        [-hw, hd],
+        [hw, hd],
+        [0, -hd],
+        [0, hd],
+        [-hw, 0],
+        [hw, 0],
+      ]) {
+        let x = A + dx * Math.cos(I) + dz * Math.sin(I),
+          zz = i - dx * Math.sin(I) + dz * Math.cos(I);
+        lo = Math.min(lo, this.heightAt(x, zz));
+      }
+      if (cy - lo > 0.35) {
+        let hgt = cy - lo + 0.6,
+          f = new p(new iA(hw * 2, hgt, hd * 2), this.mat("stone", 0x6a665e));
+        f.position.set(A, cy - 0.15 - hgt / 2 + 0.05, i);
+        f.rotation.y = I;
+        f.castShadow = f.receiveShadow = !0;
+        this.scene.add(f);
+        (this._foundations ||= []).push(f);
+      }
+    } catch (e) {}
+    return z;
+  };
+
+  // ---- slope physics: the player cannot walk up ground steeper than ~50° and slides down it ----
+  const SLOPE = 1.15, // tan(49°)
+    PROBE = 0.55;
+  let P = SC.prototype,
+    up0 = P.updatePlayer;
+  P.updatePlayer = function (dt) {
+    let i = this.player;
+    if (i.dead || i.downed || this.pocket || !this.world || this.mounted?.fly) return up0.call(this, dt);
+    let x0 = i.pos.x,
+      z0 = i.pos.z,
+      g0 = this.world.groundAt(x0, z0),
+      wasGround = i.onGround;
+    up0.call(this, dt);
+    let dx = i.pos.x - x0,
+      dz = i.pos.z - z0,
+      dxz = Math.hypot(dx, dz);
+    if (this._dash) return;
+    if (dxz > 1e-4) {
+      let ux = dx / dxz,
+        uz = dz / dxz,
+        g1 = this.world.groundAt(x0 + ux * PROBE, z0 + uz * PROBE),
+        rise = g1 - g0;
+      // too steep uphill: undo the horizontal move and push back down the slope
+      if (rise > 0.45 && rise / PROBE > SLOPE && i.pos.y <= g0 + 1.2) {
+        i.pos.x = x0;
+        i.pos.z = z0;
+        wasGround && ((i.pos.y = g0), (i.vel.y = Math.min(i.vel.y, 0)));
+        i.vel.x = -ux * 1.5;
+        i.vel.z = -uz * 1.5;
+        this._slopeMsg = this._slopeMsg || 0;
+        if (this.t - this._slopeMsg > 6) {
+          this._slopeMsg = this.t;
+          this.toast("Too steep to climb.", "#c0c0c0");
+        }
+      }
+    }
+    // standing on steep ground: slide downhill
+    if (i.onGround) {
+      let hx = this.world.groundAt(i.pos.x + 0.4, i.pos.z) - this.world.groundAt(i.pos.x - 0.4, i.pos.z),
+        hz = this.world.groundAt(i.pos.x, i.pos.z + 0.4) - this.world.groundAt(i.pos.x, i.pos.z - 0.4),
+        gx = hx / 0.8,
+        gz = hz / 0.8,
+        gm = Math.hypot(gx, gz);
+      if (gm > SLOPE) {
+        let k = Math.min(1, (gm - SLOPE) * 1.5 + 0.3) * 9 * dt;
+        i.vel.x -= (gx / gm) * k * 1.5;
+        i.vel.z -= (gz / gm) * k * 1.5;
+        i.pos.x -= (gx / gm) * k * 0.5 * dt * 10;
+        i.pos.z -= (gz / gm) * k * 0.5 * dt * 10;
+        i.pos.y = Math.max(this.world.groundAt(i.pos.x, i.pos.z), i.pos.y - 0.3);
+      }
+    }
+  };
+}
+// ===== 1.11 graphics fixes: daylight exposure, camera near plane, lantern shadow toggle, house colliders =====
+{
+  let GP = SC.prototype;
+  // daytime exposure: the 1.9 boost (×1.3) was meant for night scenes; at midday it blew out the sky and skin
+  let P = SC.prototype,
+    ue1 = P.updateEnv;
+  P.updateEnv = function (dt) {
+    ue1.call(this, dt);
+    let app = window.__app,
+      i = this.env;
+    if (app?.renderer && i) {
+      let day = i.day || 0,
+        k = 1.3 - 0.32 * day;
+      app.renderer.toneMappingExposure = (this.settings.exposure || 1) * k;
+    }
+  };
+  // near plane 0.05 → 0.1: better depth precision for fog / AO / god rays (view model sits at z −0.5)
+  let app = window.__app;
+  app?.camera && app.camera.near < 0.1 && ((app.camera.near = 0.1), app.camera.updateProjectionMatrix());
+  // lantern point-light shadows render the scene six more times per frame; make them a setting, default off
+  let st1 = GP.start;
+  GP.start = function (...a) {
+    st1.apply(this, a);
+    this.lantern && (this.lantern.castShadow = this.settings.lanternShadows === !0);
+    window.__app?.camera && window.__app.camera.near < 0.1 && ((window.__app.camera.near = 0.1), window.__app.camera.updateProjectionMatrix());
+  };
+  // house colliders match the model footprint (they were 16% smaller, so the camera could end up inside a wall)
+  let W = bM.prototype,
+    ab0 = W.addBox;
+  W.addBox = function (A, i, I, w, g, C, Q) {
+    Q === "house" && ((I *= 1.24), (w *= 1.24));
+    return ab0.call(this, A, i, I, w, g, C, Q);
+  };
+  // settings UI entry
+  let sh2 = XC.prototype.settingsHTML;
+  XC.prototype.settingsHTML = function () {
+    let A = this.app.settings;
+    return sh2.call(this).replace("<label>Show FPS", `<label>Lantern casts shadows (expensive, applies on next start) <input type="checkbox" id="s-lsh" ${A.lanternShadows === !0 ? "checked" : ""}></label>\n      <label>Show FPS`);
+  };
+  let bs2 = XC.prototype.bindSettings;
+  XC.prototype.bindSettings = function () {
+    bs2.call(this);
+    let A = this.app.settings,
+      el = document.getElementById("s-lsh");
+    el && (el.oninput = () => ((A.lanternShadows = el.checked), this.app.applySettings()));
+  };
+}
+
+/* ---- E3_collections.js ---- */
+// ===== 1.11: Collections journal, more mounts & companions, achievement/stat unlocks =====
+Object.assign(X.MOUNTS, {
+  ashcharger: { name: "Ashen Charger", speed: 2.1, cost: 12000, model: "horse", col: 0x2a2626, glow: 0xff6a20, desc: "A warhorse that walked through the Cathedral fire and kept walking." },
+  moondoe: { name: "Moonpale Doe", speed: 2.1, cost: -1, model: "stag", col: 0xf0f0ff, glow: 0xc0d0ff, ach: "kills_1000", desc: "Reward for The Reaper's Apprentice. Silent as snowfall." },
+  vigilhound: { name: "Hound of the Vigil", speed: 2.15, cost: -1, model: "wolf", col: 0xd8c090, glow: 0xffd070, stat: ["dungeons", 25], desc: "Reward for 25 dungeon clears. It knows every crypt by smell." },
+  keyhorse: { name: "Keystone Courser", speed: 2.3, cost: -1, model: "horse", col: 0x5a4a8a, glow: 0xa070ff, stat: ["mplus_timed", 10], desc: "Reward for 10 timed Mythic+ runs." },
+});
+Object.assign(X.COMPANIONS, {
+  frostwisp: { name: "Frost Wisp", kind: "heal", cost: -1, model: "wisp", scale: 0.9, col: 0x9ad0ff, dmg: 0, drop: "hrimgar", desc: "Rare drop from Hrimgar. Cold comfort, literally." },
+  cryptrat: { name: "Crypt Rat", kind: "melee", cost: -1, model: "wolf", scale: 0.45, col: 0x6a6a72, dmg: 10, stat: ["dun_crypt", 5], desc: "Reward for 5 Barrow Crypts clears. Surprisingly loyal." },
+  clockgolem: { name: "Clockwork Golem", kind: "tank", cost: 9000, model: "golem", scale: 0.9, col: 0xb08a40, dmg: 20, desc: "Sold by the Broker. Ticks when it's worried." },
+  stormdrake: { name: "Storm Drakeling", kind: "ranged", cost: -1, model: "drake", scale: 1, col: 0x8080ff, dmg: 34, drop: "raid_throne", desc: "Drops from the Throne of Storms. Spits lightning." },
+});
+{
+  let P = SC.prototype,
+    U = XC.prototype;
+  // ---- unlock by achievement / stat / boss drop ----
+  X.checkCollectionUnlocks = function (g) {
+    let p = g.profile;
+    if (!p) return;
+    for (let [tbl, fn] of [
+      [X.MOUNTS, X.unlockMount],
+      [X.COMPANIONS, X.unlockCompanion],
+    ])
+      for (let id in tbl) {
+        let d = tbl[id];
+        if (d.ach && p.ach?.[d.ach]) fn(g, id);
+        else if (d.stat && (p.stats?.[d.stat[0]] || 0) >= d.stat[1]) fn(g, id);
+      }
+  };
+  let ok2 = P.onKill;
+  P.onKill = function (type, pos, lv, mine, ent, rareId) {
+    let r = ok2.call(this, type, pos, lv, mine, ent, rareId);
+    if (rw[type]?.boss) for (let id in X.COMPANIONS) X.COMPANIONS[id].drop === type && Math.random() < 0.12 && X.unlockCompanion(this, id);
+    return r;
+  };
+  let ss0 = P.setStat;
+  P.setStat = function (a, b) {
+    let r = ss0.call(this, a, b);
+    this._colChk = (this._colChk || 0) + 1;
+    this._colChk % 5 === 0 && X.checkCollectionUnlocks(this);
+    return r;
+  };
+  // ---- journal ----
+  X.cosSource = (c) => (c.cost === 0 ? "default" : c.cost > 0 ? `${c.cost} marks (Wardrobe)` : c.ach ? "Achievement: " + (WB.find((a) => a.id === c.ach)?.name || c.ach) : "special");
+  X.itemSetOwned = function (g) {
+    let p = g.profile,
+      all = [...(p.inventory || [])];
+    for (let h in p.heroes || {}) for (let s in p.heroes[h].gear || {}) p.heroes[h].gear[s] && all.push(p.heroes[h].gear[s]);
+    for (let it of p.stash || []) it && all.push(it);
+    return all;
+  };
+  U.collectionsHTML = function () {
+    let p = this.app.profile,
+      g = this.app.game,
+      mounts = p.mounts || [],
+      comps = p.companions || [],
+      owned = p.owned || [],
+      catName = { finish: "Armor finishes", cloak: "Cloaks", aura: "Auras", flame: "Lantern flames", hat: "Hats", wings: "Wings" },
+      tot = 0,
+      have = 0,
+      card = (ok, name, sub, extra = "", col = "#ffd070") => `<div class="shop-i col-i ${ok ? "own" : "lock"}" style="border-color:${ok ? col : "#444"}"><div class="tip-n" style="color:${ok ? col : "#8a8a8a"}">${ok ? "✔ " : "✖ "}${name}</div><div class="tip-r">${sub}</div>${extra}</div>`;
+    let h = "";
+    // mounts
+    let mh = Object.entries(X.MOUNTS)
+      .map(([id, d]) => {
+        let ok = mounts.includes(id);
+        tot++;
+        ok && have++;
+        let src = d.cost === 0 ? "Stable (free)" : d.cost > 0 ? `${d.cost} shards at the stable` : d.ach ? "Achievement: " + (WB.find((a) => a.id === d.ach)?.name || d.ach) : d.stat ? `${d.stat[1]} \xD7 ${d.stat[0].replace(/_/g, " ")}` : d.drop ? "Drop: " + (rw[d.drop]?.name || X.INST[d.drop.replace("raid_", "")]?.name || d.drop) : "?";
+        return card(ok, d.name, `Speed \xD7${d.speed} \xB7 ${src}`, ok ? `<button data-colmount="${id}" ${p.mount === id ? "disabled" : ""}>${p.mount === id ? "Favourite" : "Set favourite"}</button>` : "", "#ffd070");
+      })
+      .join("");
+    let ch = Object.entries(X.COMPANIONS)
+      .map(([id, d]) => {
+        let ok = comps.includes(id);
+        tot++;
+        ok && have++;
+        let src = d.cost === 0 ? "Kennel (free)" : d.cost > 0 ? `${d.cost} shards` : d.ach ? "Achievement: " + (WB.find((a) => a.id === d.ach)?.name || d.ach) : d.stat ? `${d.stat[1]} \xD7 ${d.stat[0].replace(/_/g, " ")}` : d.drop ? "Drop: " + (rw[d.drop]?.name || X.INST[d.drop.replace("raid_", "")]?.name || d.drop) : "?";
+        return card(ok, d.name, `${d.kind} \xB7 ${src}`, ok ? `<button data-colcomp="${id}" ${p.companion === id ? "disabled" : ""}>${p.companion === id ? "Summoned" : "Summon"}</button>` : "", "#9ad0ff");
+      })
+      .join("");
+    // cosmetics
+    let cosH = "";
+    for (let cat in Zi) {
+      let list = Zi[cat],
+        n = list.filter((c) => c.cost === 0 || owned.includes(c.id + ":" + cat)).length;
+      tot += list.length;
+      have += n;
+      cosH += `<h4>${catName[cat] || cat} <small>${n}/${list.length}</small></h4><div class="col-row">${list.map((c) => `<span class="col-chip ${c.cost === 0 || owned.includes(c.id + ":" + cat) ? "own" : "lock"}" title="${X.cosSource(c)}">${c.name}</span>`).join("")}</div>`;
+    }
+    // item sets
+    let setsH = "";
+    if (X.SETS) {
+      let all = g ? X.itemSetOwned(g) : [];
+      for (let id in X.SETS) {
+        let S = X.SETS[id],
+          pcs = all.filter((it) => it.set === id),
+          slots = [...new Set(pcs.map((it) => it.slot))];
+        tot += 4;
+        have += Math.min(4, slots.length);
+        setsH += card(slots.length >= 4, `${S.name} <small>${Math.min(4, slots.length)}/4</small>`, `2: ${S.b2?.text || "?"} \xB7 4: ${S.b4?.text || "?"}`, `<div class="small">${XB.filter((s) => s !== "relic").map((s) => `<span class="col-chip ${slots.includes(s) ? "own" : "lock"}">${s}</span>`).join("")}</div>`, "#b04aff");
+      }
+    }
+    // appearances
+    let ap = Object.keys(p.appear || {}).length;
+    let achN = Object.keys(p.ach || {}).length;
+    tot += WB.length;
+    have += achN;
+    h += `<h2>Collections <small>${have} / ${tot} \xB7 ${Math.round((have / Math.max(1, tot)) * 100)}% complete</small></h2>
+      <div class="col-bar"><div style="width:${Math.round((have / Math.max(1, tot)) * 100)}%"></div></div>
+      <h3>Mounts <small>${mounts.length}/${Object.keys(X.MOUNTS).length} \xB7 press Z to ride your favourite</small></h3><div class="shop col-grid">${mh}</div>
+      <h3>Companions <small>${comps.length}/${Object.keys(X.COMPANIONS).length}</small></h3><div class="shop col-grid">${ch}</div>
+      <h3>Cosmetics</h3>${cosH}
+      <h3>Item sets</h3><div class="shop col-grid">${setsH || '<div class="small">No sets found yet — they drop in dungeons and raids.</div>'}</div>
+      <h3>Appearances <small>${ap} unlocked for transmog</small></h3><p class="small">Every item you pick up unlocks its look for transmog at the Wardrobe.</p>
+      <h3>Achievements <small>${achN}/${WB.length}</small></h3><p class="small">See the Achievements tab for the full list.</p>`;
+    return h;
+  };
+  let ep1 = U.extraPanel;
+  U.extraPanel = function (B, A) {
+    if (B === "collections") return this.collectionsHTML();
+    return ep1.call(this, B, A);
+  };
+  let be1 = U.bindExtra;
+  U.bindExtra = function (B, A, i) {
+    if (B === "collections") {
+      let p = this.app.profile,
+        g = this.app.game;
+      document.querySelectorAll("#modal [data-colmount]").forEach((c) => (c.onclick = () => ((p.mount = c.dataset.colmount), g?.save?.(), this.toast?.(`${X.MOUNTS[p.mount].name} is now your favourite mount`, "#ffd070"), this.panel("collections"))));
+      document.querySelectorAll("#modal [data-colcomp]").forEach((c) => (c.onclick = () => ((p.companion = c.dataset.colcomp), g?.save?.(), g?.spawnCompanion?.(), this.panel("collections"))));
+    }
+    return be1.call(this, B, A, i);
+  };
+  // tab in the panel bar
+  let pn0 = U.panel;
+  U.panel = function (A, i) {
+    pn0.call(this, A, i);
+    let tabs = document.querySelector("#modal .tabs");
+    if (tabs && !tabs.querySelector('[data-tab="collections"]')) {
+      let b = document.createElement("button");
+      ((b.className = "tab" + (A === "collections" ? " on" : "")), (b.dataset.tab = "collections"), (b.textContent = "Collections"));
+      let ach = tabs.querySelector('[data-tab="ach"]');
+      ach ? ach.after(b) : tabs.insertBefore(b, tabs.querySelector(".close"));
+      b.onclick = () => this.panel("collections", i);
+    }
+  };
+  // key: Y opens it... Y is taken by social, use Comma
+  let kd0 = P.onKey;
+  P.onKey = function (code, down) {
+    if (down && code === "Comma" && this.running && !this.ui.chatting) {
+      this.ui.panel("collections");
+      return;
+    }
+    return kd0?.call(this, code, down);
+  };
+  // pause menu button
+  let pz1 = U.pause;
+  U.pause = function (A) {
+    pz1.call(this, A);
+    if (!A) return;
+    let q = document.querySelector('#pause [data-p="quit"]');
+    if (q && !document.querySelector('#pause [data-p="collections"]')) {
+      let b = document.createElement("button");
+      ((b.dataset.p = "collections"), (b.textContent = "Collections"));
+      q.parentNode.insertBefore(b, q);
+      b.onclick = () => {
+        this.click();
+        document.getElementById("pause").classList.remove("on");
+        this.panel("collections");
+      };
+    }
+  };
+  // css
+  let st = document.createElement("style");
+  st.textContent = `.col-bar{height:8px;background:#222;border:1px solid #554;margin:6px 0 10px}.col-bar>div{height:100%;background:linear-gradient(90deg,#ffd070,#40ffd0)}
+  .col-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px}.col-i.lock{opacity:.6}.col-row{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0 8px}
+  .col-chip{font-size:11px;padding:2px 7px;border:1px solid #555;border-radius:3px;color:#777}.col-chip.own{border-color:#ffd070;color:#ffe08a}`;
+  document.head.appendChild(st);
+}
+
+/* ---- E4_perf.js ---- */
+// ===== 1.11 performance: spatial chunking so the camera and the shadow camera only draw what they can see =====
+// Visual result is identical: the same geometry, materials and instances, just split into 128 m cells so three.js
+// frustum culling can skip the rest (before, one world-sized InstancedMesh of trees was drawn whole every frame,
+// in the main pass and in every shadow pass).
+{
+  const CELL = 256;
+  let tmpM = new _A(),
+    tmpV = new N();
+  X.splitInstanced = function (scene, im) {
+    let n = im.count,
+      geo = im.geometry,
+      cells = new Map(),
+      pos = new N(),
+      hasCol = !!im.instanceColor,
+      col = new _();
+    for (let i = 0; i < n; i++) {
+      im.getMatrixAt(i, tmpM);
+      pos.setFromMatrixPosition(tmpM);
+      let key = `${Math.floor(pos.x / CELL)},${Math.floor(pos.z / CELL)}`,
+        c = cells.get(key);
+      c || cells.set(key, (c = []));
+      c.push(i);
+    }
+    if (cells.size < 2) return 0;
+    let parent = im.parent;
+    for (let [, idx] of cells) {
+      let m = new WI(geo, im.material, idx.length);
+      for (let j = 0; j < idx.length; j++) {
+        im.getMatrixAt(idx[j], tmpM);
+        m.setMatrixAt(j, tmpM);
+        if (hasCol) {
+          im.getColorAt(idx[j], col);
+          m.setColorAt(j, col);
+        }
+      }
+      m.instanceMatrix.needsUpdate = !0;
+      m.instanceColor && (m.instanceColor.needsUpdate = !0);
+      ((m.castShadow = im.castShadow), (m.receiveShadow = im.receiveShadow), (m.frustumCulled = !0), (m.renderOrder = im.renderOrder), (m.layers.mask = im.layers.mask));
+      m.position.copy(im.position);
+      m.rotation.copy(im.rotation);
+      m.scale.copy(im.scale);
+      m.userData = { ...im.userData, chunkOf: im.uuid };
+      m.computeBoundingSphere();
+      parent.add(m);
+    }
+    parent.remove(im);
+    return cells.size;
+  };
+  // terrain: one 1M-triangle mesh → grid of chunks sharing the same attribute buffers (uploaded once)
+  X.splitTerrain = function (world, nx = 8) {
+    let T = world.terrain;
+    if (!T || !T.geometry.index || T.userData.chunked) return 0;
+    let geo = T.geometry,
+      idx = geo.index.array,
+      P = geo.attributes.position.array,
+      box = (geo.boundingBox || geo.computeBoundingBox(), geo.boundingBox),
+      sx = (box.max.x - box.min.x) / nx,
+      sz = (box.max.z - box.min.z) / nx,
+      buckets = Array.from({ length: nx * nx }, () => []);
+    for (let t = 0; t < idx.length; t += 3) {
+      let a = idx[t],
+        cx = P[a * 3],
+        cz = P[a * 3 + 2],
+        i = Math.min(nx - 1, Math.max(0, Math.floor((cx - box.min.x) / sx))),
+        j = Math.min(nx - 1, Math.max(0, Math.floor((cz - box.min.z) / sz)));
+      buckets[j * nx + i].push(idx[t], idx[t + 1], idx[t + 2]);
+    }
+    let grp = new eA();
+    grp.name = "terrain-chunks";
+    for (let b of buckets) {
+      if (!b.length) continue;
+      let g = new Ti();
+      for (let k in geo.attributes) g.setAttribute(k, geo.attributes[k]);
+      g.setIndex(new Yi(new Uint32Array(b), 1));
+      // bounds from the chunk's own vertices only (computeBoundingSphere would use the whole shared buffer)
+      let bb = new lI();
+      for (let k = 0; k < b.length; k++) {
+        let v3 = b[k] * 3;
+        bb.expandByPoint(tmpV.set(P[v3], P[v3 + 1], P[v3 + 2]));
+      }
+      g.boundingBox = bb;
+      g.boundingSphere = bb.getBoundingSphere(new xI());
+      let m = new p(g, T.material);
+      ((m.receiveShadow = T.receiveShadow), (m.castShadow = T.castShadow), (m.frustumCulled = !0), (m.renderOrder = T.renderOrder));
+      grp.add(m);
+    }
+    grp.position.copy(T.position);
+    grp.rotation.copy(T.rotation);
+    grp.scale.copy(T.scale);
+    T.parent.add(grp);
+    T.parent.remove(T);
+    T.userData.chunked = !0;
+    world.terrainChunks = grp;
+    // keep world.terrain pointing at a mesh with the full geometry for code that reads it (raycasts, uniforms);
+    // it is no longer in the scene, so it costs nothing to draw
+    return grp.children.length;
+  };
+  X.onWorld((world) => {
+    let t0 = performance.now(),
+      list = [];
+    world.scene.traverse((o) => o.isInstancedMesh && o.count >= 200 && !o.userData.noSplit && !o.userData.chunkOf && list.push(o));
+    let cells = 0;
+    for (let im of list) cells += X.splitInstanced(world.scene, im);
+    let tc = 0;
+    try {
+      tc = X.splitTerrain(world, 10);
+    } catch (e) {
+      console.warn("terrain chunking", e);
+    }
+    console.log(`perf: ${list.length} instanced meshes → ${cells} cells, terrain → ${tc} chunks in ${(performance.now() - t0).toFixed(0)} ms`);
+  });
+}
+// ===== static batching: thousands of small static meshes → one draw per material per 96 m cell =====
+// Same materials, same shadows, same vertex data (baked into world space), so the picture is identical;
+// only the number of draw calls changes. Dynamic objects (breakables, shrines, lore, gathering nodes,
+// portals, water, anything skinned/transparent/custom-shader) are left alone.
+{
+  const CELL = 96;
+  let isStandard = (m) => m && m.isMeshStandardMaterial && !m.onBeforeCompile?.toString().includes("vMapUv") && !m.transparent && !m.userData?.noMerge;
+  X.batchStatic = function (world) {
+    let scene = world.scene,
+      skip = new Set(),
+      mark = (o) => o && o.traverse?.((c) => skip.add(c));
+    for (let b of world.breakables || []) mark(b.ref || b.mesh || b);
+    for (let s of world.shrineObjs || []) mark(s.group);
+    for (let l of world.loreObjs || []) mark(l.group);
+    for (let n of X.nodes || []) mark(n.mesh);
+    for (let P of X.portals || []) mark(P.obj);
+    for (let f of world._foundations || []) {} // foundations are static: merge them
+    mark(world.water);
+    mark(world.sky);
+    mark(world.terrain);
+    mark(world.terrainChunks);
+    for (let d of world.domes || []) mark(d.mesh || d);
+    for (let R of X.RIVERS || []) for (let B of R.bridges || []) mark(B.mesh);
+    let groups = new Map(),
+      cand = [];
+    scene.traverse((o) => {
+      if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || o.isSprite || skip.has(o) || !o.visible) return;
+      if (o.morphTargetInfluences?.length || o.userData.noMerge || o.userData.chunkOf) return;
+      let m = o.material,
+        g = o.geometry;
+      if (Array.isArray(m) || !isStandard(m) || !g?.attributes?.position || m.onBeforeCompile && m.onBeforeCompile !== Object.getPrototypeOf(m).onBeforeCompile && m.onBeforeCompile.toString().length > 40) return;
+      let tri = (g.index ? g.index.count : g.attributes.position.count) / 3;
+      if (tri > 6000 || tri < 1) return;
+      // only things that sit under the scene root or root-level groups (world-build props), never under cameras or rigs
+      let p = o.parent,
+        depth = 0;
+      while (p && p !== scene) {
+        if (p.isBone || p.isSkinnedMesh || p === window.__app?.camera || p.userData.noMerge) return;
+        p = p.parent;
+        depth++;
+      }
+      if (!p || depth > 4) return;
+      cand.push(o);
+    });
+    let tmp = new N();
+    for (let o of cand) {
+      o.updateWorldMatrix(!0, !1);
+      tmp.setFromMatrixPosition(o.matrixWorld);
+      let g = o.geometry,
+        attrs = Object.keys(g.attributes).sort().join(","),
+        key = `${o.material.uuid}|${o.castShadow ? 1 : 0}${o.receiveShadow ? 1 : 0}|${o.renderOrder}|${attrs}|${Math.floor(tmp.x / CELL)},${Math.floor(tmp.z / CELL)}`,
+        L = groups.get(key);
+      L || groups.set(key, (L = []));
+      L.push(o);
+    }
+    let made = 0,
+      removed = 0;
+    for (let [, L] of groups) {
+      if (L.length < 3) continue;
+      let first = L[0].geometry,
+        names = Object.keys(first.attributes),
+        sizes = {},
+        total = 0,
+        itotal = 0,
+        ok = !0;
+      for (let n of names) sizes[n] = first.attributes[n].itemSize;
+      for (let o of L) {
+        let g = o.geometry;
+        for (let n of names) if (!g.attributes[n] || g.attributes[n].itemSize !== sizes[n] || g.attributes[n].normalized) ok = !1;
+        total += g.attributes.position.count;
+        itotal += g.index ? g.index.count : g.attributes.position.count;
+      }
+      if (!ok) continue;
+      let arrays = {},
+        off = {};
+      for (let n of names) ((arrays[n] = new Float32Array(total * sizes[n])), (off[n] = 0));
+      let index = new (total > 65535 ? Uint32Array : Uint16Array)(itotal),
+        ioff = 0,
+        voff = 0,
+        nm = new wi();
+      for (let o of L) {
+        let g = o.geometry,
+          M = o.matrixWorld;
+        nm.getNormalMatrix(M);
+        for (let n of names) {
+          let a = g.attributes[n],
+            src = a.array,
+            dst = arrays[n],
+            k = sizes[n];
+          if (n === "position") for (let i = 0; i < a.count; i++) (tmp.fromBufferAttribute(a, i).applyMatrix4(M), (dst[off[n] + i * 3] = tmp.x), (dst[off[n] + i * 3 + 1] = tmp.y), (dst[off[n] + i * 3 + 2] = tmp.z));
+          else if (n === "normal") for (let i = 0; i < a.count; i++) (tmp.fromBufferAttribute(a, i).applyMatrix3(nm).normalize(), (dst[off[n] + i * 3] = tmp.x), (dst[off[n] + i * 3 + 1] = tmp.y), (dst[off[n] + i * 3 + 2] = tmp.z));
+          else dst.set(src.subarray ? src.subarray(0, a.count * k) : src, off[n]);
+          off[n] += a.count * k;
+        }
+        if (g.index) for (let i = 0; i < g.index.count; i++) index[ioff++] = g.index.array[i] + voff;
+        else for (let i = 0; i < g.attributes.position.count; i++) index[ioff++] = i + voff;
+        voff += g.attributes.position.count;
+      }
+      let geo = new Ti();
+      for (let n of names) geo.setAttribute(n, new Yi(arrays[n], sizes[n]));
+      geo.setIndex(new Yi(index, 1));
+      geo.computeBoundingBox();
+      geo.computeBoundingSphere();
+      let mesh = new p(geo, L[0].material);
+      ((mesh.castShadow = L[0].castShadow), (mesh.receiveShadow = L[0].receiveShadow), (mesh.renderOrder = L[0].renderOrder), (mesh.frustumCulled = !0), (mesh.userData.batched = L.length));
+      mesh.name = "batch";
+      scene.add(mesh);
+      made++;
+      for (let o of L) {
+        o.parent && o.parent.remove(o);
+        removed++;
+      }
+    }
+    return { made, removed, cand: cand.length };
+  };
+  X.onWorld((world) => {
+    let t0 = performance.now();
+    try {
+      let r = X.batchStatic(world);
+      console.log(`perf: static batching ${r.removed}/${r.cand} meshes → ${r.made} batches in ${(performance.now() - t0).toFixed(0)} ms`);
+    } catch (e) {
+      console.error("static batching", e);
+    }
+  });
+}
+// ===== gathering nodes: ~470 nodes × 8 meshes → a few instanced meshes per cell; hiding a node zero-scales its instances =====
+{
+  const CELL = 600;
+  let unitGeo = new Map(),
+    canon = (g) => {
+      let P = g.parameters || {},
+        t = g.type;
+      if (t === "DodecahedronGeometry" || t === "OctahedronGeometry" || t === "SphereGeometry") {
+        let key = `${t}:${P.detail ?? ""}:${P.widthSegments ?? ""}:${P.heightSegments ?? ""}`,
+          u = unitGeo.get(key);
+        u || unitGeo.set(key, (u = t === "DodecahedronGeometry" ? new Pg(1, P.detail || 0) : t === "OctahedronGeometry" ? new tB(1, P.detail || 0) : new JA(1, P.widthSegments || 8, P.heightSegments || 6)));
+        return [key, u, P.radius || 1];
+      }
+      if (t === "ConeGeometry" || t === "CylinderGeometry") {
+        let key = `${t}:${JSON.stringify(P)}`,
+          u = unitGeo.get(key);
+        u || unitGeo.set(key, (u = g));
+        return [key, u, 1];
+      }
+      return null;
+    };
+  X.instanceNodes = function (world) {
+    let scene = world.scene,
+      buckets = new Map(),
+      tmpM = new _A(),
+      pos = new N(),
+      sc = new N();
+    for (let n of X.nodes || []) {
+      let grp = n.mesh;
+      if (!grp || grp.userData.instanced) continue;
+      grp.updateWorldMatrix(!0, !0);
+      let refs = [];
+      for (let m of [...grp.children]) {
+        if (!m.isMesh || !m.material?.isMeshStandardMaterial) continue;
+        let c = canon(m.geometry);
+        if (!c) continue;
+        let [gk, u, r] = c;
+        pos.setFromMatrixPosition(grp.matrixWorld);
+        let key = `${gk}|${m.material.uuid}|${Math.floor(pos.x / CELL)},${Math.floor(pos.z / CELL)}`,
+          B = buckets.get(key);
+        B || buckets.set(key, (B = { geo: u, mat: m.material, items: [] }));
+        tmpM.copy(m.matrixWorld);
+        r !== 1 && tmpM.multiply(new _A().makeScale(r, r, r));
+        B.items.push({ node: n, m: tmpM.clone() });
+        grp.remove(m);
+      }
+      grp.userData.instanced = !0;
+      n.inst = refs;
+    }
+    let made = 0;
+    for (let [, B] of buckets) {
+      let im = new WI(B.geo, B.mat, B.items.length);
+      B.items.forEach((it, i) => {
+        im.setMatrixAt(i, it.m);
+        (it.node.inst ||= []).push([im, i, it.m]);
+      });
+      ((im.castShadow = !0), (im.receiveShadow = !1), (im.frustumCulled = !0), (im.userData.noSplit = !0), (im.userData.chunkOf = "nodes"));
+      im.computeBoundingSphere();
+      im.instanceMatrix.needsUpdate = !0;
+      scene.add(im);
+      made++;
+    }
+    // visibility proxy: hiding the node group hides its instances too
+    let zero = new _A().makeScale(0, 0, 0);
+    for (let n of X.nodes || []) {
+      let grp = n.mesh;
+      if (!grp || grp.userData.visProxy) continue;
+      grp.userData.visProxy = !0;
+      let vis = grp.visible;
+      Object.defineProperty(grp, "visible", {
+        get: () => vis,
+        set: (v) => {
+          vis = !!v;
+          for (let [im, i, m] of n.inst || []) (im.setMatrixAt(i, vis ? m : zero), (im.instanceMatrix.needsUpdate = !0));
+          vis && im_touch(n);
+        },
+        configurable: !0,
+      });
+    }
+    let im_touch = (n) => {
+      for (let [im] of n.inst || []) im.computeBoundingSphere?.();
+    };
+    return made;
+  };
+  X.onWorld((world) => {
+    try {
+      let t0 = performance.now(),
+        made = X.instanceNodes(world);
+      console.log(`perf: gathering nodes → ${made} instanced meshes in ${(performance.now() - t0).toFixed(0)} ms`);
+    } catch (e) {
+      console.error("node instancing", e);
+    }
+  });
 }
 
   window.__app = new bE();
