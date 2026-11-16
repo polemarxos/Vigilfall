@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.11.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.11.3</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -22102,7 +22102,7 @@ a=extmap-allow-mixed`) !== -1
       done: (B) => (B.profile.stats.dodges || 0) > B.tut.dodge0,
     },
     {
-      text: "Walk to the great bonfire and press <b>F</b> to light it. Shrines heal you, refill potions and oil, and are where you return when you die.",
+      text: "Walk to the great bonfire and press <b>F</b> to light it. Shrines refill your oil and potions and are where you return when you die (they do not heal — rest out of combat or see a healer).",
       done: (B) => B.profile.campaign.shrines.includes("vigil"),
     },
     {
@@ -24026,11 +24026,12 @@ a=extmap-allow-mixed`) !== -1
       fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime, uInsane, uHurt, uBlood, uDawn; varying vec2 vUv;
     void main(){
       vec2 uv = vUv; float w = smoothstep(0.45, 1.0, uInsane);
+      #define SCRUB(c) (any(isnan(c)) || any(isinf(c)) ? vec3(0.0) : (c))
       uv += vec2(sin(uv.y*18.0 + uTime*2.0), cos(uv.x*14.0 + uTime*1.7)) * 0.004 * w;
       vec2 c = uv - 0.5; float ca = w*0.006 + uHurt*0.004;
-      vec3 col = vec3(texture2D(tDiffuse, uv + c*ca).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - c*ca).b);
+      vec3 col = SCRUB(vec3(texture2D(tDiffuse, uv + c*ca).r, texture2D(tDiffuse, uv).g, texture2D(tDiffuse, uv - c*ca).b));
       float l = dot(col, vec3(0.299,0.587,0.114));
-      col = mix(col, vec3(l), -0.22);                // desaturate: bleak world
+      col = max(mix(col, vec3(l), -0.22), vec3(0.0));   // saturate a little (clamped: HDR glows must not go negative)
       col *= mix(vec3(1.0), vec3(0.92,0.96,1.12), 0.6*(1.0-uDawn));     // cold shadows
       col += vec3(0.004,0.006,0.012)*(1.0-uDawn);                        // lifted blue blacks
       col = mix(col, col*vec3(1.35,0.75,0.7), uBlood*0.55);              // blood moon grade
@@ -32731,7 +32732,7 @@ Object.assign(rw.unbound, { hp: 240000 });
       uniforms: { uT: { value: 0 }, uHit: { value: new N(0, 0, 0) }, uHitT: { value: -10 } },
       vertexShader: `varying vec3 vN; varying vec3 vV; varying vec3 vW; void main(){ vN = normalize(normalMatrix * normal); vec4 mv = modelViewMatrix * vec4(position,1.0); vV = -mv.xyz; vW = (modelMatrix * vec4(position,1.0)).xyz; gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `uniform float uT; uniform vec3 uHit; uniform float uHitT; varying vec3 vN; varying vec3 vV; varying vec3 vW;
-      void main(){ float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.6); float hex = smoothstep(0.92,1.0,sin(vW.x*1.7+uT*0.6)*sin(vW.y*1.7)*sin(vW.z*1.7-uT*0.4)); float h = exp(-distance(vW,uHit)*0.35) * max(0.0, 1.0-(uT-uHitT)*1.5);
+      void main(){ float f = pow(clamp(1.0 - abs(dot(normalize(vN), normalize(vV))), 0.0, 1.0), 2.6); float hex = smoothstep(0.92,1.0,sin(vW.x*1.7+uT*0.6)*sin(vW.y*1.7)*sin(vW.z*1.7-uT*0.4)); float h = exp(-distance(vW,uHit)*0.35) * max(0.0, 1.0-(uT-uHitT)*1.5);
       vec3 col = mix(vec3(0.25,0.55,1.0), vec3(0.7,0.9,1.0), f); float a = f*0.55 + hex*0.08 + h*0.9 + 0.02; if (vW.y < 0.2) discard; gl_FragColor = vec4(col, a); }`,
       transparent: !0,
       depthWrite: !1,
@@ -33077,7 +33078,7 @@ Object.assign(rw.unbound, { hp: 240000 });
         float rad = 1.0 - smoothstep(0.2, 1.1, length(uSun - vUv)); col += min(acc * (uStr / 40.0) * uCol * (0.2 + rad * 0.8), vec3(0.45)); }
       float l = dot(col, vec3(0.299,0.587,0.114));`,
     )
-    .replace("gl_FragColor = vec4(col, 1.0);", "col = mix(col, col*col*(3.0-2.0*col), 0.22); float l2 = dot(col, vec3(0.299,0.587,0.114)); col = mix(vec3(l2), col, 1.08); gl_FragColor = vec4(col, 1.0);");
+    .replace("gl_FragColor = vec4(col, 1.0);", "col = max(col, vec3(0.0)); vec3 c1 = clamp(col, 0.0, 1.0); col = mix(col, c1*c1*(3.0-2.0*c1) + max(col - 1.0, 0.0), 0.22); float l2 = dot(col, vec3(0.299,0.587,0.114)); col = max(mix(vec3(l2), col, 1.08), vec3(0.0)); gl_FragColor = vec4(col, 1.0);");
 
   // ---- shadows & textures after the game is built ----
   let st0 = GP.start;
@@ -33600,8 +33601,14 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.11.0";
+  X.VERSION = "1.11.3";
   X.CHANGELOG = {
+    "1.11.3": ["Fixed the half-black screen inside villages: the ward dome's rim shader produced NaN pixels when you looked straight at the dome from near its centre (the bonfire square), and bloom smeared them across the screen. The colour grade now also scrubs any NaN/Inf pixel as a safety net."],
+    "1.11.2": ["Settings → Troubleshooting: live switches for sun shadows, point lights, your lantern, water, wards, vegetation, batched props, first-person hands, sky, glow sprites and flames — to isolate the half-black-screen problem."],
+    "1.11.1": [
+      "Fixed the coloured rings around bright lights and the black flicker near torches and lanterns: the colour grade was applying its film curve to raw HDR light values, which went negative around hot spots.",
+      "The lantern burns no oil in daylight or within 14 m of any lit flame. Resting at a flame refills oil, sanity and potions only — never health or mana (tutorial text corrected).",
+    ],
     "1.11.0": [
       "The Drowned Deep: a new 8-player raid at Mossend with four bosses — Morvath the Tidecaller, the Drowned Leviathan, the Abyssal Choir and Ythar, the Drowned King — each with its own mechanic, and a new Mythic loot tier above Relic.",
       "Branching instances: raids are a hub with wings and a sealed gate before the last boss; dungeons gained hidden side rooms with treasure chests or a Vault Warden.",
@@ -36124,6 +36131,20 @@ X.buildPocket = function (game, d) {
     el && (el.oninput = () => ((A.lanternShadows = el.checked), this.app.applySettings()));
   };
 }
+// ===== oil: the lantern burns no oil in daylight or next to any lit flame; tutorial text no longer promises healing at flames =====
+{
+  let GP = SC.prototype,
+    ue2 = GP.updateEnv;
+  GP.updateEnv = function (dt) {
+    let I = this.player,
+      oil0 = I?.oil;
+    ue2.call(this, dt);
+    if (!I || oil0 === void 0 || I.oil >= oil0) return;
+    let day = (this.env?.day || 0) > 0.5,
+      near = !day && X.fireNear?.(this, I.pos, 14);
+    (day || near) && (I.oil = oil0);
+  };
+}
 
 /* ---- E3_collections.js ---- */
 // ===== 1.11: Collections journal, more mounts & companions, achievement/stat unlocks =====
@@ -36638,6 +36659,86 @@ Object.assign(X.COMPANIONS, {
       console.error("node instancing", e);
     }
   });
+}
+
+/* ---- E5_diag.js ---- */
+// ===== Troubleshooting toggles (Settings → Troubleshooting): switch parts of the main render off live to find what blacks the screen =====
+{
+  let GP = SC.prototype,
+    U = XC.prototype;
+  X.DIAG = [
+    ["shadows", "Sun shadows"],
+    ["plights", "Torch / lantern point lights"],
+    ["lantern", "Your lantern light"],
+    ["water", "Water & sea"],
+    ["domes", "Village wards (blue domes)"],
+    ["veg", "Vegetation & fences (instanced)"],
+    ["batches", "Merged props (batched meshes)"],
+    ["viewmodel", "First-person hands & weapon"],
+    ["sky", "Sky dome"],
+    ["sprites", "Glow sprites"],
+    ["flames", "Flame meshes"],
+  ];
+  X.applyDiag = function (app) {
+    let g = app.game,
+      D = app.settings.diag || {},
+      on = (k) => D[k] !== !1;
+    if (!g?.world) return;
+    let W = g.world,
+      sh = on("shadows");
+    if (app.renderer.shadowMap.enabled !== sh) {
+      app.renderer.shadowMap.enabled = sh;
+      g.scene.traverse((o) => o.material && (Array.isArray(o.material) ? o.material.forEach((m) => (m.needsUpdate = !0)) : (o.material.needsUpdate = !0)));
+    }
+    g.lights?.lights?.forEach((l) => (l.visible = on("plights")));
+    g.lantern && (g.lantern.visible = on("lantern"));
+    W.water && (W.water.visible = on("water"));
+    W.sea && (W.sea.visible = on("water"));
+    for (let d of W.domes || []) (d.mesh || d).visible !== void 0 && ((d.mesh || d).visible = on("domes"));
+    g.viewModel && (g.viewModel.visible = on("viewmodel"));
+    W.sky && (W.sky.visible = on("sky"));
+    g.scene.traverse((o) => {
+      if (o.isInstancedMesh && o.userData.chunkOf !== "nodes") o.visible = on("veg");
+      else if (o.name === "batch") o.visible = on("batches");
+      else if (o.isSprite) o.visible = on("sprites");
+      else if (o.isMesh && o.material?.isMeshBasicMaterial && o.material.blending === Si && o.parent?.children?.length === 3) o.visible = on("flames");
+    });
+  };
+  let sh3 = U.settingsHTML;
+  U.settingsHTML = function () {
+    let D = this.app.settings.diag || {};
+    return (
+      sh3.call(this) +
+      `<h3>Troubleshooting</h3><p class="small">If part of the screen goes black, untick these one at a time (they apply instantly) and tell me which one makes it stop. All of them are normally ON.</p><div class="cols">` +
+      X.DIAG.map(([k, n]) => `<label>${n} <input type="checkbox" data-diag="${k}" ${D[k] === !1 ? "" : "checked"}></label>`).join("") +
+      `</div>`
+    );
+  };
+  let bs3 = U.bindSettings;
+  U.bindSettings = function () {
+    bs3.call(this);
+    let app = this.app;
+    document.querySelectorAll("#modal [data-diag]").forEach((el) => {
+      el.oninput = () => {
+        (app.settings.diag ||= {})[el.dataset.diag] = el.checked;
+        X.applyDiag(app);
+        try { localStorage.setItem(Md, JSON.stringify(app.settings)); } catch (e) {}
+        this.toast?.(`${X.DIAG.find((d) => d[0] === el.dataset.diag)[1]}: ${el.checked ? "on" : "OFF"}`, "#ffd070");
+      };
+    });
+  };
+  // re-apply after the world is built / hero switched, and keep the view model rule after rebuilds
+  let st4 = GP.start;
+  GP.start = function (...a) {
+    st4.apply(this, a);
+    setTimeout(() => X.applyDiag(window.__app), 500);
+  };
+  let ac1 = GP.applyCosmetics;
+  GP.applyCosmetics = function () {
+    ac1.call(this);
+    let D = window.__app?.settings?.diag;
+    D && D.viewmodel === !1 && this.viewModel && (this.viewModel.visible = !1);
+  };
 }
 
   window.__app = new bE();
