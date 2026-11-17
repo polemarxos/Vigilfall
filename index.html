@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.15.1</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.15.2</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -17422,8 +17422,8 @@ void main() {
           this.lights.flash(i.clone().setY(i.y + 3), g, 8, 18, 0.5);
           break;
       }
-      if (this.net && !w && ["nova", "explosion", "pillar", "ring", "splash"].includes(A)) {
-        let Q = { t: "fx", n: A, p: [i.x, i.y, i.z], o: { color: I.color, r: I.r, small: I.small } };
+      if (this.net && !w && ["nova", "explosion", "pillar", "ring", "splash", "burst", "beam", "trail"].includes(A)) {
+        let Q = { t: "fx", n: A, p: [i.x, i.y, i.z], o: { color: I.color, r: I.r, small: I.small, n: I.n, speed: I.speed, spread: I.spread, to: I.to ? [I.to.x, I.to.y, I.to.z] : void 0 } };
         this.isHost ? this.net.broadcast(Q) : this.net.send(Q);
       }
     }
@@ -17587,6 +17587,8 @@ void main() {
           });
           break;
         case "fx":
+          this.isHost && this.net.broadcast(i, A);
+          i.o && i.o.to && (i.o.to = ii(...i.o.to));
           this.fx(i.n, ii(...i.p), i.o, !0);
           break;
         case "zone":
@@ -18582,7 +18584,7 @@ void main() {
       }).join("")}</div>
       <div class="statlist"><div>Max HP <b>${A.player.maxHp}</b></div><div>Armor <b>${Math.round(I.armor)}</b> (-${Math.round(100 - 1e4 / (100 + I.armor))}% dmg)</div><div>Power <b>+${I.power}%</b></div><div>Critical <b>${I.crit}%</b></div><div>Haste <b>${I.haste}%</b></div><div>Lifesteal <b>${I.leech}%</b></div><div>Healing <b>+${I.grace}%</b></div><div>Resolve <b>${I.resolve}%</b></div><div>Speed <b>${I.speed.toFixed(1)}</b></div></div>
       <div class="small">Click an item to equip \xB7 Right-click to salvage (Soul Shards; Relic/Cursed also give Ashen Marks) \xB7 Click equipped gear to unequip</div></div>
-      <div class="bag"><h3>Stash ${i.inventory.length}/40 <button id="salvall" class="mini-b">Salvage all Worn</button> <button id="sort" class="mini-b">Sort</button></h3><div class="grid">${i.inventory
+      <div class="bag"><h3>Stash ${i.inventory.length}/40 <button id="salvall" class="mini-b">Salvage all</button> <button id="sort" class="mini-b">Sort</button></h3><div class="grid">${i.inventory
         .map((g, C) => {
           let Q = ui.find((e) => e.id === g.rarity),
             s = !A.canEquip(g),
@@ -18623,7 +18625,11 @@ void main() {
             }));
         }),
         (kA("#salvall").onclick = () => {
-          ([...i.inventory].filter((w) => w.rarity === "common").forEach((w) => A.salvage(w)), this.panel("inv"));
+          let list = [...i.inventory].filter((w) => w.slot);
+          if (!list.length) return;
+          let sh = list.reduce((a, w) => a + (10 + w.level * 5) * (ui.findIndex((g) => g.id === w.rarity) + 1) ** 2, 0);
+          if (!confirm(`Salvage ALL ${list.length} items in your bag (equipped gear is kept)?\nYou get ${sh} Soul Shards.`)) return;
+          (list.forEach((w) => A.salvage(w)), this.toast(`Salvaged ${list.length} items for ${sh} ✦`, "#9ad0ff"), this.panel("inv"));
         }),
         (kA("#sort").onclick = () => {
           (i.inventory.sort((w, g) => ui.findIndex((C) => C.id === g.rarity) - ui.findIndex((C) => C.id === w.rarity) || zI(g) - zI(w)),
@@ -23476,7 +23482,7 @@ a=extmap-allow-mixed`) !== -1
               let t = ui.find((o) => o.id === e.item.rarity),
                 M = A.hsave.gear[e.item.slot],
                 n = zI(e.item) - zI(M);
-              return `<div class="shop-i ${e.sold ? "sold" : ""}" data-buy="${e.i}" style="border-color:${t.color}"><div class="tip-n" style="color:${t.color}">${e.item.name}</div><div class="tip-r">${t.name} ${e.item.slot} \xB7 level ${e.item.level} <b style="color:${n >= 0 ? "#6f6" : "#f66"}">${n >= 0 ? "\u25B2" : "\u25BC"}${Math.abs(n)}</b></div>${Object.entries(
+              return `<div class="shop-i ${e.sold ? "sold" : ""}" data-buy="${e.i}" style="border-color:${t.color}">${X.itemIcon ? X.itemIcon(e.item, 40) : ""}<div class="tip-n" style="color:${t.color}">${e.item.name}</div><div class="tip-r">${t.name} ${e.item.slot} \xB7 level ${e.item.level} <b style="color:${n >= 0 ? "#6f6" : "#f66"}">${n >= 0 ? "\u25B2" : "\u25BC"}${Math.abs(n)}</b></div>${Object.entries(
                 e.item.stats,
               )
                 .map(([o, l]) => `<div class="tip-s">${vg[o].fmt(l)}</div>`)
@@ -28351,7 +28357,7 @@ X.raidDrops = function (g, d, pos) {
         let dd = e.pos.distanceTo(A.pos);
         dd < best && (e.target || e.aggroT > 0 || dd < 8) && ((best = dd), (target = e));
       }
-    let goal = target ? target.pos : A.pos.clone().add(ii(-Math.sin(A.yaw + 2.2) * 2.2, 0, -Math.cos(A.yaw + 2.2) * 2.2)),
+    let goal = target ? target.pos : A.pos.clone().add(ii(-Math.sin(A.yaw - 0.75) * 3.6, 0, -Math.cos(A.yaw - 0.75) * 3.6)),
       Q = ii(goal.x - C.pos.x, 0, goal.z - C.pos.z),
       s = Q.length(),
       moving = !1,
@@ -33600,8 +33606,18 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.15.1";
+  X.VERSION = "1.15.2";
   X.CHANGELOG = {
+    "1.15.2": [
+      "Quests are now per hero: every class runs the whole quest chain (and gets its XP and rewards) instead of sharing one log. Your current hero keeps the quests you had.",
+      "Veteran's Boon: any hero below your highest hero's level earns +50% experience (shown in the inventory stats).",
+      "Companions walk ahead to your right where you can see them, instead of behind you.",
+      "Chest lids swing on a hinge at the back of the chest instead of flipping through it.",
+      "Other players' spell effects (bursts, beams, trails) are now shown to everyone in the world, including guest to guest.",
+      "Items have icons (by slot and weapon type) in vendor shops and in your bag; every item tooltip shows its salvage value. 'Salvage all' now salvages everything in your bag (equipped gear is kept) after a confirmation.",
+      "Social when offline: a clear OFFLINE strip with a Reconnect button, automatic reconnect attempts every 45 s, friend requests you send while offline are queued and delivered when you are both online, and accepting a request offline completes once you reconnect.",
+      "First person: weapons never cross the near plane during lunges, and have a breathing sway at rest and a lean while running.",
+    ],
     "1.15.1": [
       "Typing in any text box (guild name, auction price, chat…) no longer triggers hotkeys.",
       "First person shows weapons only — no hands — held closer and larger so they fill the view.",
@@ -41496,6 +41512,307 @@ Object.assign(X.COMPANIONS, {
       setTimeout(() => g.running && g.ui.banner("MATERIALS", "Everything you gather is in your Professions book — press B. Craft from there (smithing needs an anvil, cooking a fire).", "#8aff9a"), 300);
     }
     return r;
+  };
+}
+
+/* ---- EI_fixes2.js ---- */
+// ===== 1.15.2: chest lids hinge properly, item icons, salvage values, social works offline (reconnect + queued requests) =====
+{
+  let GP = SC.prototype,
+    U = XC.prototype,
+    app = () => window.__app,
+    game = () => app()?.game,
+    net = () => app()?.net,
+    myPid = () => net()?.pid || X.pid?.(app());
+
+  // ---------- chests: the lid swings on a hinge at its back edge ----------
+  X.hingeChest = function (m) {
+    let lid = m.userData?.lid;
+    if (!lid || lid.userData.hinged || !lid.isMesh) return;
+    lid.geometry.computeBoundingBox();
+    let bb = lid.geometry.boundingBox,
+      hinge = new N(0, bb.min.y, bb.min.z).multiply(lid.scale),
+      pivot = new eA();
+    pivot.position.copy(lid.position).add(hinge);
+    pivot.rotation.copy(lid.rotation);
+    lid.position.copy(hinge).negate();
+    lid.rotation.set(0, 0, 0);
+    let parent = lid.parent;
+    parent.remove(lid);
+    pivot.add(lid);
+    parent.add(pivot);
+    pivot.userData.hinged = !0;
+    m.userData.lid = pivot;
+  };
+  let st0 = GP.start;
+  GP.start = function (...a) {
+    let r = st0.apply(this, a);
+    try {
+      for (let c of this.chests || []) {
+        let wasOpen = c.mesh.userData.lid?.rotation.x || 0;
+        X.hingeChest(c.mesh);
+        c.mesh.userData.lid.rotation.x = wasOpen;
+      }
+    } catch (e) {
+      console.error("chest hinge", e);
+    }
+    return r;
+  };
+
+  // ---------- item icons (SVG) by slot / weapon type ----------
+  let WICON = { swordshield: "sword", axe: "axe", mace: "mace", hammer: "hammer", staff: "rune", totem: "roots", flask: "flask", orb: "swirl", bow: "bow", daggers: "dagger", tide: "wave", grimoire: "book" },
+    SICON = { helm: "crown", chest: "shield", boots: "boot", relic: "star" };
+  X.itemIcon = function (it, size = 36) {
+    if (!it) return "";
+    let col = ui.find((r) => r.id === it.rarity)?.color || "#e8d4a0",
+      ic = it.slot === "weapon" ? WICON[it.wtype] || "sword" : SICON[it.slot] || "gear";
+    return `<span class="iico" style="--c:${col}">${gI(ic, col, size)}</span>`;
+  };
+  // inventory / stash / trade cells get the same icon instead of the emoji
+  let cellRe = /<div class="ci">[^<]*<\/div>/g;
+  let swapIcons = (html, items) => {
+    let i = 0;
+    return html.replace(cellRe, () => {
+      let it = items[i++];
+      return `<div class="ci">${it ? X.itemIcon(it, 30) : ""}</div>`;
+    });
+  };
+  let inv0 = U.invHTML;
+  U.invHTML = function (A) {
+    let h = inv0.call(this, A),
+      inv = this.app.profile.inventory;
+    // only the bag grid carries .ci cells here, in inventory order
+    return swapIcons(h, inv);
+  };
+  // salvage value in every item tooltip
+  let ih0 = U.itemHTML;
+  U.itemHTML = function (A, i) {
+    let h = ih0.call(this, A, i);
+    if (!A) return h;
+    let w = ui.findIndex((g) => g.id === A.rarity),
+      sh = (10 + A.level * 5) * (w + 1) ** 2;
+    return h + `<div class="tip-c">Salvage: <b style="color:#9ad0ff">${sh} ✦</b>${w >= 3 ? ` + ${w === 3 ? 25 : 40} Ashen Marks` : ""} <small>(right-click)</small></div>`;
+  };
+  let css = document.createElement("style");
+  css.textContent = `.shop-i .iico{display:block;margin:0 auto 4px;width:40px;height:40px}.cell .ci .iico{display:flex;width:100%;height:100%;align-items:center;justify-content:center}.cell .ci svg{width:70%;height:70%}
+  .shop-i{position:relative}.social .offline{background:rgba(120,40,30,.35);border:1px solid #c0503a;padding:8px 10px;border-radius:6px;margin-bottom:8px}`;
+  document.head.appendChild(css);
+
+  // ---------- social when offline ----------
+  // reconnect: reopen the peer and host your world again; then deliver queued friend requests
+  X.goOnline = async function () {
+    let a = app(),
+      n = a?.net;
+    if (!n || !n.offline) return !0;
+    try {
+      await n.open(X.pid(a));
+      n.offline = !1;
+      a.game && !n.isHost && !n.host_ && n.host();
+      a.game?.toast("Back online — friends can join you again", "#8affc0");
+      X.friends.flush();
+      X.friends.refresh();
+      X.social.refreshPanel();
+      return !0;
+    } catch (e) {
+      a._offlineMsg = e.message || "No connection";
+      return !1;
+    }
+  };
+  // queued outgoing requests are re-sent whenever the other side is seen online
+  X.friends.flush = async function () {
+    let p = X.ensureProfile(app().profile),
+      n = net();
+    if (!n?.peer || n.offline) return;
+    for (let f of (p.fout || []).slice()) {
+      if (X.friends.isFriend(f.pid)) continue;
+      let r = await n.request(f.pid, { t: "freq", pid: myPid(), name: p.name, hero: game()?.hero?.id }, 4000);
+      if (r?.t === "facc") {
+        X.friends.add(f.pid, r.name, { hero: r.hero });
+        p.fout = p.fout.filter((x) => x.pid !== f.pid);
+        game()?.toast(`${r.name} is now your friend`, "#8affc0");
+      }
+    }
+    app().saveProfile();
+  };
+  let rf0 = X.friends.refresh;
+  X.friends.refresh = async function () {
+    if (net()?.offline) {
+      X.social.refreshPanel();
+      return;
+    }
+    await rf0.call(this);
+    await X.friends.flush();
+    X.social.refreshPanel();
+  };
+  // while offline, retry quietly every 45 s; accepting a pending request offline keeps it and completes later
+  let up0 = GP.update;
+  GP.update = function (dt) {
+    up0.call(this, dt);
+    let n = this.net;
+    if (!n?.offline) return;
+    this._reconT = (this._reconT || 0) + dt;
+    if (this._reconT > 45) {
+      this._reconT = 0;
+      X.goOnline();
+    }
+  };
+  let acc0 = X.friends.accept;
+  X.friends.accept = function (pid) {
+    let p = app().profile,
+      q = p.fpending.find((f) => f.pid === pid);
+    if (net()?.offline) {
+      // accept now, tell them when we are back: keep a note so flush() answers their request
+      X.friends.add(pid, q?.name, { hero: q?.hero });
+      (p.fout ||= []).some((f) => f.pid === pid) || p.fout.push({ pid, name: q?.name || pid, at: Date.now(), ack: !0 });
+      app().saveProfile();
+      return;
+    }
+    return acc0.call(this, pid);
+  };
+  // panel: an offline strip with a reconnect button, requests shown clearly
+  let ph0 = X.social.panelHTML;
+  X.social.panelHTML = function () {
+    let h = ph0.call(this),
+      n = net();
+    if (n?.offline) h = h.replace('<div class="social">', `<div class="offline"><b>OFFLINE</b> — ${app()._offlineMsg || "no connection to the matchmaking relay"}. Friend requests you send are queued and delivered when you are both online; incoming ones wait here. <button id="freconn">Reconnect now</button></div><div class="social">`);
+    return h;
+  };
+  let bp0 = X.social.bindPanel;
+  X.social.bindPanel = function () {
+    bp0.call(this);
+    let b = document.getElementById("freconn");
+    b &&
+      (b.onclick = async () => {
+        b.textContent = "Connecting…";
+        (await X.goOnline()) || ((b.textContent = "Still offline — try again"), setTimeout(() => (b.textContent = "Reconnect now"), 2000));
+      });
+  };
+  let fr0 = X.friends.request;
+  X.friends.request = async function (pid, name) {
+    if (net()?.offline) {
+      pid = (pid || "").trim().toUpperCase();
+      if (pid.length < 6) return "Enter a friend code (8 letters)";
+      if (pid === myPid()) return "That is your own code";
+      if (X.friends.isFriend(pid)) return "Already friends";
+      let p = app().profile;
+      p.fout ||= [];
+      p.fout.some((f) => f.pid === pid) || p.fout.push({ pid, name: name || pid, at: Date.now() });
+      app().saveProfile();
+      return "You are offline — the request is queued and will be sent when you reconnect";
+    }
+    return fr0.call(this, pid, name);
+  };
+}
+
+/* ---- EJ_alts.js ---- */
+// ===== 1.15.2: quests are per hero (every class can run the whole chain), Veteran's Boon XP for alts, first-person animation tuned for the closer weapons =====
+{
+  let GP = SC.prototype,
+    app = () => window.__app;
+
+  // ---------- profile.quests becomes a view onto the current hero's quest log ----------
+  X.heroQuests = function (p) {
+    if (!p) return {};
+    let g = app()?.game,
+      h = (g?.profile === p && g.hsave) || (p.heroes && p.heroes[p.lastHero]) || null;
+    if (!h) return (p._q ||= {});
+    return (h.quests ||= {});
+  };
+  X.installQuestView = function (p) {
+    if (!p || typeof p !== "object") return p;
+    let d = Object.getOwnPropertyDescriptor(p, "quests");
+    if (d && d.get) return p;
+    // migrate the old shared log into the hero that was being played
+    let old = (d && d.value) || {},
+      lh = p.lastHero;
+    if (Object.keys(old).length) {
+      let tgt = p.heroes && lh && p.heroes[lh];
+      tgt ? (tgt.quests = { ...old, ...(tgt.quests || {}) }) : (p._q = old);
+    }
+    delete p.quests;
+    Object.defineProperty(p, "quests", {
+      enumerable: !1,
+      configurable: !0,
+      get() {
+        return X.heroQuests(p);
+      },
+      set(v) {
+        let g = app()?.game,
+          h = (g?.profile === p && g.hsave) || (p.heroes && p.heroes[p.lastHero]);
+        h ? (h.quests = v || {}) : (p._q = v || {});
+      },
+    });
+    return p;
+  };
+  let ep0 = X.ensureProfile;
+  X.ensureProfile = (p) => X.installQuestView(ep0(p));
+  // a hero that gets created mid-session (class swap) starts with an empty log; one started before the view existed keeps its data
+  let st0 = GP.start;
+  GP.start = function (...a) {
+    X.installQuestView(this.profile);
+    let r = st0.apply(this, a);
+    this.hsave && (this.hsave.quests ||= this.profile._q && Object.keys(this.profile._q).length ? (() => {
+      let q = this.profile._q;
+      this.profile._q = {};
+      return q;
+    })() : {});
+    return r;
+  };
+  // the profile object is replaced on load/import: install the view as soon as it appears
+  let AP = bE.prototype,
+    ls0 = AP.loadSlot;
+  ls0 &&
+    (AP.loadSlot = function (...a) {
+      let p = ls0.apply(this, a);
+      return p ? X.installQuestView(p) : p;
+    });
+
+  // ---------- Veteran's Boon: alts below your best hero's level earn +50% XP ----------
+  let gx0 = GP.gainXp;
+  GP.gainXp = function (a) {
+    let p = this.profile,
+      best = Math.max(0, ...Object.values(p.heroes || {}).map((h) => h.level || 1)),
+      lv = this.hsave?.level || 1;
+    if (best > lv) {
+      a *= 1.5;
+      this._vetShown || ((this._vetShown = !0), this.toast(`Veteran's Boon: +50% experience until level ${best}`, "#ffd070"));
+    }
+    return gx0.call(this, a);
+  };
+  // show it in the inventory stat list
+  let U = XC.prototype,
+    ih = U.invHTML;
+  U.invHTML = function (A) {
+    let h = ih.call(this, A),
+      p = this.app.profile,
+      best = Math.max(0, ...Object.values(p.heroes || {}).map((x) => x.level || 1)),
+      lv = A.hsave?.level || 1;
+    return best > lv ? h.replace('<div class="statlist">', `<div class="statlist"><div>Veteran's Boon <b style="color:#ffd070">+50% XP</b> (until Lv ${best})</div>`) : h;
+  };
+
+  // ---------- first person: weapons never cross the near plane, a little life at rest ----------
+  let av0 = GP.animateViewModel;
+  GP.animateViewModel = function (B) {
+    av0.call(this, B);
+    let vm = this.viewModel,
+      U = vm?.userData;
+    if (!U || !U.weaponsOnly) return;
+    let t = this.t,
+      mv = Math.min(1, Math.hypot(this.player.vel.x, this.player.vel.z) / 6),
+      sw = this.swingState ? 1 : 0;
+    for (let [arm, s] of [
+      [U.right, 1],
+      [U.left, -1],
+    ]) {
+      if (!arm) continue;
+      // keep at least 26 cm from the eye during lunges
+      arm.position.z = Math.min(arm.position.z, -0.26);
+      // breathing / ready sway when not swinging
+      arm.position.y += Math.sin(t * 1.4 + s) * 0.004 * (1 - sw);
+      arm.rotation.z += Math.sin(t * 0.9 + s * 2) * 0.012 * (1 - sw) * (1 - mv * 0.5);
+      // lean the weapon into the run
+      arm.rotation.x += mv * 0.08 * (1 - sw);
+    }
   };
 }
 
