@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.13.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.14.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -18194,7 +18194,7 @@ void main() {
       let i = this.mm,
         I = 200,
         w = A.player,
-        g = 1.6;
+        g = 1.6 * (this.mmZoom || 1);
       (i.save(),
         i.clearRect(0, 0, I, I),
         i.beginPath(),
@@ -18675,7 +18675,6 @@ void main() {
         A.renderScale,
       )}</label>
       <label>Bloom <input type="checkbox" id="s-bloom" ${A.bloom ? "checked" : ""}></label>
-      <label>Film grain & chromatic aberration <input type="checkbox" id="s-grain" ${A.grain ? "checked" : ""}></label>
       <label>Ambient occlusion (SSAO) <input type="checkbox" id="s-ao" ${A.ao ? "checked" : ""}></label>
       <label>View distance ${i(
         "s-view",
@@ -18703,7 +18702,7 @@ void main() {
           ((A.quality = kA("#s-q").value),
             (A.renderScale = +kA("#s-rs").value),
             (A.bloom = kA("#s-bloom").checked),
-            (A.grain = kA("#s-grain").checked),
+            (A.grain = !1),
             (A.ao = kA("#s-ao").checked),
             (A.fov = +kA("#s-fov").value),
             (A.view = +kA("#s-view").value),
@@ -24004,7 +24003,7 @@ a=extmap-allow-mixed`) !== -1
       quality: "high",
       renderScale: 1,
       bloom: !0,
-      grain: !0,
+      grain: !1,
       ao: !1,
       fov: 78,
       view: 2,
@@ -24045,7 +24044,7 @@ a=extmap-allow-mixed`) !== -1
       vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }",
       fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime, uAmt; varying vec2 vUv;
     float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)) + uTime*7.0)*43758.5453); }
-    void main(){ vec3 col = texture2D(tDiffuse, vUv).rgb; float g = h(vUv*vec2(1920.0,1080.0)) - 0.5; col += g*uAmt; float v = smoothstep(1.25, 0.35, length(vUv-0.5)*1.4); col *= mix(0.55, 1.0, v); gl_FragColor = vec4(col,1.0); }`,
+    void main(){ vec3 col = texture2D(tDiffuse, vUv).rgb;  float v = smoothstep(1.25, 0.35, length(vUv-0.5)*1.4); col *= mix(0.55, 1.0, v); gl_FragColor = vec4(col,1.0); }`,
     },
     bE = class {
       constructor() {
@@ -24227,7 +24226,7 @@ a=extmap-allow-mixed`) !== -1
         if (
           ((this.renderer.toneMappingExposure = A.exposure * 1.35),
           (this.bloom.enabled = A.bloom),
-          (this.grain.uniforms.uAmt.value = A.grain ? 0.055 : 0),
+          (this.grain.uniforms.uAmt.value = 0),
           this.aoPass && (this.aoPass.enabled = A.ao),
           A.view === void 0 && (A.view = 2),
           this.game?.world?.setViewDistance)
@@ -33601,8 +33600,18 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.13.0";
+  X.VERSION = "1.14.0";
   X.CHANGELOG = {
+    "1.14.0": [
+      "Riders sit in the saddle: mounted players (and gladiators) now ride with bent legs, feet in the stirrups and hands on the reins, seated at each creature's real saddle height instead of standing on its back.",
+      "Sound & music pass: every zone has its own music (lute in Dawnmere, glass bells in the Reaches, hand drums and flute in the Wastes, flute in Thornwood, organ and thunder on the Heights, swells at sea, pulses in dungeons, war drums in the arena), combat stingers when a fight starts, ends or a boss appears, victory fanfares and a defeat theme. Creatures have voices — skeletons moan, wolves snarl, wraiths wail, bosses roar — when idle, hurt and dying. Footsteps on snow, sand, wood and stone; hooves, paws and claws when mounted; drakes beat their wings. Mounts call when summoned. Potions gulp, gear clinks or rustles, menus tick and click.",
+      "World events every 6–8 minutes (shared by everyone in your world): a World Boss walks the roads of a zone matched to your level (The Gallows Warden, Skadi's Revenant, Ash-Marauder Khaz, Old Greatbriar, Gale-Warden Ysolde), or a Caravan leaves a camp for the coast town and needs an escort — it only moves while someone is near, ambushes hit it every 20 s, and it can be lost. Everyone within 90 m at the end earns Vigil Tokens, shards and an epic (world bosses: 15% legendary). A gold marker on the compass and map shows the way.",
+      "Quartermaster Brann in Dawnmere trades Vigil Tokens for the Caravan Mule mount, the Market Goat companion, the Wayfarer's Cloak, crates of ingredients and sealed gear caches.",
+      "Fishing and Cooking (Professions book, B): cast from any shore facing the water, hook when the float dips — fish, junk, and sometimes a sunken coffer with shards and gear. Cook fish and meat (wolves and beasts now drop it) over any fire for a 20-minute Well Fed buff (max health, damage or speed). Eight professions in all.",
+      "Film grain removed from the game entirely (the setting is gone; the soft vignette stays).",
+      "Map and minimap zoom: mouse wheel or pinch on the minimap (and +/− buttons under it), and on the world map wheel/pinch to zoom at the cursor, drag to pan, +/−/reset buttons; the map opens centred on you.",
+      "Auction board: Broker Odile in Dawnmere. List items from your bag at a price; everyone playing in your world sees the board and buys with shards that go straight to you. Listings keep between sessions until bought or taken back.",
+    ],
     "1.13.0": [
       "Mounts are real creatures now: every one of the 24 has its own body and gait — horses in barding, a skeletal charger, a nightmare with a mane of fire, elk with broad antlers, wargs, a desert lion, a boar, a ram, bears, a giant spider, drakes with beating wings and a crab that scuttles. New: Thornback Boar and Frostpeak Ram at the stable, Frostmaw Bear (Hrimgar), Mire Weaver (Thornmother), Ember Drake (The Reckoning), Storm Drake (Throne of Storms), Drowned Crab (The Deep), Vigil Warbear (10 invasions defended), Champion's Destrier (2000 rating).",
       "Companions: real bodies too, each with an ability on a cooldown (Savage Bite, Pounce, Shield Wall, Mend, Quake, Fire Spit, Shock), companion levels 1–30 (+4% damage per level, XP from your kills) and pet bouts at the kennel (3 a day, XP and marks). New: Barrow Cat, Thornback Boarlet, Frostpeak Lamb (kennel), Clockwork Beetle (10 Mythic+ runs), Tide Hatchling (The Deep), Frost Pup (Pilgrim of Ash), Ember Drakekin (5 invasions).",
@@ -37516,6 +37525,7 @@ Object.assign(X.COMPANIONS, {
       g.add(V(new iA(0.12, 0.03, 0.2), leather, e * w * 0.9, y - 0.64, z));
     }
     opt.plume && g.add(V(new Ai(0.07, 0.4, 6), cloth(opt.plume), 0, y + 0.3, z - w * 0.6));
+    g.userData.seat = { y: y + 0.07, z, w };
     return g;
   };
   let barding = (body, w, col, len = 1.0) => {
@@ -37534,6 +37544,7 @@ Object.assign(X.COMPANIONS, {
       ((gl.position.y = 1.2), A.add(gl));
     }
     A.traverse((m) => m.isMesh && (m.castShadow = !0));
+    A.traverse((m) => m.userData?.seat && (parts.seat = m.userData.seat));
     parts.seed = Math.random() * 10;
     parts.rig = "quad";
     A.userData.parts = parts;
@@ -38777,6 +38788,1467 @@ Object.assign(X.COMPANIONS, {
   let st = document.createElement("style");
   st.textContent = `table.lb{border-collapse:collapse;margin:4px 0 8px}table.lb td{padding:2px 10px 2px 0;border-bottom:1px solid #332}`;
   document.head.appendChild(st);
+}
+
+/* ---- EB_ride.js ---- */
+// ===== 1.14: riders actually sit — seated pose for mounted players, seat height taken from each creature's saddle =====
+{
+  let GP = SC.prototype;
+  // tunables (local-bone rotations applied on top of the idle clip)
+  X.RIDE = {
+    thigh: -1.2, // thigh forward
+    splay: 0.35, // thighs apart
+    knee: 1.4, // shin back
+    foot: 0.1,
+    arm: -0.5, // upper arms forward (reins)
+    armIn: 0.25,
+    fore: -0.5,
+    lean: 0.0,
+    hipDrop: 0.34, // distance from feet to hips in the standing rig (model units)
+    lift: 0.0,
+  };
+  const Y_AXIS = new N(0, 1, 0),
+    X_AXIS = new N(1, 0, 0),
+    Z_AXIS = new N(0, 0, 1);
+  let rotX = (b, a) => b && b.rotateOnAxis(X_AXIS, a),
+    rotY = (b, a) => b && b.rotateOnAxis(Y_AXIS, a),
+    rotZ = (b, a) => b && b.rotateOnAxis(Z_AXIS, a);
+  // seated pose for the KayKit rig: run the idle clip, then bend the legs around the saddle
+  X.ridePose = function (P, A) {
+    let B = P.bones,
+      R = X.RIDE,
+      t = A.t || 0,
+      mv = A.mv || 0,
+      bob = Math.sin((A.ph || 0) * 2) * 0.05 * mv;
+    for (let s of ["l", "r"]) {
+      let e = s === "l" ? 1 : -1;
+      rotX(B["upperleg" + s], R.thigh);
+      rotZ(B["upperleg" + s], -e * R.splay);
+      rotX(B["lowerleg" + s], R.knee);
+      rotX(B["foot" + s], R.foot);
+      rotX(B["upperarm" + s], R.arm + bob * 0.5);
+      rotZ(B["upperarm" + s], e * R.armIn);
+      rotX(B["lowerarm" + s], R.fore);
+    }
+    rotX(B.spine, R.lean + mv * 0.1);
+    B.head && rotX(B.head, -R.lean * 0.6);
+  };
+  // the animation driver: a mounted rider gets the idle clip + seated overrides instead of walk/run
+  let Xw4 = Xw;
+  Xw = function (B, A) {
+    if (B?.rig === "gltf" && (A?.ride || B.riding)) {
+      Xw4(B, { ...A, mv: 0, ph: 0 });
+      X.ridePose(B, A);
+      return;
+    }
+    Xw4(B, A);
+  };
+  X.Xw = (...a) => Xw(...a);
+  // remote riders: seat them on the saddle
+  let urs = GP.updateRemotes;
+  GP.updateRemotes = function (dt) {
+    for (let R of this.remotes.values()) {
+      let rp = R.model?.userData?.parts;
+      rp && (rp.riding = !!R.mount?.userData?.parts);
+    }
+    urs.call(this, dt);
+    for (let R of this.remotes.values()) {
+      let P = R.mount?.userData?.parts;
+      if (!P || !R.model?.userData?.parts) continue;
+      let seat = P.seat || { y: 0.44, z: -0.05 },
+        bodyY = P.body ? P.body.position.y : P.bodyY || 1.15,
+        seatY = bodyY + seat.y,
+        rp = R.model.userData.parts;
+      // position: feet-origin model lowered so the hips rest on the seat; slightly behind the saddle centre
+      let yaw = R.yaw + Math.PI,
+        hipH = X.RIDE.hipDrop,
+        zOff = seat.z + 0.02;
+      R.model.position.copy(R.pos);
+      R.model.position.y = R.pos.y + seatY - hipH + X.RIDE.lift;
+      R.model.position.x += Math.sin(yaw) * zOff;
+      R.model.position.z += Math.cos(yaw) * zOff;
+      R.model.rotation.x = R.downed ? -1.4 : 0;
+      R.downed && (R.model.position.y += 0.3);
+    }
+  };
+}
+
+/* ---- EC_audio.js ---- */
+// ===== 1.14: sound & music pass — zone music, combat stingers, creature voices, surface footsteps, mount calls, UI sounds (all procedural) =====
+{
+  let GP = SC.prototype,
+    AP = cM.prototype,
+    mtof = (n) => 440 * Math.pow(2, (n - 69) / 12),
+    rnd = (a, b) => a + Math.random() * (b - a),
+    pick = (a) => a[(Math.random() * a.length) | 0];
+
+  // ---------- zone music styles ----------
+  X.MUSIC = {
+    hamlet: { chords: [[50, 54, 57], [45, 49, 52], [47, 50, 54], [43, 47, 50], [48, 52, 55]], lead: "lute", warm: 1 },
+    mire: { chords: [[45, 48, 52], [43, 46, 50], [41, 45, 48], [46, 49, 53]], lead: "drone" },
+    ossuary: { chords: [[45, 48, 51], [44, 47, 50], [42, 45, 48], [47, 50, 53]], lead: "bones" },
+    cathedral: { chords: [[48, 51, 55], [46, 50, 53], [44, 48, 51], [50, 53, 57]], lead: "organ" },
+    citadel: { chords: [[43, 46, 49], [42, 45, 48], [41, 44, 47], [44, 47, 50]], lead: "dread" },
+    frost: { chords: [[52, 55, 59], [50, 53, 57], [48, 52, 55], [55, 58, 62]], lead: "glass" },
+    waste: { chords: [[45, 46, 52], [48, 49, 55], [43, 44, 50], [45, 48, 52]], lead: "desert" },
+    thorn: { chords: [[43, 47, 50], [45, 48, 52], [41, 45, 48], [47, 50, 54]], lead: "flute" },
+    storm: { chords: [[41, 45, 48], [43, 46, 50], [39, 43, 46], [44, 48, 51]], lead: "organ", thunder: 1 },
+    sea: { chords: [[48, 52, 55], [45, 48, 52], [50, 53, 57], [43, 47, 50]], lead: "swell" },
+    dungeon: { chords: [[43, 46, 50], [41, 44, 48], [44, 47, 51], [39, 42, 46]], lead: "pulse" },
+    raid: { chords: [[41, 44, 48], [43, 46, 50], [39, 42, 46], [44, 47, 51]], lead: "pulse", choir: 1 },
+    arena: { chords: [[45, 48, 52], [43, 46, 50], [47, 50, 54], [41, 44, 48]], lead: "war" },
+  };
+
+  // extra instruments on the music bus
+  AP._lute = function (f, vol = 0.05, dur = 0.5) {
+    let c = this.ctx,
+      t = c.currentTime,
+      g = c.createGain(),
+      o = c.createOscillator(),
+      o2 = c.createOscillator(),
+      lp = c.createBiquadFilter();
+    ((o.type = "triangle"), (o.frequency.value = f), (o2.type = "square"), (o2.frequency.value = f * 2.003), (lp.type = "lowpass"));
+    lp.frequency.setValueAtTime(3200, t);
+    lp.frequency.exponentialRampToValueAtTime(400, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(1e-4, t + dur);
+    let g2 = c.createGain();
+    g2.gain.value = 0.25;
+    (o.connect(lp), o2.connect(g2), g2.connect(lp), lp.connect(g), g.connect(this.music), g.connect(this.reverb), o.start(t), o2.start(t), o.stop(t + dur + 0.05), o2.stop(t + dur + 0.05));
+  };
+  AP._glass = function (f, vol = 0.04, dur = 2.4) {
+    let c = this.ctx,
+      t = c.currentTime;
+    [1, 2.0, 3.01, 4.16].forEach((h, i) => this._o(this.music, t, "sine", f * h, f * h * 0.999, 0.02, dur / (1 + i * 0.6), vol / (1 + i * 1.4)));
+    this._o(this.reverb, t, "sine", f, f, 0.02, dur, vol * 0.5);
+  };
+  AP._flute = function (f, vol = 0.045, dur = 1.1) {
+    let c = this.ctx,
+      t = c.currentTime,
+      o = c.createOscillator(),
+      vib = c.createOscillator(),
+      vg = c.createGain(),
+      g = c.createGain(),
+      br = c.createBiquadFilter();
+    ((o.type = "sine"), (o.frequency.value = f), (vib.frequency.value = 5.5), (vg.gain.value = f * 0.012), vib.connect(vg), vg.connect(o.frequency));
+    g.gain.setValueAtTime(1e-4, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.12);
+    g.gain.setValueAtTime(vol, t + dur * 0.7);
+    g.gain.linearRampToValueAtTime(1e-4, t + dur);
+    let n = this._noiseSrc(!1);
+    ((br.type = "bandpass"), (br.frequency.value = f * 2), (br.Q.value = 12));
+    let ng = c.createGain();
+    ng.gain.value = 0.08;
+    (n.connect(br), br.connect(ng), ng.connect(g), o.connect(g), g.connect(this.music), g.connect(this.reverb), o.start(t), vib.start(t), n.start(t, Math.random()), o.stop(t + dur + 0.05), vib.stop(t + dur + 0.05), n.stop(t + dur + 0.05));
+  };
+  AP._organ = function (fs, vol = 0.035, dur = 3) {
+    let c = this.ctx,
+      t = c.currentTime;
+    for (let f of fs) for (let [h, v] of [[0.5, 0.9], [1, 1], [2, 0.5], [3, 0.25]]) this._o(this.music, t, h >= 2 ? "sine" : "triangle", f * h, f * h, 0.3, dur, vol * v, (Math.random() - 0.5) * 6);
+  };
+  AP._handdrum = function (vol = 0.2, hi = !1) {
+    let c = this.ctx,
+      t = c.currentTime;
+    this._o(this.music, t, "sine", hi ? 320 : 170, hi ? 200 : 70, 0.002, hi ? 0.12 : 0.22, vol);
+    this._n(this.music, t, "bandpass", hi ? 2400 : 900, 500, 1.5, 0.001, 0.05, vol * 0.5);
+  };
+  AP._swell = function (f, vol = 0.05, dur = 6) {
+    let c = this.ctx,
+      t = c.currentTime,
+      g = c.createGain(),
+      lp = c.createBiquadFilter();
+    ((lp.type = "lowpass"), lp.frequency.setValueAtTime(200, t), lp.frequency.linearRampToValueAtTime(1400, t + dur * 0.5), lp.frequency.linearRampToValueAtTime(200, t + dur));
+    g.gain.setValueAtTime(1e-4, t);
+    g.gain.linearRampToValueAtTime(vol, t + dur * 0.5);
+    g.gain.linearRampToValueAtTime(1e-4, t + dur);
+    [-7, 0, 7].forEach((d) => {
+      let o = c.createOscillator();
+      ((o.type = "sawtooth"), (o.frequency.value = f), (o.detune.value = d), o.connect(lp), o.start(t), o.stop(t + dur + 0.1));
+    });
+    (lp.connect(g), g.connect(this.music), g.connect(this.reverb));
+  };
+  AP._pulse = function (f, vol = 0.12) {
+    let c = this.ctx,
+      t = c.currentTime;
+    this._o(this.music, t, "sine", f, f * 0.5, 0.004, 0.5, vol);
+    this._o(this.music, t, "triangle", f * 2, f, 0.004, 0.2, vol * 0.3);
+  };
+
+  // ---------- music tick: chords per zone + a zone instrument layer ----------
+  let mt0 = AP._musicTick;
+  AP._musicTick = function (dt) {
+    let zone = this.zone || "hamlet",
+      S = X.MUSIC[zone] || X.MUSIC.hamlet,
+      explore = this.mode === "explore";
+    if (this._zoneCur !== zone) {
+      ((this._zoneCur = zone), (this.chords = S.chords.map((c) => c.slice())), (this._chord = 0));
+    }
+    let step0 = this._step;
+    mt0.call(this, dt);
+    if (this._step === step0 || !explore || this.vol.music <= 0.01) return;
+    let C = this.chords[this._chord],
+      st = this._step,
+      lead = S.lead;
+    if (lead === "lute") {
+      Math.random() < 0.55 && this._lute(mtof(C[st % 3] + (st % 4 === 2 ? 24 : 12)), 0.045, 0.6);
+      st % 4 === 0 && this._lute(mtof(C[0] - 12), 0.05, 0.9);
+    } else if (lead === "drone") {
+      st % 8 === 2 && this._o(this.music, this.ctx.currentTime, "sine", mtof(C[0] - 24), mtof(C[0] - 24) * 0.99, 1, 5, 0.09);
+      Math.random() < 0.12 && this._bell(mtof(C[1] + 13), 0.035);
+    } else if (lead === "bones") {
+      Math.random() < 0.3 && this.play("bones", null, 0.08);
+      st % 16 === 4 && this._choir(C.map((q) => mtof(q)), 6);
+    } else if (lead === "organ") {
+      st % 8 === 0 && this._organ(C.map((q) => mtof(q - 12)), 0.03, 7.5);
+      S.thunder && Math.random() < 0.05 && this.play("thunder", { x: this.listener.x + rnd(-80, 80), z: this.listener.z + rnd(-80, 80) }, 0.3);
+      !S.thunder && st % 16 === 8 && this._choir(C.map((q) => mtof(q + 12)), 7);
+    } else if (lead === "dread") {
+      st % 8 === 4 && this._choir(C.map((q) => mtof(q)), 6);
+      st % 2 === 0 && this._pulse(mtof(C[0] - 24), 0.07);
+    } else if (lead === "glass") {
+      Math.random() < 0.5 && this._glass(mtof(C[(Math.random() * 3) | 0] + 24), 0.035, 3);
+      st % 8 === 0 && this._glass(mtof(C[0] + 12), 0.04, 5);
+    } else if (lead === "desert") {
+      let pat = [1, 0, 0.5, 0, 1, 0.5, 0, 0.5];
+      pat[st % 8] && this._handdrum(0.16 * pat[st % 8], st % 8 === 5 || st % 8 === 7);
+      st % 2 === 1 && Math.random() < 0.6 && this._flute(mtof(pick([C[0], C[1], C[2], C[0] + 12, C[1] + 1]) + 12), 0.035, 0.8);
+    } else if (lead === "flute") {
+      Math.random() < 0.4 && this._flute(mtof(C[(st >> 1) % 3] + 12 + (Math.random() < 0.3 ? 12 : 0)), 0.04, 1.3);
+      Math.random() < 0.15 && this._lute(mtof(C[0]), 0.03, 0.8);
+    } else if (lead === "swell") {
+      st % 8 === 0 && this._swell(mtof(C[0] - 12), 0.045, 7);
+      Math.random() < 0.2 && this._glass(mtof(C[2] + 12), 0.025, 3);
+    } else if (lead === "pulse") {
+      st % 2 === 0 && this._pulse(mtof(C[0] - 24), 0.1);
+      st % 8 === 4 && this._o(this.music, this.ctx.currentTime, "sawtooth", mtof(C[0] - 12), mtof(C[0] - 12), 0.5, 4, 0.03);
+      S.choir && st % 16 === 8 && this._choir(C.map((q) => mtof(q)), 7);
+    } else if (lead === "war") {
+      st % 2 === 0 && this._drum(0.3);
+      st % 4 === 2 && this._snare(0.12);
+      st % 8 === 0 && this._organ(C.map((q) => mtof(q - 12)), 0.025, 6);
+    }
+  };
+
+  // ---------- combat stingers on music-mode transitions ----------
+  let smm0 = AP.setMusicMode;
+  AP.setMusicMode = function (m) {
+    let prev = this.mode;
+    smm0.call(this, m);
+    if (!this.ctx || prev === m) return;
+    let now = this.ctx.currentTime;
+    this._cmbT ??= -99;
+    if (m === "boss" && prev !== "boss") this.play("bossin");
+    else if (m === "combat" && prev === "explore") {
+      now - this._cmbT > 10 && this.play("combatin");
+      this._cmbIn = now;
+    } else if (m === "explore" && (prev === "combat" || prev === "boss")) {
+      this._cmbT = now;
+      now - (this._cmbIn || 0) > 4 && this.play("combatout");
+    }
+  };
+
+  // ---------- new named sounds ----------
+  let play0 = AP.play;
+  AP.play = function (A, i, I = 1) {
+    if (!this.ctx) return;
+    let w = this.ctx,
+      g = w.currentTime,
+      C = I,
+      Q = () => 0.94 + Math.random() * 0.12,
+      s;
+    switch (A) {
+      // --- stingers ---
+      case "combatin":
+        ((s = this._spatial(null, 0.5)),
+          this._o(this.music, g, "sawtooth", 55, 55, 0.02, 1.2, 0.22),
+          this._o(this.music, g, "sawtooth", 82.4, 82, 0.02, 1.2, 0.14),
+          this._drum(0.45),
+          setTimeout(() => this._drum(0.4), 180),
+          this._n(s, g, "bandpass", 1800, 600, 4, 0.01, 0.6, 0.18));
+        return;
+      case "combatout":
+        ((s = this._spatial(null, 0.5)), this._chime(this.music, g, [mtof(62), mtof(66), mtof(69), mtof(74)], 0.035, 0.12, 2.2, "sine"));
+        return;
+      case "bossin":
+        ((s = this._spatial(null, 0.7)),
+          this._o(this.music, g, "sawtooth", 41, 38, 0.02, 3, 0.35),
+          this._o(this.music, g, "sawtooth", 61.7, 58, 0.02, 3, 0.2),
+          this._choir([mtof(41), mtof(44), mtof(48)], 5),
+          this._drum(0.6),
+          setTimeout(() => this._drum(0.5), 250),
+          setTimeout(() => this._drum(0.6), 500),
+          this._metal(s, g, 180, 0.12, 2.5, 1.5));
+        return;
+      case "fanfare":
+        ((s = this._spatial(null, 0.5)), this._chime(this.music, g, [mtof(62), mtof(66), mtof(69), mtof(74), mtof(78)], 0.05, 0.14, 2.6, "triangle"), this._organ([mtof(50), mtof(54), mtof(57)], 0.03, 3.5), setTimeout(() => this._drum(0.35), 100), setTimeout(() => this._snare(0.12), 400));
+        return;
+      case "defeat":
+        ((s = this._spatial(null, 0.5)), this._chime(this.music, g, [mtof(57), mtof(53), mtof(50), mtof(45)], 0.045, 0.3, 3, "sine"), this._o(this.music, g, "sine", mtof(33), mtof(31), 0.3, 4, 0.15));
+        return;
+      // --- creature voices ---
+      case "moan":
+        ((s = this._spatial(i, 0.5)), this._voice(s, g, 140 * Q(), 95, 1.2 * C, 0.1, [500, 900, 2100], 4));
+        return;
+      case "grunt":
+        ((s = this._spatial(i, 0.2)), this._voice(s, g, 170 * Q(), 120, 0.25, 0.14 * C, [650, 1200, 2500], 20));
+        return;
+      case "snarl":
+        ((s = this._spatial(i, 0.3)), this._voice(s, g, 210 * Q(), 150, 0.4, 0.14 * C, [600, 1100, 2400], 28), this._n(s, g, "bandpass", 1500, 800, 1.5, 0.02, 0.3, 0.2 * C));
+        return;
+      case "chitter":
+        s = this._spatial(i, 0.15);
+        for (let D = 0; D < 7; D++) this._o(s, g + D * 0.045 + Math.random() * 0.02, "square", 1800 * Q(), 1200, 0.002, 0.02, 0.05 * C);
+        return;
+      case "wail":
+        ((s = this._spatial(i, 0.7)), this._voice(s, g, 520 * Q(), 700, 1.6 * C, 0.07, [900, 1800, 3200], 6), this._o(s, g, "sine", 520, 760, 0.4, 1.4, 0.03));
+        return;
+      case "gurgle":
+        s = this._spatial(i, 0.3);
+        for (let D = 0; D < 5; D++) this._o(s, g + D * 0.09, "sine", 220 * Q(), 130, 0.01, 0.1, 0.09 * C);
+        this._n(s, g, "lowpass", 600, 200, 0.6, 0.05, 0.5, 0.25 * C);
+        return;
+      case "roar":
+        ((s = this._spatial(i, 0.6)), this._voice(s, g, 110 * Q(), 70, 1.1, 0.22 * C, [400, 800, 1600], 12), this._n(s, g, "lowpass", 900, 200, 0.7, 0.05, 0.9, 0.3 * C));
+        return;
+      // --- mount calls ---
+      case "whinny":
+        ((s = this._spatial(i, 0.4)), this._voice(s, g, 700 * Q(), 420, 0.9, 0.11 * C, [1200, 2200, 3600], 22), this._voice(s, g + 0.5, 460, 300, 0.4, 0.08 * C, [900, 1800, 3000], 16));
+        return;
+      case "bugle":
+        ((s = this._spatial(i, 0.5)), this._voice(s, g, 520 * Q(), 980, 1.3, 0.1 * C, [1100, 2000, 3400], 7));
+        return;
+      case "squeal":
+        ((s = this._spatial(i, 0.3)), this._voice(s, g, 900 * Q(), 600, 0.35, 0.1 * C, [1500, 2600, 4000], 40));
+        return;
+      case "bleat":
+        ((s = this._spatial(i, 0.3)), this._voice(s, g, 380 * Q(), 340, 0.6, 0.09 * C, [800, 1600, 2800], 24));
+        return;
+      case "screech":
+        ((s = this._spatial(i, 0.6)), this._voice(s, g, 1400 * Q(), 900, 0.7, 0.09 * C, [2000, 3400, 5000], 30), this._n(s, g, "highpass", 3000, 5000, 1, 0.01, 0.5, 0.12 * C));
+        return;
+      case "wingbeat":
+        ((s = this._spatial(i, 0.1)), this._whoosh(s, g, 0.3 * C, 120, 500, 0.35));
+        return;
+      // --- footsteps on new surfaces / hooves ---
+      case "snowstep":
+        ((s = this._spatial(i, 0.05)), this._n(s, g, "lowpass", 1400 * Q(), 300, 0.5, 0.004, 0.11, 0.22 * C), this._n(s, g + 0.02, "bandpass", 2600, 1800, 1.2, 0.002, 0.05, 0.08 * C));
+        return;
+      case "sandstep":
+        ((s = this._spatial(i, 0.05)), this._n(s, g, "bandpass", 1100 * Q(), 500, 0.7, 0.006, 0.12, 0.2 * C));
+        return;
+      case "woodstep":
+        ((s = this._spatial(i, 0.05)), this._o(s, g, "sine", 180 * Q(), 90, 0.002, 0.09, 0.22 * C), this._n(s, g, "bandpass", 700, 400, 2, 0.001, 0.05, 0.15 * C));
+        return;
+      case "hoof":
+        ((s = this._spatial(i, 0.06)), this._o(s, g, "sine", 140 * Q(), 60, 0.002, 0.09, 0.4 * C), this._n(s, g, "bandpass", 1300 * Q(), 500, 1.6, 0.001, 0.05, 0.25 * C), this._o(s, g + 0.05, "sine", 120, 55, 0.002, 0.06, 0.2 * C));
+        return;
+      case "pawstep":
+        ((s = this._spatial(i, 0.05)), this._n(s, g, "lowpass", 500 * Q(), 150, 0.8, 0.004, 0.1, 0.3 * C));
+        return;
+      case "clack":
+        ((s = this._spatial(i, 0.06)), this._o(s, g, "square", 900 * Q(), 400, 0.001, 0.03, 0.12 * C), this._n(s, g, "bandpass", 3000, 2000, 3, 0.001, 0.03, 0.15 * C));
+        return;
+      // --- UI / items ---
+      case "tick":
+        ((s = this._spatial(null, 0)), this._o(s, g, "sine", 1800, 1500, 0.001, 0.03, 0.05 * C));
+        return;
+      case "tock":
+        ((s = this._spatial(null, 0)), this._o(s, g, "triangle", 900, 500, 0.001, 0.06, 0.12 * C), this._n(s, g, "highpass", 3000, 3000, 0.8, 0.001, 0.02, 0.06 * C));
+        return;
+      case "open":
+        ((s = this._spatial(null, 0.05)), this._n(s, g, "bandpass", 900, 2600, 1.2, 0.01, 0.16, 0.14 * C), this._o(s, g + 0.03, "sine", 520, 780, 0.01, 0.1, 0.05 * C));
+        return;
+      case "close":
+        ((s = this._spatial(null, 0.05)), this._n(s, g, "bandpass", 2400, 700, 1.2, 0.01, 0.14, 0.12 * C), this._o(s, g + 0.02, "sine", 700, 420, 0.01, 0.1, 0.05 * C));
+        return;
+      case "gulp":
+        s = this._spatial(null, 0.05);
+        for (let D = 0; D < 3; D++) this._o(s, g + D * 0.16, "sine", 300 * Q(), 180, 0.01, 0.09, 0.2 * C);
+        this._n(s, g + 0.5, "bandpass", 1500, 600, 1.5, 0.01, 0.2, 0.1 * C);
+        return;
+      case "cloth":
+        ((s = this._spatial(null, 0.05)), this._n(s, g, "bandpass", 1800, 900, 0.8, 0.02, 0.25, 0.2 * C), this._n(s, g + 0.15, "bandpass", 1500, 2200, 0.8, 0.02, 0.2, 0.14 * C));
+        return;
+      case "equipmetal":
+        ((s = this._spatial(null, 0.15)), this._metal(s, g, 980 * Q(), 0.1 * C, 0.5), this._n(s, g, "bandpass", 1800, 900, 0.8, 0.02, 0.2, 0.15 * C));
+        return;
+      case "coinspend":
+        s = this._spatial(null, 0.1);
+        for (let D = 0; D < 4; D++) this._metal(s, g + D * 0.06, (2200 + Math.random() * 900) * Q(), 0.05 * C, 0.25);
+        return;
+      case "gull":
+        ((s = this._spatial(i, 0.6)), [0, 0.35, 0.65].forEach((D) => this._voice(s, g + D, 1100 * Q(), 1500, 0.28, 0.06 * C, [1800, 3000, 4600], 25)));
+        return;
+      case "cicada":
+        s = this._spatial(i, 0.3);
+        for (let D = 0; D < 18; D++) this._o(s, g + D * 0.07, "square", 4200 * Q(), 4200, 0.004, 0.03, 0.025 * C);
+        return;
+      case "splash":
+        ((s = this._spatial(i, 0.3)), this._n(s, g, "bandpass", 1200, 500, 0.9, 0.01, 0.5, 0.35 * C), this._whoosh(s, g, 0.25 * C, 500, 2500, 0.35));
+        return;
+      case "reel":
+        s = this._spatial(null, 0.05);
+        for (let D = 0; D < 10; D++) this._o(s, g + D * 0.05, "square", 1400 * Q(), 1300, 0.001, 0.015, 0.05 * C);
+        return;
+      case "sizzle":
+        ((s = this._spatial(i, 0.2)), this._n(s, g, "highpass", 3000, 4000, 0.8, 0.05, 1.4, 0.18 * C), this._crackle(s, g, 1.2, 0.08 * C));
+        return;
+      case "horn":
+        ((s = this._spatial(i, 0.8)), this._o(s, g, "sawtooth", 196, 196, 0.15, 1.6, 0.2 * C), this._o(s, g, "sawtooth", 198, 197, 0.15, 1.6, 0.12 * C), this._o(s, g + 0.9, "sawtooth", 261, 261, 0.1, 1.4, 0.18 * C), this._voice(s, g, 196, 261, 2.2, 0.06 * C, [500, 900, 1800], 5));
+        return;
+      case "cartwheel":
+        ((s = this._spatial(i, 0.1)), this._voice(s, g, 90 * Q(), 110, 0.5, 0.05 * C, [400, 900, 1800], 30), this._n(s, g, "lowpass", 400, 300, 0.8, 0.05, 0.4, 0.1 * C));
+        return;
+    }
+    return play0.call(this, A, i, I);
+  };
+
+  // ---------- zone nature sounds (extends the base table) ----------
+  AP._natureTick = function (A) {
+    if (((this._natT = (this._natT ?? 6) - A), (this._fireT = (this._fireT ?? 0) - A), this.fireAmt > 0.02 && this._fireT <= 0)) {
+      this._fireT = 0.25;
+      let C = this._spatial(null, 0.1);
+      (this._crackle(C, this.ctx.currentTime, 0.25, 0.1 * this.fireAmt), this._n(C, this.ctx.currentTime, "lowpass", 300, 200, 0.5, 0.1, 0.3, 0.06 * this.fireAmt));
+    }
+    if (this._natT > 0) return;
+    this._natT = 7 + Math.random() * 16;
+    let i = Math.random() * 6.28,
+      I = 30 + Math.random() * 25,
+      w = { x: this.listener.x + Math.cos(i) * I, z: this.listener.z + Math.sin(i) * I },
+      day = this.dayAmt || 0,
+      g =
+        {
+          hamlet: day > 0.5 ? ["crow", "creak", "gull", "bell"] : ["owl", "crow", "creak", "howl"],
+          mire: ["crow", "water", "owl", "creak", "gurgle"],
+          ossuary: ["crow", "howl", "bones", "moan"],
+          cathedral: ["bell", "creak", "crow"],
+          citadel: ["whisper", "creak", "moan"],
+          frost: ["howl", "creak", "glassy", "bugle"],
+          waste: day > 0.5 ? ["cicada", "cicada", "crow", "screech"] : ["howl", "crow", "screech"],
+          thorn: ["crow", "owl", "chitter", "creak", "snarl"],
+          storm: ["thunder", "gull", "crow", "howl"],
+          sea: ["gull", "gull", "splash", "creak"],
+          dungeon: ["creak", "bones", "moan", "water"],
+          raid: ["moan", "whisper", "creak"],
+          arena: [],
+        }[this.zone || this.region] || ["owl", "crow", "creak", "howl"];
+    if (!g.length) return;
+    let n = pick(g);
+    n === "glassy" ? this._glass(mtof(76 + ((Math.random() * 5) | 0)), 0.03, 4) : this.play(n, w, 0.7);
+  };
+
+  // ---------- the game feeds zone / day into the audio engine ----------
+  let VOICE = {
+    hollow: "moan", ghoul: "moan", boneknight: "moan", wraith: "wail", cultist: "grunt", abomination: "gurgle", hound: "snarl", drowned: "gurgle",
+  };
+  X.voiceOf = function (e) {
+    let d = e.def || e,
+      t = e.type || "";
+    if (VOICE[t]) return VOICE[t];
+    if (d.boss) return "roar";
+    if (d.flying) return "wail";
+    if (d.quad) return "snarl";
+    let m = String(d.m || d.model || "");
+    if (/skel|bone|ossian|khet/.test(m + t)) return "moan";
+    if (/spider|beetle|crab|scorp/.test(m + t)) return "chitter";
+    if (/wolf|warg|bear|lion|boar|hound/.test(m + t)) return "snarl";
+    return "grunt";
+  };
+  let up0 = GP.update;
+  GP.update = function (dt) {
+    up0.call(this, dt);
+    let au = this.audio;
+    if (!au || !au.ctx) return;
+    let p = this.player;
+    // zone for music + nature
+    let zone = X.arena?.cur ? "arena" : this.inst ? (this.inst.def?.raid ? "raid" : "dungeon") : this.home ? "hamlet" : Vi(p.pos.x, p.pos.z);
+    ((au.zone = zone), (au.dayAmt = this.env?.day || 0));
+    // creature idle chatter
+    this._voiceT = (this._voiceT ?? 1) - dt;
+    if (this._voiceT <= 0) {
+      this._voiceT = 1.4 + Math.random() * 2.2;
+      let near = [];
+      for (let e of this.enemies.values()) e.alive && !e.submerged && e.pos.distanceToSquared(p.pos) < 900 && near.push(e);
+      if (near.length && Math.random() < 0.55) {
+        let e = pick(near);
+        au.play(X.voiceOf(e), e.pos, e.def.boss ? 0.5 : 0.45);
+      }
+    }
+    // instance cleared → fanfare
+    let done = !!this.inst?.done;
+    (done && !this._instDoneSeen && au.play("fanfare"), (this._instDoneSeen = done));
+    // mount gaits: wingbeats for drakes while moving
+    let M = this.mounted;
+    if (M && M.def?.body?.[0] === "drake") {
+      this._wingT = (this._wingT ?? 0) - dt;
+      let mv = Math.hypot(p.vel.x, p.vel.z);
+      this._wingT <= 0 && ((this._wingT = mv > 2 ? 0.45 : 0.9), au.play("wingbeat", null, mv > 2 ? 0.8 : 0.4));
+    }
+  };
+  // hurt voices (throttled per enemy)
+  let he0 = GP.hitEnemy;
+  GP.hitEnemy = function (A, i, I = {}) {
+    let r = he0.call(this, A, i, I);
+    if (A && A.alive && this.audio?.ctx) {
+      let now = this.t;
+      if (now - (A._vT || -9) > 1.1 && Math.random() < 0.7) {
+        A._vT = now;
+        this.audio.play(X.voiceOf(A), A.pos, A.def.boss ? 0.35 : 0.6);
+      }
+    }
+    return r;
+  };
+  // boss kill → fanfare; player death → defeat
+  let ke0 = GP.killEnemy;
+  GP.killEnemy = function (A, i) {
+    let r = ke0.call(this, A, i);
+    A?.def?.boss && setTimeout(() => this.running && this.audio.play("fanfare"), 1400);
+    return r;
+  };
+  let die0 = GP.die;
+  GP.die = function (...a) {
+    let r = die0.apply(this, a);
+    this.player.dead && setTimeout(() => this.audio.play("defeat"), 500);
+    return r;
+  };
+  // footsteps by surface, hooves / paws when mounted
+  let STEP = { snow: "snowstep", sand: "sandstep", wood: "woodstep" };
+  let st0 = GP.start;
+  GP.start = function (...a) {
+    st0.apply(this, a);
+    let au = this.audio,
+      g = this;
+    if (au && !au._surfWrapped) {
+      au._surfWrapped = !0;
+      let p0 = au.play.bind(au);
+      au.play = (name, pos, vol, ...rest) => {
+        if (name === "step") {
+          let M = g.mounted?.def?.body?.[0];
+          if (M) {
+            let k = /horse|elk|ram|boar/.test(M) ? "hoof" : /crab|spider/.test(M) ? "clack" : M === "drake" ? "clack" : "pawstep";
+            return p0(k, pos, (vol ?? 1) * (0.8 + Math.random() * 0.3), ...rest);
+          }
+          let s = STEP[au.surface];
+          if (s) return p0(s, pos, (vol ?? 1) * (0.85 + Math.random() * 0.3), ...rest);
+        }
+        return p0(name, pos, vol, ...rest);
+      };
+    }
+  };
+  let upl0 = GP.updatePlayer;
+  GP.updatePlayer = function (dt) {
+    upl0.call(this, dt);
+    let au = this.audio,
+      p = this.player;
+    if (!au) return;
+    if (au.surface === "water") return;
+    if (this.home) au.surface = "wood";
+    else if (this.inst) au.surface = "stone";
+    else {
+      let z = Vi(p.pos.x, p.pos.z);
+      if (_I(p.pos.x, p.pos.z) >= 4 && !X.settleAt?.(p.pos.x, p.pos.z)) {
+        z === "frost" ? (au.surface = "snow") : z === "waste" && (au.surface = "sand");
+      }
+    }
+  };
+  // mount calls
+  let CALL = { horse: "whinny", elk: "bugle", warg: "snarl", lion: "roar", boar: "squeal", bear: "roar", ram: "bleat", drake: "screech", spider: "chitter", crab: "clack" };
+  let tm0 = GP.toggleMount;
+  GP.toggleMount = function (...a) {
+    let r = tm0.apply(this, a);
+    let M = this.mounted;
+    M && CALL[M.def?.body?.[0]] && setTimeout(() => this.audio.play(CALL[M.def.body[0]], null, 0.7), 60);
+    return r;
+  };
+  // potions, equipping
+  let dp0 = GP.drinkPotion;
+  GP.drinkPotion = function (...a) {
+    let n = this.hsave?.potions;
+    let r = dp0.apply(this, a);
+    this.hsave && this.hsave.potions < n && this.audio.play("gulp");
+    return r;
+  };
+  let eq0 = GP.equip;
+  GP.equip = function (A) {
+    let r = eq0.call(this, A);
+    r && this.audio.play(/weapon|helm|chest|offhand|shield/.test(A?.slot || "") ? "equipmetal" : "cloth", null, 0.8);
+    return r;
+  };
+  // UI: hover ticks and click tocks on buttons and tabs
+  let lastTick = 0;
+  document.addEventListener(
+    "mouseover",
+    (e) => {
+      let b = e.target.closest?.("button, .tab, .slot, .inv-item, .btn, .menu-item, .qrow, .row[data-id]");
+      if (!b || !window.__app?.audio?.ctx) return;
+      let t = performance.now();
+      t - lastTick > 70 && ((lastTick = t), __app.audio.play("tick", null, 0.6));
+    },
+    { passive: !0 },
+  );
+  document.addEventListener(
+    "click",
+    (e) => {
+      let b = e.target.closest?.("button, .tab, .slot, .inv-item, .btn, .menu-item, .qrow");
+      b && window.__app?.audio?.ctx && __app.audio.play("tock", null, 0.7);
+    },
+    { passive: !0 },
+  );
+  // panels: open / close
+  let sh0 = XC.prototype.show;
+  XC.prototype.show = function (A, ...a) {
+    let r = sh0.call(this, A, ...a);
+    try {
+      let au = window.__app?.audio;
+      au?.ctx && A && A !== "hud" && au.play("open", null, 0.6);
+    } catch (e) {}
+    return r;
+  };
+}
+
+/* ---- ED_events.js ---- */
+// ===== 1.14: world events & economy — world bosses on a timer, caravan escorts, fishing & cooking, Event Quartermaster, friends' auction board =====
+{
+  let GP = SC.prototype,
+    U = XC.prototype,
+    app = () => window.__app,
+    me = () => app().game?.net?.pid || X.pid?.(),
+    rnd = (a, b) => a + Math.random() * (b - a),
+    pick = (a) => a[(Math.random() * a.length) | 0],
+    hamlet = yI.hamlet,
+    isHost = (g) => !g.net || g.isHost,
+    tokens = () => (app().profile.tokens ||= 0);
+
+  // ---------- new materials, professions ----------
+  let M = (id, name, tier, kind, color) => (X.MATS[id] = { id, name, tier, kind, color });
+  ["Mudfish", "Icepike", "Sunperch", "Storm Eel"].forEach((n, t) => M("fish" + t, n, t, "fish", "#8ad0ff"));
+  ["Lean Meat", "Haunch of Wolf", "Dune Lizard Meat", "Thunderbird Breast"].forEach((n, t) => M("meat" + t, n, t, "meat", "#ff9a8a"));
+  X.PROF.fishing = { name: "Fishing", icon: "drop", color: "#6ab8ff", kind: "gather", desc: "Cast a line from any shore, river bank or pier. Fish feed the Cooking pot — and the sea keeps stranger things than fish." };
+  X.PROF.cooking = { name: "Cooking", icon: "flame", color: "#ffb070", kind: "craft", desc: "Cook fish and meat over any fire (the Vigil bonfire, a camp, your Manor hearth). Food gives a 20-minute Well Fed buff." };
+  // food recipes
+  for (let t = 0; t < 4; t++) {
+    let T = X.TIERS[t],
+      fn = ["Grilled Mudfish", "Icepike Chowder", "Sunperch Skewers", "Storm Eel Pie"][t],
+      mn = ["Lean Stew", "Wolf Haunch Roast", "Dune Lizard Curry", "Thunderbird Feast"][t],
+      vv = [4, 7, 10, 14][t],
+      pv = [3, 5, 8, 11][t];
+    X.RECIPES.push(
+      { id: `food_f${t}`, prof: "cooking", name: fn, req: T.min, mats: [["fish" + t, 2]], food: { stat: "vitalityPct", val: vv, name: fn }, text: `Well Fed 20 min: +${vv}% max health` },
+      { id: `food_m${t}`, prof: "cooking", name: mn, req: T.min + 20, mats: [["meat" + t, 2]], food: { stat: "power", val: pv, name: mn }, text: `Well Fed 20 min: +${pv}% damage` },
+    );
+    t >= 1 && X.RECIPES.push({ id: `food_b${t}`, prof: "cooking", name: ["", "Fisherman's Banquet", "Caravan Supper", "Stormcrown Feast"][t], req: T.min + 45, mats: [["fish" + t, 2], ["meat" + t, 2]], food: { stat: "speedPct", val: [0, 4, 6, 8][t], name: ["", "Fisherman's Banquet", "Caravan Supper", "Stormcrown Feast"][t] }, text: `Well Fed 20 min: +${[0, 4, 6, 8][t]}% move speed` });
+  }
+  // food buff plumbing (mirrors scrolls)
+  let craft0 = X.craft;
+  X.craft = function (g, r, opt) {
+    if (r.food) {
+      if (X.skill(g, "cooking") < r.req) return g.toast(`Requires Cooking ${r.req}`, "#ff6a5a");
+      if (!(g.fireNear > 0.2) && !X.fireNear?.(g, g.player.pos, 9) && !g.home) return g.toast("You need a fire to cook on — the Vigil bonfire, a camp fire or your Manor hearth", "#ff9a6a");
+      if (!X.hasMats(r.mats)) return g.toast("Not enough ingredients", "#ff6a5a");
+      g.hsave.food = { ...r.food, t: 1200 };
+      g.recalcStats();
+      g.toast(`${r.name}: ${r.text}`, "#ffb070");
+      g.audio.play("sizzle", null, 0.6);
+      g.track("meals");
+    }
+    return craft0.call(this, g, r, opt);
+  };
+  let gs0 = GP.gearStat;
+  GP.gearStat = function (A) {
+    let v = gs0.call(this, A),
+      f = this.hsave?.food;
+    f && f.stat === A && (v += f.val);
+    return v;
+  };
+  let Cd1 = Cd;
+  Cd = function (B, A) {
+    let r = Cd1(B, A),
+      g = window.__app?.game,
+      f = g?.hsave?.food;
+    g && g.hero === B && f && (f.stat === "vitalityPct" || f.stat === "speedPct") && (r[f.stat] = (r[f.stat] || 0) + f.val);
+    return r;
+  };
+  // meat from beasts
+  let ke0 = GP.killEnemy;
+  GP.killEnemy = function (e, by) {
+    let r = ke0.call(this, e, by);
+    try {
+      let beast = e.type === "hound" || e.def?.quad || /wolf|warg|lizard|bird|boar/.test(e.type);
+      if (beast && Math.random() < 0.55) X.addMat(this, "meat" + X.tierOfZone(Vi(e.pos.x, e.pos.z)), 1);
+    } catch (err) {}
+    return r;
+  };
+
+  // ---------- fishing ----------
+  X.fishSpot = function (g) {
+    let p = g.player,
+      W = g.world;
+    if (!W.isWater || W.isWater(p.pos.x, p.pos.z) || g.inst || g.home) return null;
+    let dx = -Math.sin(p.yaw),
+      dz = -Math.cos(p.yaw);
+    for (let d = 2.5; d <= 6; d += 1.2) {
+      let x = p.pos.x + dx * d,
+        z = p.pos.z + dz * d;
+      if (W.isWater(x, z)) return { x, z, y: W.waterLevel ?? 0.15 };
+    }
+    return null;
+  };
+  let sp0 = GP.sysPrompt;
+  GP.sysPrompt = function () {
+    let F = this._fish;
+    if (F) return F.state === "bite" ? { text: "[F] Hook it!", near: { kind: "fish", hook: !0 } } : { text: `Fishing… ${F.state === "wait" ? "wait for the bob" : ""} (F to stop)`, near: { kind: "fish", stop: !0 } };
+    let r = sp0.call(this);
+    if (r) return r;
+    if (this.mounted || this.player.combatT > 0) return null;
+    let s = X.fishSpot(this);
+    if (s) {
+      let t = X.tierOfZone(Vi(s.x, s.z)),
+        req = X.TIERS[t].min,
+        sk = X.skill(this, "fishing");
+      return { text: sk >= req ? `[F] Cast a line (Fishing ${sk})` : `These waters need Fishing ${req}`, near: { kind: "fish", cast: !0, spot: s, ok: sk >= req, req, t } };
+    }
+    return null;
+  };
+  let si0 = GP.sysInteract;
+  GP.sysInteract = function (n) {
+    if (n.kind !== "fish") return si0.call(this, n);
+    if (n.cast) {
+      if (!n.ok) return this.toast(`You need Fishing ${n.req} here`, "#ff6a5a"), !0;
+      let bob = v(new JA(0.09, 8, 6), ZA("cloth", 0xff4a3a), n.spot.x, n.spot.y + 0.05, n.spot.z);
+      bob.add(v(new JA(0.07, 8, 6), ZA("cloth", 0xf0f0f0), 0, 0.06, 0));
+      this.scene.add(bob);
+      this._fish = { state: "wait", t: 0, bite: rnd(2.5, 7), spot: n.spot, tier: n.t, bob, from: this.player.pos.clone() };
+      this.audio.play("splash", n.spot, 0.5);
+      this.particles.burst(n.spot.x, n.spot.y + 0.05, n.spot.z, 8, { color: new _(0x9ad0e8), speed: 1.5, grav: 6, life: 0.5, size: 0.07 });
+      return !0;
+    }
+    let F = this._fish;
+    if (!F) return !0;
+    if (n.stop) return X.fishStop(this, "You reel the line in"), !0;
+    if (n.hook) {
+      let t = F.tier,
+        sk = X.skill(this, "fishing"),
+        roll = Math.random(),
+        p = this.profile;
+      if (roll < 0.06) {
+        let sh = 15 + t * 25 + ((Math.random() * 30) | 0);
+        p.shards += sh;
+        this.toast(`A sunken coffer! +${sh} shards`, "#ffd070");
+        if (Math.random() < 0.35 && p.inventory.length < 40) {
+          let it = this.gen(Math.max(1, this.hsave.level), 0.5, Math.random() < 0.15 ? "legendary" : "epic");
+          p.inventory.push(it);
+          this.ui.lootToast(it, this);
+        }
+        this.track("fish_treasure");
+      } else if (roll < 0.14) this.toast(pick(["A soggy boot. The sea keeps its secrets.", "A tangle of kelp.", "Someone's old lantern — empty.", "A rusted dagger. Worthless."]), "#b0b0b0");
+      else {
+        let ft = roll < 0.3 && t > 0 ? t - 1 : t,
+          n2 = sk - X.TIERS[t].min > 50 && Math.random() < 0.4 ? 2 : 1;
+        X.addMat(this, "fish" + ft, n2);
+        this.track("fish_caught", n2);
+      }
+      X.skillUp(this, "fishing", X.TIERS[t].min);
+      this.audio.play("reel", null, 0.7);
+      this.audio.play("splash", F.spot, 0.6);
+      this.particles.burst(F.spot.x, F.spot.y + 0.1, F.spot.z, 14, { color: new _(0xbfe8ff), speed: 2.4, grav: 8, life: 0.6, size: 0.08 });
+      X.fishStop(this);
+      // keep fishing: recast automatically after a moment
+      setTimeout(() => {
+        if (!this.running || this._fish || this.player.combatT > 0) return;
+        let s = X.fishSpot(this);
+        s && this.sysInteract({ kind: "fish", cast: !0, spot: s, ok: !0, t: X.tierOfZone(Vi(s.x, s.z)) });
+      }, 900);
+      return !0;
+    }
+    return !0;
+  };
+  X.fishStop = function (g, msg) {
+    let F = g._fish;
+    if (!F) return;
+    F.bob && g.scene.remove(F.bob);
+    g._fish = null;
+    msg && g.toast(msg, "#9ad0ff");
+  };
+  let upf0 = GP.updatePlayer;
+  GP.updatePlayer = function (dt) {
+    upf0.call(this, dt);
+    let F = this._fish,
+      p = this.player;
+    if (!F) return;
+    if (p.pos.distanceTo(F.from) > 0.8 || p.dead || p.downed || p.combatT > 0) return X.fishStop(this, "Fishing interrupted");
+    F.t += dt;
+    F.bob.position.y = F.spot.y + 0.05 + Math.sin(this.t * 2.2) * 0.02 - (F.state === "bite" ? 0.18 : 0);
+    if (F.state === "wait" && F.t >= F.bite) {
+      ((F.state = "bite"), (F.t = 0));
+      this.audio.play("water", F.spot, 0.9);
+      this.particles.burst(F.spot.x, F.spot.y + 0.05, F.spot.z, 10, { color: new _(0xbfe8ff), speed: 1.8, grav: 7, life: 0.5, size: 0.07 });
+      this.floatText(new N(F.spot.x, F.spot.y + 0.6, F.spot.z), "!", "#ffd070");
+    } else if (F.state === "bite" && F.t > 1.4) {
+      ((F.state = "wait"), (F.t = 0), (F.bite = rnd(2, 6)));
+      this.toast("It got away…", "#9ad0ff");
+    }
+  };
+  // food buff timer
+  let upd0 = GP.update;
+  GP.update = function (dt) {
+    upd0.call(this, dt);
+    let f = this.hsave?.food;
+    f && ((f.t -= dt), f.t <= 0 && ((this.hsave.food = null), this.recalcStats(), this.toast("You are no longer Well Fed", "#c0c0c0")));
+    X.EV.tick(this, dt);
+  };
+  // professions book: fishing page, cooking station note, active food
+  let ph0 = U.profHTML;
+  U.profHTML = function (tab) {
+    let g = this.app.game,
+      cur = tab || this._profTab || "herbalism",
+      h = ph0.call(this, tab).replace("every hero can learn all six", "every hero can learn all eight");
+    if (cur === "fishing") {
+      let body = `<h3>Where to fish</h3><div class="small">${X.TIERS.map((T, t) => `<div><b style="color:${X.reqColor(g, "fishing", T.min)}">${T.name} (${T.min}+)</b>: ${T.zones.map((z) => UI[z]?.name || z).join(", ")} — ${X.MATS["fish" + t].name}</div>`).join("")}</div>
+        <p class="small">Stand on a shore facing the water and press F to cast. When the float dips and you see "!", press F again within a second. Sunken coffers hold shards and sometimes gear. Fish are cooked over any fire.</p>`;
+      let a = h.indexOf('<div class="pcols"><div>');
+      if (a >= 0) {
+        let b = h.indexOf("</div><div>", a + 10);
+        h = h.slice(0, a + 24) + body + h.slice(b);
+      }
+    }
+    if (cur === "cooking") h = h.replace("<h3>Recipes</h3>", `<p class="small">Cooking needs a fire nearby. Meat comes from wolves and beasts; fish from Fishing.</p>${g.hsave.food ? `<h3>Well Fed</h3><div class="small">${g.hsave.food.name} — ${Math.ceil(g.hsave.food.t / 60)} min left</div>` : ""}<h3>Recipes</h3>`);
+    return h;
+  };
+
+  // ---------- world events ----------
+  Object.assign(rw, {
+    wb_hamlet: { name: "The Gallows Warden", hp: 9000, dmg: 22, speed: 4.6, range: 3.2, atkCd: 1.9, xp: 1800, armor: 20, radius: 1.4, height: 3.6, color: 0xc0b090, boss: !0, event: !0 },
+    wb_frost: { name: "Skadi's Revenant", hp: 30000, dmg: 90, speed: 4.4, range: 3.6, atkCd: 1.9, xp: 7000, armor: 40, radius: 1.6, height: 4.4, color: 0x9ad0ff, boss: !0, event: !0 },
+    wb_waste: { name: "Ash-Marauder Khaz", hp: 48000, dmg: 130, speed: 5, range: 3.4, atkCd: 1.7, xp: 12000, armor: 55, radius: 1.6, height: 4.2, color: 0xffb040, boss: !0, event: !0 },
+    wb_thorn: { name: "Old Greatbriar", hp: 66000, dmg: 150, speed: 3.6, range: 18, atkCd: 2.1, xp: 18000, armor: 55, radius: 1.9, height: 5.6, color: 0x7aff6a, boss: !0, ranged: !0, event: !0 },
+    wb_storm: { name: "Gale-Warden Ysolde", hp: 92000, dmg: 185, speed: 4.2, range: 20, atkCd: 1.8, xp: 26000, armor: 65, radius: 1.7, height: 5, color: 0xb080ff, boss: !0, ranged: !0, event: !0 },
+  });
+  Object.assign(Tl, {
+    wb_hamlet: { m: "skel_warrior", h: 3.6, tint: 0xc0b090, R: "w_skeleton_blade", L: "w_skeleton_shield_large_a", atk: "1H_Melee_Attack_Chop", glow: 0xffd070 },
+    wb_frost: { m: "skel_warrior", h: 4.4, tint: 0x9ad0ff, R: "w_skeleton_blade", atk: "1H_Melee_Attack_Chop", glow: 0x3a8ad0 },
+    wb_waste: { m: "barbarian", h: 4.2, tint: 0xc07a30, show: ["2H_Axe"], atk: "2H_Melee_Attack_Chop", idle: "2H_Melee_Idle", glow: 0xff6a20 },
+    wb_thorn: { m: "mage", h: 5.6, tint: 0x3a8a2a, show: ["2H_Staff"], hat: !0, atk: "Spellcast_Shoot", glow: 0x7aff6a },
+    wb_storm: { m: "skel_mage", h: 5, tint: 0x7050c0, show: ["2H_Staff"], atk: "Spellcast_Shoot", glow: 0xb080ff },
+  });
+  for (let k of ["wb_hamlet", "wb_frost", "wb_waste", "wb_thorn", "wb_storm"]) Ul.includes(k) || Ul.push(k);
+  X.BOSSLV = Object.assign(X.BOSSLV || {}, { wb_hamlet: 12, wb_frost: 26, wb_waste: 38, wb_thorn: 48, wb_storm: 58 });
+  // event bosses have no lair to walk home to: idle (and heal slowly) when nobody is near
+  for (let k of ["wb_hamlet", "wb_frost", "wb_waste", "wb_thorn", "wb_storm"])
+    X.bossAI[k] = function (A, i, I, base) {
+      if (!i) return (A.hp = Math.min(A.maxHp, A.hp + A.maxHp * 0.01 * (I || 0.016))), null;
+      return base.call(this, A, i, I);
+    };
+
+  // where a zone's road runs: pick the point between two settlements, nudged onto the road
+  let roadPoint = (a, b, f) => {
+    let x = a[0] + (b[0] - a[0]) * f,
+      z = a[1] + (b[1] - a[1]) * f,
+      best = [x, z],
+      bd = _I(x, z);
+    for (let i = 0; i < 24 && bd > 3; i++) {
+      let ang = (i / 24) * Math.PI * 2,
+        r = 6 + i * 2,
+        xx = x + Math.cos(ang) * r,
+        zz = z + Math.sin(ang) * r,
+        d = _I(xx, zz);
+      d < bd && ((bd = d), (best = [xx, zz]));
+    }
+    return best;
+  };
+  let zoneFor = (g) => {
+    let lv = Math.max(g.hsave.level, ...[...g.remotes.values()].map((r) => r.raw?.lv || 1)),
+      zs = ["hamlet"];
+    for (let id in X.OUT) lv >= X.OUT[id].lv[0] - 2 && zs.push(id);
+    return pick(zs);
+  };
+  let endsFor = (zone) => {
+    if (zone === "hamlet") return [[hamlet[0], hamlet[1]], LC.find((l) => l.id === "crossroads").pos];
+    let Z = X.OUT[zone],
+      T = X.TOWNS?.[zone],
+      camp = X.SETTLE.find((s) => s.id === "camp_" + zone);
+    return [camp ? camp.pos : Z.hub, T?.pos || Z.lair];
+  };
+  // caravan wagon model
+  X.wagonModel = function () {
+    let g = new eA(),
+      wood = ZA("cloth", 0x6a4a2a, { rough: 0.9 }),
+      dark = ZA("cloth", 0x3a2a1a),
+      cloth = ZA("cloth", 0xd8c8a0, { rough: 0.95 });
+    g.add(v(new iA(1.5, 0.6, 2.6), wood, 0, 0.9, 0));
+    g.add(v(new iA(1.6, 0.08, 2.8), dark, 0, 0.62, 0));
+    let hood = v(new QA(0.85, 0.85, 2.2, 10, 1, !0, 0, Math.PI), cloth, 0, 1.2, 0);
+    ((hood.rotation.z = Math.PI / 2), (hood.rotation.y = Math.PI / 2), (hood.material.side = KA), g.add(hood));
+    for (let [x, z] of [
+      [-0.85, 0.9],
+      [0.85, 0.9],
+      [-0.85, -0.9],
+      [0.85, -0.9],
+    ]) {
+      let w = v(new QA(0.42, 0.42, 0.1, 12), dark, x, 0.42, z);
+      ((w.rotation.z = Math.PI / 2), g.add(w));
+    }
+    g.add(v(new iA(0.08, 0.08, 2.4), dark, 0, 0.75, 2.2));
+    let h = X.creature.horse(0x6a5040, { wild: !0 });
+    ((h.position.z = 3.3), g.add(h));
+    g.userData.horse = h.userData.parts;
+    let lamp = Zw(0xffb060, 1.4, 0.5);
+    ((lamp.position.set(0.7, 1.5, -1.2)), g.add(lamp));
+    g.traverse((m) => m.isMesh && (m.castShadow = !0));
+    return g;
+  };
+  let wagonPath = (g, a, b) => {
+    // greedy walk that hugs the road
+    let pts = [[a[0], a[1]]],
+      x = a[0],
+      z = a[1],
+      guard = 0;
+    while (Math.hypot(b[0] - x, b[1] - z) > 8 && guard++ < 400) {
+      let bear = Math.atan2(b[1] - z, b[0] - x),
+        best = null,
+        bs = 1e9;
+      for (let k = -4; k <= 4; k++) {
+        let ang = bear + k * 0.22,
+          nx = x + Math.cos(ang) * 6,
+          nz = z + Math.sin(ang) * 6,
+          cost = _I(nx, nz) * 1.2 + Math.abs(k) * 1.5 + (g.world.isWater?.(nx, nz) ? 60 : 0) + (g.world.slopeAt?.(nx, nz) || 0) * 20;
+        cost < bs && ((bs = cost), (best = [nx, nz]));
+      }
+      ((x = best[0]), (z = best[1]), pts.push([x, z]));
+    }
+    pts.push([b[0], b[1]]);
+    return pts;
+  };
+  X.EV = {
+    cur: null,
+    nextT: 200,
+    tick(g, dt) {
+      let E = this.cur;
+      if (isHost(g)) {
+        if (!E) {
+          this.nextT -= dt;
+          this.nextT <= 0 && !g.inst && !X.arena?.cur && this.start(g);
+        } else this.hostTick(g, E, dt);
+      }
+      E && this.render(g, E, dt);
+    },
+    start(g, type) {
+      let zone = zoneFor(g),
+        kind = type || (this.last === "boss" ? "caravan" : "boss");
+      this.last = kind;
+      let [A, B] = endsFor(zone),
+        lv = zone === "hamlet" ? Math.max(8, Math.min(16, g.hsave.level)) : Math.max(X.OUT[zone].lv[0], Math.min(X.OUT[zone].lv[1], g.hsave.level)),
+        E = { kind, zone, lv, t: 0, dur: kind === "boss" ? 420 : 520, zoneName: UI[zone]?.name || zone };
+      if (kind === "boss") {
+        let [x, z] = roadPoint(A, B, 0.55),
+          id = "wb_" + zone,
+          e = g.spawnEnemy(id, x, z, X.BOSSLV[id] || lv);
+        if (!e) return (this.nextT = 60);
+        let n = 1 + g.remotes.size;
+        ((e.level = lv), (e.hp = e.maxHp = Math.round(rw[id].hp * (0.6 + 0.4 * n))), (e.event = !0), (e.worldBoss = !0), (e.dmgMul = 1));
+        ((E.pos = [x, z]), (E.name = rw[id].name), (E.eid = e.id));
+      } else {
+        let path = wagonPath(g, A, B);
+        ((E.path = path), (E.i = 0), (E.pos = [path[0][0], path[0][1]]), (E.yaw = 0), (E.hp = 600 + lv * 40), (E.mh = E.hp), (E.waveT = 14), (E.name = `Caravan to ${X.TOWNS?.[zone]?.name || (zone === "hamlet" ? "the Crossroads" : "the coast")}`));
+      }
+      this.cur = E;
+      this.announce(g, E);
+      g.net && g.isHost && g.net.broadcast({ t: "wev", k: "start", kind: E.kind, zone, lv, name: E.name, pos: E.pos, dur: E.dur, path: E.path, hp: E.hp, mh: E.mh, eid: E.eid });
+    },
+    announce(g, E) {
+      g.ui.banner(E.kind === "boss" ? "WORLD BOSS" : "CARAVAN", E.kind === "boss" ? `${E.name} walks the roads of ${E.zoneName} — ${Math.round(E.dur / 60)} minutes` : `${E.name} is leaving — escort it through ${E.zoneName}`, "#ffd070");
+      g.audio.play("horn", null, 0.8);
+      g.toast(`World event: ${E.name} (${E.zoneName}). A gold marker shows the way.`, "#ffd070");
+    },
+    hostTick(g, E, dt) {
+      E.t += dt;
+      if (E.kind === "boss") {
+        let e = g.enemies.get(E.eid);
+        if (!e || !e.alive) return this.finish(g, !!e || E.killed, "boss");
+        E.pos = [e.pos.x, e.pos.z];
+        if (E.t > E.dur) return this.finish(g, !1);
+      } else {
+        let near = [g.player.pos, ...[...g.remotes.values()].map((r) => r.pos)].some((p) => Math.hypot(p.x - E.pos[0], p.z - E.pos[1]) < 38);
+        E.moving = near && !E.stalled;
+        // enemies chewing on the wagon
+        let bite = 0;
+        for (let e of g.enemies.values()) e.alive && Math.hypot(e.pos.x - E.pos[0], e.pos.z - E.pos[1]) < 4.6 && (bite += (e.def.dmg || 10) * 0.35 * dt);
+        bite > 0 && ((E.hp = Math.max(0, E.hp - bite)), (E.moving = !1));
+        if (E.hp <= 0) return this.finish(g, !1);
+        if (E.moving) {
+          let tgt = E.path[Math.min(E.path.length - 1, E.i + 1)],
+            dx = tgt[0] - E.pos[0],
+            dz = tgt[1] - E.pos[1],
+            d = Math.hypot(dx, dz),
+            sp = 3.2 * dt;
+          if (d < sp + 0.3) E.i++;
+          else ((E.pos[0] += (dx / d) * sp), (E.pos[1] += (dz / d) * sp), (E.yaw = Math.atan2(dx, dz)));
+          if (E.i >= E.path.length - 1) return this.finish(g, !0);
+          E.waveT -= dt;
+          if (E.waveT <= 0) {
+            E.waveT = 22;
+            let list = fn[E.zone] || fn.hamlet,
+              n = 3 + Math.min(3, g.remotes.size);
+            for (let i = 0; i < n; i++) {
+              let ang = E.yaw + rnd(-1, 1),
+                x = E.pos[0] + Math.sin(ang) * rnd(5, 9),
+                z = E.pos[1] + Math.cos(ang) * rnd(5, 9),
+                e = g.spawnEnemy(pick(list), x, z, E.lv);
+              e && ((e.event = !0), (e.aggroT = 20));
+            }
+            g.audio.play("horn", { x: E.pos[0], z: E.pos[1] }, 0.4);
+          }
+        }
+        if (E.t > E.dur) return this.finish(g, !1);
+        this._syncT = (this._syncT || 0) - dt;
+        if (this._syncT <= 0 && g.net && g.isHost) {
+          this._syncT = 0.2;
+          g.net.broadcast({ t: "wev", k: "wagon", pos: E.pos, yaw: E.yaw, hp: E.hp, i: E.i, mv: E.moving ? 1 : 0 });
+        }
+      }
+    },
+    finish(g, win, why) {
+      let E = this.cur;
+      if (!E) return;
+      this.cur = null;
+      this.nextT = rnd(330, 480);
+      let msg = E.kind === "boss" ? (win ? `${E.name} has fallen` : `${E.name} has slipped away`) : win ? "The caravan arrived safely" : E.hp <= 0 ? "The caravan was lost" : "The caravan gave up waiting";
+      this.endLocal(g, E, win, msg);
+      g.net && g.isHost && g.net.broadcast({ t: "wev", k: "end", win: win ? 1 : 0, msg });
+      if (win) {
+        let range = (p) => Math.hypot(p.x - E.pos[0], p.z - E.pos[1]) < 90;
+        range(g.player.pos) && X.evReward(g, E);
+        if (g.net && g.isHost) for (let [id, r] of g.remotes) !r.bot && range(r.pos) && g.sendTo(id, { t: "wev", k: "reward", kind: E.kind, lv: E.lv });
+      }
+      if (E.kind === "boss" && !win) {
+        let e = g.enemies.get(E.eid);
+        e && g.removeEnemy(e);
+      }
+    },
+    endLocal(g, E, win, msg) {
+      g.ui.banner(win ? "EVENT COMPLETE" : "EVENT FAILED", msg, win ? "#8aff9a" : "#ff8a6a");
+      win ? g.audio.play("fanfare") : g.audio.play("defeat");
+      E.wagon && (g.scene.remove(E.wagon), (E.wagon = null));
+    },
+    render(g, E, dt) {
+      if (E.kind !== "caravan") return;
+      let W = (E.wagon ||= (() => {
+        let w = X.wagonModel();
+        g.scene.add(w);
+        return w;
+      })());
+      let y = g.world.groundAt(E.pos[0], E.pos[1]);
+      W.position.set(E.pos[0], y, E.pos[1]);
+      W.rotation.y = E.yaw;
+      W.userData.horse && X.Xw(W.userData.horse, { t: g.t, ph: g.t * 5, mv: E.moving ? 0.5 : 0 });
+      E.moving && ((E._wT = (E._wT || 0) - dt), E._wT <= 0 && ((E._wT = 0.55), g.audio.play("cartwheel", { x: E.pos[0], z: E.pos[1] }, 0.6)));
+      E.hp < E.mh * 0.5 && Math.random() < dt * 6 && g.particles.burst(E.pos[0], y + 1.6, E.pos[1], 2, { color: new _(0x332222), speed: 0.4, grav: -1.2, life: 1.4, size: 0.25, drag: 1 });
+    },
+  };
+  X.evReward = function (g, E) {
+    let p = g.profile,
+      big = E.kind === "boss",
+      tk = big ? 12 : 8,
+      sh = Math.round((big ? 60 : 40) + E.lv * 4);
+    ((p.tokens = tokens() + tk), (p.shards += sh));
+    g.toast(`+${tk} Vigil Tokens, +${sh} shards — the Quartermaster in Dawnmere trades tokens for mounts and goods`, "#ffd070");
+    if (p.inventory.length < 40) {
+      let it = g.gen(Math.max(1, Math.min(g.hsave.level, E.lv + 3)), 1, big && Math.random() < 0.15 ? "legendary" : "epic");
+      p.inventory.push(it);
+      g.ui.lootToast(it, g);
+    }
+    g.track(big ? "world_bosses" : "caravans");
+    g.save();
+  };
+  // event bosses are not despawned for being far from everyone, and killing one ends the event
+  let re0 = GP.removeEnemy;
+  GP.removeEnemy = function (e) {
+    if (e?.event && e.alive && X.EV.cur?.eid === e.id && isHost(this)) return;
+    return re0.call(this, e);
+  };
+  let keE = GP.killEnemy;
+  GP.killEnemy = function (e, by) {
+    let r = keE.call(this, e, by);
+    let E = X.EV.cur;
+    E && E.kind === "boss" && e?.id === E.eid && isHost(this) && ((E.killed = !0), X.EV.finish(this, !0));
+    return r;
+  };
+  // compass / map target
+  let qt0 = GP.questTargets;
+  GP.questTargets = function () {
+    let r = qt0.call(this) || [],
+      E = X.EV.cur;
+    E && E.pos && r.unshift({ pos: [E.pos[0], E.pos[1]], kind: "obj", q: { id: "event", name: E.name } });
+    return r;
+  };
+  // net
+  let on0 = GP.onNet;
+  GP.onNet = function (from, m) {
+    if (m?.t === "wev") {
+      let E = X.EV.cur;
+      switch (m.k) {
+        case "start":
+          X.EV.cur = { kind: m.kind, zone: m.zone, lv: m.lv, name: m.name, pos: m.pos, dur: m.dur, path: m.path, hp: m.hp, mh: m.mh, eid: m.eid, t: 0, yaw: 0, zoneName: UI[m.zone]?.name || m.zone };
+          X.EV.announce(this, X.EV.cur);
+          return;
+        case "wagon":
+          E && E.kind === "caravan" && ((E.pos = m.pos), (E.yaw = m.yaw), (E.hp = m.hp), (E.i = m.i), (E.moving = !!m.mv));
+          return;
+        case "end":
+          E && ((X.EV.cur = null), X.EV.endLocal(this, E, !!m.win, m.msg));
+          return;
+        case "reward":
+          X.evReward(this, { kind: m.kind, lv: m.lv });
+          return;
+      }
+      return;
+    }
+    if (m?.t === "abl") return X.auction.onList(this, from, m);
+    if (m?.t === "abll") return X.auction.onListings(this, from, m);
+    if (m?.t === "abuy") return X.auction.onBuy(this, from, m);
+    if (m?.t === "asold") return X.auction.onSold(this, from, m);
+    return on0.call(this, from, m);
+  };
+  // the HUD line while an event runs
+  let uh0 = U.updateHUD;
+  U.updateHUD = function (...a) {
+    uh0.apply(this, a);
+    let E = X.EV.cur,
+      g = this.app.game;
+    if (!E || !g || g.inst?.def?.bg) return;
+    let o = document.querySelector("#tracker .tr-o");
+    if (!o) return;
+    let d = Math.round(Math.hypot(g.player.pos.x - E.pos[0], g.player.pos.z - E.pos[1]));
+    o.textContent = E.kind === "boss" ? `World boss: ${E.name} — ${E.zoneName}, ${d} m` : `${E.name} — wagon ${Math.round((E.hp / E.mh) * 100)}% · ${d} m${E.moving ? "" : " · waiting for an escort"}`;
+  };
+
+  // host gone: the event ends locally
+  let mg0 = X.migrate;
+  mg0 &&
+    (X.migrate = function (app, ...a) {
+      let E = X.EV.cur;
+      E && app.game && ((X.EV.cur = null), X.EV.endLocal(app.game, E, !1, "The event ended when the host left"));
+      return mg0.call(this, app, ...a);
+    });
+
+  // ---------- Quartermaster (tokens) ----------
+  let qspot = [hamlet[0] + 30, hamlet[1] + 16];
+  qI.push(
+    { id: "brann", name: "Quartermaster Brann", title: "Keeper of the Vigil Stores", pos: [qspot[0], qspot[1]], shop: "events", look: { robe: 0x4a3a2a, trim: 0xffd070, sex: "m", hair: "short", hairC: 0x6a4a2a }, greet: "Tokens for the Vigil's work. Caravans, world bosses — bring me proof and take your pick.", loc: "Dawnmere" },
+    { id: "odile", name: "Broker Odile", title: "Auction Board", pos: [qspot[0] + 5, qspot[1] + 2], shop: "auction", look: { robe: 0x2a3a4a, trim: 0xc0c0ff, sex: "f", hair: "bun", hairC: 0x3a2a1a }, greet: "Selling? Buying? Everything on the board comes from Vigil-folk in this very world.", loc: "Dawnmere" },
+  );
+  Object.assign(ZM, { brann: { m: "barbarian", tint: 0xc8a070, show: ["1H_Axe"], hat: !1 }, odile: { m: "mage", tint: 0xd0c0ff, show: [], hat: !0 } });
+  X.MOUNTS.caravanmule = { name: "Caravan Mule", speed: 1.8, cost: -1, model: "horse", col: 0x7a6a50, tokens: 120, body: ["horse", { blanket: 0x6a5a3a, eye: 0x201008 }], desc: "Bought with Vigil Tokens. Slow, stubborn, carries anything." };
+  X.COMPANIONS.marketgoat = { name: "Market Goat", kind: "melee", cost: -1, model: "wolf", scale: 0.8, col: 0xe8e0d0, dmg: 18, tokens: 80, body: ["ram", { eye: 0xffd040 }], bs: 0.4, ability: "bite", desc: "Bought with Vigil Tokens. Headbutts anything that looks at it wrong." };
+  Zi.cloak.push({ id: "wayfarer", name: "Wayfarer's Cloak", color: 0x8a6a3a, cost: -1, tokens: 60 });
+  X.QM_SHOP = [
+    { id: "mule", name: "Caravan Mule (mount)", cost: 120, kind: "mount", ref: "caravanmule" },
+    { id: "goat", name: "Market Goat (companion)", cost: 80, kind: "comp", ref: "marketgoat" },
+    { id: "cloak", name: "Wayfarer's Cloak (cosmetic)", cost: 60, kind: "cloak", ref: "wayfarer" },
+    { id: "prov", name: "Crate of Provisions", cost: 10, kind: "mats", desc: "4 fish + 4 meat of your tier" },
+    { id: "ore", name: "Sack of Ore & Herbs", cost: 10, kind: "mats2", desc: "6 ore + 6 herbs of your tier" },
+    { id: "gear", name: "Sealed Vigil Cache", cost: 30, kind: "gear", desc: "One epic item of your level (10% legendary)" },
+  ];
+  X.npcExtra = X.npcExtra || {};
+  X.npcBind = X.npcBind || {};
+  X.npcExtra.events = function (g) {
+    let p = g.profile,
+      E = X.EV.cur,
+      own = (it) => (it.kind === "mount" ? (p.mounts || []).includes(it.ref) : it.kind === "comp" ? (p.companions || []).includes(it.ref) : it.kind === "cloak" ? (p.owned || []).includes(it.ref + ":cloak") : !1);
+    return `<h3>Vigil Tokens <small>${tokens()} \xB7 earned from world events</small></h3>
+      <p class="small">${E ? `Right now: <b>${E.name}</b> in ${E.zoneName}.` : `No event running. Something stirs on the roads every 6–8 minutes: a world boss or a caravan that needs an escort.`} Be within 90 m when it ends to collect.</p>
+      <div class="shop">${X.QM_SHOP.map((it) => `<div class="shop-i"><div class="tip-n" style="color:#ffd070">${it.name}</div><div class="tip-r">${it.desc || ""} \xB7 ${it.cost} tokens</div><button data-qm="${it.id}" ${own(it) ? "disabled" : tokens() >= it.cost ? "" : "disabled"}>${own(it) ? "Owned" : "Buy"}</button></div>`).join("")}</div>
+      <p class="small">Fishing and Cooking are in your Professions book [B]: cast from any shore, cook over any fire.</p>`;
+  };
+  X.npcBind.events = function (g, root, redo) {
+    root.querySelectorAll("[data-qm]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          let it = X.QM_SHOP.find((x) => x.id === b.dataset.qm),
+            p = g.profile;
+          if (!it || tokens() < it.cost) return;
+          let t = X.tierOfSkill(Math.max(X.skill(g, "fishing"), X.skill(g, "cooking"), X.skill(g, "mining")));
+          if (it.kind === "mount") X.unlockMount(g, it.ref);
+          else if (it.kind === "comp") X.unlockCompanion(g, it.ref);
+          else if (it.kind === "cloak") (p.owned ||= []).push(it.ref + ":cloak"), g.toast("Wayfarer's Cloak unlocked — wear it from the Wardrobe", "#ffd070");
+          else if (it.kind === "mats") (X.addMat(g, "fish" + t, 4), X.addMat(g, "meat" + t, 4));
+          else if (it.kind === "mats2") (X.addMat(g, "ore" + t, 6), X.addMat(g, "herb" + t, 6));
+          else if (it.kind === "gear") {
+            if (p.inventory.length >= 40) return g.toast("Inventory full", "#ff4a3a");
+            let item = g.gen(Math.max(1, g.hsave.level), 1, Math.random() < 0.1 ? "legendary" : "epic");
+            p.inventory.push(item);
+            g.ui.lootToast(item, g);
+          }
+          p.tokens -= it.cost;
+          g.audio.play("coinspend", null, 0.8);
+          g.save();
+          X.checkCollectionUnlocks?.(g);
+          redo();
+        }),
+    );
+  };
+
+  // ---------- auction board between friends (everyone in this world) ----------
+  X.auction = {
+    listings: () => (app().profile.listings ||= []),
+    remote: new Map(), // pid -> {name, listings, t}
+    // messages go straight to a player's connection key (guests reach each other through the host's relay)
+    request(g) {
+      if (!g.net) return;
+      for (let [k, R] of this.remote) (Date.now() - R.t > 20000 || !g.remotes.has(k)) && this.remote.delete(k);
+      for (let [id, r] of g.remotes) r.bot || g.sendTo(id, { t: "abl" });
+    },
+    onList(g, from, m) {
+      g.sendTo(from, { t: "abll", name: g.profile.name || "Vigil", listings: this.listings().map((l) => ({ lid: l.lid, item: l.item, price: l.price })) });
+    },
+    onListings(g, from, m) {
+      this.remote.set(from, { name: m.name, listings: m.listings || [], t: Date.now() });
+      g.ui.curNpc?.shop === "auction" && g.ui._npcRedo?.();
+    },
+    post(g, uid, price) {
+      let p = g.profile,
+        i = p.inventory.findIndex((it) => it.uid === uid);
+      if (i < 0 || !(price > 0)) return;
+      let it = p.inventory.splice(i, 1)[0];
+      this.listings().push({ lid: Math.random().toString(36).slice(2, 10), item: it, price: Math.round(price), t: Date.now() });
+      g.toast(`${it.name} listed for ${Math.round(price)} shards`, "#c0c0ff");
+      g.save();
+    },
+    unlist(g, lid) {
+      let L = this.listings(),
+        i = L.findIndex((l) => l.lid === lid);
+      if (i < 0) return;
+      let l = L.splice(i, 1)[0];
+      g.profile.inventory.length < 40 ? g.profile.inventory.push(l.item) : g.dropItem(g.player.pos.clone(), l.item);
+      g.save();
+    },
+    buy(g, pid, lid) {
+      let R = this.remote.get(pid),
+        l = R?.listings.find((x) => x.lid === lid);
+      if (!l) return g.toast("That listing is gone", "#ff9a6a");
+      if (g.profile.shards < l.price) return g.toast("Not enough shards", "#ff6a5a");
+      if (g.profile.inventory.length >= 40) return g.toast("Inventory full", "#ff4a3a");
+      this._pending = { pid, lid, price: l.price };
+      g.sendTo(pid, { t: "abuy", lid, price: l.price });
+      g.toast("Offer sent…", "#c0c0ff");
+    },
+    onBuy(g, from, m) {
+      let L = this.listings(),
+        i = L.findIndex((l) => l.lid === m.lid),
+        reply;
+      if (i < 0 || L[i].price !== m.price) reply = { t: "asold", lid: m.lid, ok: 0 };
+      else {
+        let l = L.splice(i, 1)[0];
+        g.profile.shards += l.price;
+        g.toast(`Sold ${l.item.name} for ${l.price} shards`, "#8aff9a");
+        g.audio.play("coin", null, 0.8);
+        g.track("auction_sales");
+        g.save();
+        reply = { t: "asold", lid: m.lid, ok: 1, item: l.item, price: l.price };
+      }
+      g.sendTo(from, reply);
+    },
+    onSold(g, from, m) {
+      let P = this._pending;
+      this._pending = null;
+      if (!m.ok || !m.item) return g.toast("Too late — someone else bought it", "#ff9a6a");
+      let price = P?.lid === m.lid ? P.price : m.price;
+      g.profile.shards -= price;
+      g.profile.inventory.push(m.item);
+      g.ui.lootToast(m.item, g);
+      g.toast(`Bought ${m.item.name} for ${price} shards`, "#8aff9a");
+      g.save();
+      let R = this.remote.get(from);
+      R && (R.listings = R.listings.filter((l) => l.lid !== m.lid));
+      g.ui.curNpc?.shop === "auction" && g.ui._npcRedo?.();
+    },
+  };
+  X.npcExtra.auction = function (g) {
+    let p = g.profile,
+      mine = X.auction.listings(),
+      others = [...X.auction.remote.entries()],
+      ih = (it) => `<span style="color:${ui.find((x) => x.id === it.rarity)?.color || "#fff"}">${it.name}</span> <small>ilvl ${it.level} \xB7 ${it.slot}</small>`;
+    Date.now() - (X.auction._reqAt || 0) > 5000 && ((X.auction._reqAt = Date.now()), X.auction.request(g));
+    return `<h3>Auction board <small>${p.shards} shards \xB7 ${g.net && g.remotes.size ? `${[...g.remotes.values()].filter((r) => !r.bot).length} other player(s) in this world` : "no one else here — friends must be in your world to trade"}</small></h3>
+      <p class="small">Listings live in each seller's bag until bought; the board shows what everyone in this world is selling right now. Shards move straight from buyer to seller.</p>
+      <h3>For sale by others</h3><div class="dgrid">${others.flatMap(([pid, R]) => R.listings.map((l) => `<div class="recipe"><div>${ih(l.item)}<div class="small">${R.name} \xB7 ${l.price} shards</div></div><button data-abuyl="${pid}|${l.lid}" ${p.shards >= l.price ? "" : "disabled"}>Buy</button></div>`)).join("") || '<div class="small">Nothing on the board right now.</div>'}</div>
+      <h3>Your listings</h3><div class="dgrid">${mine.map((l) => `<div class="recipe"><div>${ih(l.item)}<div class="small">${l.price} shards</div></div><button data-aunl="${l.lid}">Take back</button></div>`).join("") || '<div class="small">You are not selling anything.</div>'}</div>
+      <h3>Sell from your bag</h3><div class="row"><select id="au-item">${p.inventory.map((it) => `<option value="${it.uid}">${it.name} (ilvl ${it.level})</option>`).join("") || "<option value=''>bag empty</option>"}</select> <input id="au-price" type="number" min="1" value="100" style="width:90px"> shards <button data-apost>List it</button></div>`;
+  };
+  X.npcBind.auction = function (g, root, redo) {
+    g.ui._npcRedo = redo;
+    root.querySelector("[data-apost]") && (root.querySelector("[data-apost]").onclick = () => (X.auction.post(g, root.querySelector("#au-item").value, +root.querySelector("#au-price").value), redo()));
+    root.querySelectorAll("[data-aunl]").forEach((b) => (b.onclick = () => (X.auction.unlist(g, b.dataset.aunl), redo())));
+    root.querySelectorAll("[data-abuyl]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          let [pid, lid] = b.dataset.abuyl.split("|");
+          X.auction.buy(g, pid, lid);
+        }),
+    );
+  };
+  // remember which npc dialog is open (for live refresh)
+  let nd0 = U.npcDialog;
+  U.npcDialog = function (B, ...a) {
+    this.curNpc = B;
+    return nd0.call(this, B, ...a);
+  };
+
+  // ---------- achievements, collections ----------
+  WB.push(
+    { id: "ev_boss1", name: "Road Warden", desc: "Defeat a world boss.", stat: "world_bosses", goal: 1, reward: 150 },
+    { id: "ev_boss10", name: "Scourge of the Roads", desc: "Defeat 10 world bosses.", stat: "world_bosses", goal: 10, reward: 600 },
+    { id: "ev_car1", name: "Escort Duty", desc: "Bring a caravan home.", stat: "caravans", goal: 1, reward: 120 },
+    { id: "ev_car10", name: "Caravan Master", desc: "Bring 10 caravans home.", stat: "caravans", goal: 10, reward: 500 },
+    { id: "fish_50", name: "Patient Angler", desc: "Catch 50 fish.", stat: "fish_caught", goal: 50, reward: 150 },
+    { id: "fish_coffer", name: "Lucky Cast", desc: "Fish up a sunken coffer.", stat: "fish_treasure", goal: 1, reward: 80 },
+    { id: "meals_25", name: "Camp Cook", desc: "Cook 25 meals.", stat: "meals", goal: 25, reward: 120 },
+    { id: "auction_5", name: "Trader", desc: "Sell 5 items on the auction board.", stat: "auction_sales", goal: 5, reward: 100 },
+  );
+}
+
+/* ---- EE_mapzoom.js ---- */
+// ===== 1.14: zoomable minimap and world map (wheel, pinch, +/- buttons, drag to pan) =====
+{
+  let U = XC.prototype,
+    clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  // ---------- minimap ----------
+  U.mmZoom = +(localStorage.getItem("vf_mmzoom") || 1);
+  let setMm = (ui, z) => {
+    ui.mmZoom = clamp(z, 0.5, 4);
+    try {
+      localStorage.setItem("vf_mmzoom", ui.mmZoom.toFixed(2));
+    } catch (e) {}
+  };
+  let mmInit = (ui) => {
+    let mm = document.getElementById("minimap");
+    if (!mm || mm._zoomed) return;
+    mm._zoomed = !0;
+    mm.addEventListener("wheel", (e) => (e.preventDefault(), setMm(ui, ui.mmZoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))), { passive: !1 });
+    // pinch on phones
+    let pd = 0;
+    mm.addEventListener("touchstart", (e) => e.touches.length === 2 && (pd = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY)), { passive: !0 });
+    mm.addEventListener(
+      "touchmove",
+      (e) => {
+        if (e.touches.length !== 2 || !pd) return;
+        e.preventDefault();
+        let d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        setMm(ui, ui.mmZoom * (d / pd));
+        pd = d;
+      },
+      { passive: !1 },
+    );
+    // +/- buttons under the minimap
+    let box = document.createElement("div");
+    box.id = "mmzoom";
+    box.innerHTML = `<button data-z="in" title="Zoom in">+</button><button data-z="out" title="Zoom out">−</button>`;
+    mm.parentElement.insertBefore(box, mm.nextSibling);
+    box.querySelectorAll("button").forEach((b) => (b.onclick = (e) => (e.stopPropagation(), setMm(ui, ui.mmZoom * (b.dataset.z === "in" ? 1.3 : 1 / 1.3)))));
+  };
+  let dm0 = U.drawMinimap;
+  U.drawMinimap = function (A) {
+    this._mmInit || ((this._mmInit = !0), mmInit(this));
+    return dm0.call(this, A);
+  };
+  // ---------- world map ----------
+  let mapInit = (ui) => {
+    let host = document.getElementById("bigmap"),
+      cv = host?.querySelector("canvas");
+    if (!host || !cv || host._zoomed) return;
+    host._zoomed = !0;
+    host.classList.add("zoomable");
+    let st = { z: 1, x: 0, y: 0 },
+      apply = () => {
+        cv.style.transform = `translate(${st.x}px,${st.y}px) scale(${st.z})`;
+      },
+      zoomAt = (f, cx, cy) => {
+        let r = host.getBoundingClientRect(),
+          px = cx - r.left - r.width / 2,
+          py = cy - r.top - r.height / 2,
+          nz = clamp(st.z * f, 1, 6);
+        f = nz / st.z;
+        ((st.x = px - (px - st.x) * f), (st.y = py - (py - st.y) * f), (st.z = nz));
+        let lim = (r.width * (st.z - 1)) / 2;
+        ((st.x = clamp(st.x, -lim, lim)), (st.y = clamp(st.y, -lim, lim)), apply());
+      };
+    host.addEventListener("wheel", (e) => (e.preventDefault(), zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, e.clientX, e.clientY)), { passive: !1 });
+    // drag to pan
+    let drag = null;
+    host.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("button")) return;
+      drag = { x: e.clientX, y: e.clientY, sx: st.x, sy: st.y };
+      host.setPointerCapture?.(e.pointerId);
+    });
+    host.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      let r = host.getBoundingClientRect(),
+        lim = (r.width * (st.z - 1)) / 2;
+      ((st.x = clamp(drag.sx + (e.clientX - drag.x), -lim, lim)), (st.y = clamp(drag.sy + (e.clientY - drag.y), -lim, lim)), apply());
+    });
+    host.addEventListener("pointerup", () => (drag = null));
+    host.addEventListener("pointercancel", () => (drag = null));
+    // pinch
+    let pd = 0,
+      pc = null;
+    host.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.touches.length === 2) {
+          ((pd = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY)), (pc = [(e.touches[0].clientX + e.touches[1].clientX) / 2, (e.touches[0].clientY + e.touches[1].clientY) / 2]), (drag = null));
+        }
+      },
+      { passive: !0 },
+    );
+    host.addEventListener(
+      "touchmove",
+      (e) => {
+        if (e.touches.length !== 2 || !pd) return;
+        e.preventDefault();
+        let d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        zoomAt(d / pd, pc[0], pc[1]);
+        pd = d;
+      },
+      { passive: !1 },
+    );
+    host.addEventListener("touchend", () => (pd = 0), { passive: !0 });
+    // buttons
+    let box = document.createElement("div");
+    box.className = "mapzoom";
+    box.innerHTML = `<button data-z="in">+</button><button data-z="out">−</button><button data-z="reset">⟲</button>`;
+    host.appendChild(box);
+    box.querySelectorAll("button").forEach(
+      (b) =>
+        (b.onclick = (e) => {
+          e.stopPropagation();
+          let r = host.getBoundingClientRect(),
+            c = [r.left + r.width / 2, r.top + r.height / 2];
+          b.dataset.z === "reset" ? ((st.z = 1), (st.x = st.y = 0), apply()) : zoomAt(b.dataset.z === "in" ? 1.4 : 1 / 1.4, c[0], c[1]);
+        }),
+    );
+    // start centred on the player, zoomed in a little
+    let g = ui.app.game;
+    if (g) {
+      let r = host.getBoundingClientRect();
+      if (r.width) {
+        st.z = 2.2;
+        let fx = (g.player.pos.x + pi) / ao - 0.5,
+          fy = (g.player.pos.z + pi) / ao - 0.5,
+          lim = (r.width * (st.z - 1)) / 2;
+        ((st.x = clamp(-fx * r.width * st.z, -lim, lim)), (st.y = clamp(-fy * r.height * st.z, -lim, lim)), apply());
+      }
+    }
+  };
+  let pn0 = U.panel;
+  U.panel = function (A, ...a) {
+    let r = pn0.call(this, A, ...a);
+    A === "map" && setTimeout(() => mapInit(this), 0);
+    return r;
+  };
+  let css = document.createElement("style");
+  css.textContent = `#minimap{pointer-events:auto}#mmzoom{display:flex;gap:4px;justify-content:flex-end;margin:2px 46px 0 0;pointer-events:auto}#mmzoom button{width:26px;height:26px;padding:0;font-size:16px;line-height:1;border-radius:6px;background:rgba(20,16,12,.7);color:#e8d4a0;border:1px solid rgba(200,170,110,.5)}
+#bigmap.zoomable{position:relative;overflow:hidden;touch-action:none;cursor:grab;border-radius:4px}#bigmap.zoomable canvas{transform-origin:center center;transition:transform .05s linear;will-change:transform}
+.mapzoom{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:4px;z-index:2}.mapzoom button{width:32px;height:32px;padding:0;font-size:18px;line-height:1;border-radius:6px;background:rgba(30,22,14,.85);color:#e8d4a0;border:1px solid rgba(200,170,110,.6)}`;
+  document.head.appendChild(css);
 }
 
   window.__app = new bE();
