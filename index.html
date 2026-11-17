@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.11.3</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.12.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -29132,7 +29132,7 @@ Object.assign(rw.unbound, { hp: 240000 });
         b = d.built,
         bossRooms = b.rooms.filter((R) => R.boss),
         dead = bossRooms.filter((R) => A.inst.spawned.has(R.idx) && ![...A.enemies.values()].some((e) => e.alive && e.type === R.boss)).length;
-      txt = A.inst.done ? `${d.name} cleared — leave at the entrance (F)` : d.raid ? `${d.name} — bosses ${dead}/${bossRooms.length}` : `${d.name} — reach and defeat ${rw[d.boss].name}`;
+      txt = d.arena ? (X.arena?.cur ? `${d.name} — round ${X.arena.cur.round} · ${X.arena.cur.score.A} — ${X.arena.cur.score.B}` : d.name) : A.inst.done ? `${d.name} cleared — leave at the entrance (F)` : d.raid ? `${d.name} — bosses ${dead}/${bossRooms.length}` : `${d.name} — reach and defeat ${rw[d.boss]?.name || "the boss"}`;
     } else if (A.home) txt = "Home — bed, stash, wardrobe, altar (F)";
     else if (D.victory) {
       let p = this.app.profile,
@@ -33601,8 +33601,12 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.11.3";
+  X.VERSION = "1.12.0";
   X.CHANGELOG = {
+    "1.12.0": [
+      "PvP Arena — The Pit: talk to Arena Master Kessa by the sand ring west of Dawnmere to queue ranked 2v2 or 3v3 (best of three). Your group is one team; empty seats on both sides are filled by gladiators after 20 s. Rating, Arena Marks, a weekly chest at 5 wins, Gladiator's gear (−4% damage from players per piece), the Pit Hound at 10 wins, the Gladiator's Warhorse at 25 wins and the Gladiator's Glory aura at 1800 rating.",
+      "First hour: a quest compass under the zone name points at your next objective (or the nearest quest giver), the tutorial can no longer get stuck (steps also pass after 45 s), townsfolk greet you when you walk up, melee hits kick the camera and spark in your weapon's colour, footsteps vary.",
+    ],
     "1.11.3": ["Fixed the half-black screen inside villages: the ward dome's rim shader produced NaN pixels when you looked straight at the dome from near its centre (the bonfire square), and bloom smeared them across the screen. The colour grade now also scrubs any NaN/Inf pixel as a safety net."],
     "1.11.2": ["Settings → Troubleshooting: live switches for sun shadows, point lights, your lantern, water, wards, vegetation, batched props, first-person hands, sky, glow sprites and flames — to isolate the half-black-screen problem."],
     "1.11.1": [
@@ -35380,6 +35384,7 @@ Object.assign(rw.unbound, { hp: 240000 });
     }
   };
 }
+X.Xw = (...a) => Xw(...a);
 
 /* ---- E1_raid3.js ---- */
 // ===== 1.11: branching instances (side rooms, hub-and-wings raids, gates), The Drowned Deep raid, Mythic loot tier =====
@@ -36739,6 +36744,725 @@ Object.assign(X.COMPANIONS, {
     let D = window.__app?.settings?.diag;
     D && D.viewmodel === !1 && this.viewModel && (this.viewModel.visible = !1);
   };
+}
+
+/* ---- E6_firsthour.js ---- */
+// ===== 1.12: first-hour polish — tutorial that cannot get stuck, quest compass, NPC greetings, melee hit feel =====
+{
+  let GP = SC.prototype,
+    U = XC.prototype;
+  // ---- tutorial: steps also pass after 45 s, step 2 also passes with sprint + jump ----
+  let ut0 = GP.updateTutorial;
+  GP.updateTutorial = function () {
+    let B = this.tut;
+    if (B) {
+      B.stepT ??= this.t;
+      B._shown0 !== B.i && ((B._shown0 = B.i), (B.stepT = this.t), (B.sprint = !1), (B.jump = !1));
+      this.keys?.ShiftLeft && (B.sprint = !0);
+      !this.player.onGround && (B.jump = !0);
+      let A = zE[B.i];
+      if (A && (this.t - B.stepT > 45 || (B.i === 1 && B.sprint && B.jump && this.t - B.stepT > 6))) {
+        B.i++;
+        B.stepT = this.t;
+        this.audio.play("pickup", null, 0.5);
+        if (B.i >= zE.length) return this.endTutorial();
+      }
+    }
+    return ut0.call(this);
+  };
+  // ---- quest compass: arrow + distance to the nearest objective, under the zone title ----
+  let el = null,
+    ensure = () => {
+      if (el) return el;
+      el = document.createElement("div");
+      el.id = "qcompass";
+      el.innerHTML = `<span class="qarrow">➤</span><span class="qtxt"></span>`;
+      document.getElementById("hud")?.appendChild(el);
+      return el;
+    },
+    st = document.createElement("style");
+  st.textContent = `#qcompass{position:absolute;left:14px;top:78px;color:#ffe9b0;font:14px Georgia,serif;text-shadow:0 0 4px #000;display:flex;align-items:center;gap:8px;pointer-events:none;opacity:.92}
+  #qcompass .qarrow{display:inline-block;font-size:18px;color:#ffd070;transition:transform .12s linear}#qcompass.off{display:none}
+  @media (max-width:900px){#qcompass{top:64px;font-size:12px}}`;
+  document.head.appendChild(st);
+  let us3 = GP.updateSystems;
+  GP.updateSystems = function (dt) {
+    us3.call(this, dt);
+    this._qcT = (this._qcT || 0) + dt;
+    if (this._qcT < 0.2) return;
+    this._qcT = 0;
+    let e = ensure(),
+      A = this.player;
+    if (!this.running || this.inst || this.home || this.player.dead) return e.classList.add("off");
+    let ts = this.questTargets?.() || [],
+      best = null;
+    for (let t of ts) {
+      let d = Math.hypot(t.pos[0] - A.pos.x, t.pos[1] - A.pos.z);
+      (!best || d < best.d) && (best = { ...t, d });
+    }
+    if (!best) {
+      // nothing accepted yet: point to the nearest quest giver with work
+      for (let n of this.npcs || []) {
+        if (!n.mk?.["!"]?.visible) continue;
+        let d = Math.hypot(n.pos.x - A.pos.x, n.pos.z - A.pos.z);
+        (!best || d < best.d) && (best = { pos: [n.pos.x, n.pos.z], kind: "giver", name: n.def.name, d });
+      }
+    }
+    if (!best) return e.classList.add("off");
+    e.classList.remove("off");
+    let fwd = Math.atan2(-Math.sin(A.yaw), -Math.cos(A.yaw)),
+      tgt = Math.atan2(best.pos[0] - A.pos.x, best.pos[1] - A.pos.z),
+      deg = ((tgt - fwd) * 180) / Math.PI;
+    e.querySelector(".qarrow").style.transform = `rotate(${-90 + deg}deg)`;
+    let label = best.kind === "turnin" ? `Return to ${qI.find((q) => q.id === best.q.npc)?.name || "the quest giver"}` : best.kind === "obj" ? best.q.name : `${best.name} has work for you`;
+    e.querySelector(".qtxt").textContent = `${label} \xB7 ${Math.round(best.d)} m`;
+  };
+  // ---- NPC greetings when you walk up (once per minute each) ----
+  X.GREET = {
+    oswin: "The flame keeps us, child. Mind it.",
+    brannoc: "Steel's cheaper than a funeral.",
+    marta: "Come closer, I don't bite. Much.",
+    edda: "Lose anything in the dark? I find things.",
+    tamsin: "Hunting? Take arrows. Take more arrows.",
+    hobb: "Mug's half full. Which half, I couldn't say.",
+    gellert: "A horse won't judge you. Much.",
+    ilse: "The pups don't like strangers. Give them time.",
+    tobin: "Timber, nails, and no questions.",
+    edith: "The Vault opens once a week. Don't waste it.",
+    garrick: "Buying, selling, no refunds.",
+  };
+  let us4 = GP.updateSystems;
+  GP.updateSystems = function (dt) {
+    us4.call(this, dt);
+    if (!this.running || !this.npcs) return;
+    this._greetT = (this._greetT || 0) + dt;
+    if (this._greetT < 0.5) return;
+    this._greetT = 0;
+    let A = this.player;
+    for (let n of this.npcs) {
+      let d = Math.hypot(n.pos.x - A.pos.x, n.pos.z - A.pos.z);
+      if (d > 5 || d < 1) continue;
+      if (this.t - (n._greet || -100) < 60) continue;
+      let line = X.GREET[n.def.id];
+      if (!line) continue;
+      n._greet = this.t;
+      this.floatText(n.pos.clone().setY(n.pos.y + 2.9), line, "#ffe9b0", !1);
+      this.audio.play("ui", n.pos, 0.25);
+    }
+  };
+  // ---- melee feel: small camera kick and a spark burst in the weapon's colour on every melee hit ----
+  let he1 = GP.hitEnemy;
+  GP.hitEnemy = function (A, i, I = {}) {
+    let hp0 = A?.hp,
+      r = he1.call(this, A, i, I);
+    if (A && hp0 !== void 0 && A.hp < hp0 && I.melee !== !1 && !I.dot && !I.noKick) {
+      let frac = (hp0 - A.hp) / Math.max(1, this.player.maxHp);
+      this.shake?.(Math.min(0.16, 0.05 + frac * 0.4));
+      let col = qi[this.hsave?.gear?.weapon?.rarity] || 0xffd090,
+        pos = A.pos.clone().setY(A.pos.y + A.def.height * A.scale * 0.55);
+      this.particles.burst(pos.x, pos.y, pos.z, 6, { color: new _(col || 0xffd090), speed: 4, life: 0.25, size: 0.09, grav: 6 });
+    }
+    return r;
+  };
+  // ---- footsteps: slight pitch variation so walking does not sound like a metronome ----
+  let st5 = GP.start;
+  GP.start = function (...a) {
+    st5.apply(this, a);
+    let au = this.audio;
+    if (au && !au._stepWrapped) {
+      au._stepWrapped = !0;
+      let p0 = au.play.bind(au);
+      au.play = (name, pos, vol, ...rest) => {
+        if (name === "step") return p0(name, pos, (vol ?? 1) * (0.85 + Math.random() * 0.3), ...rest);
+        return p0(name, pos, vol, ...rest);
+      };
+    }
+    // after the tutorial, one clear pointer
+    this.tut || this.profile.tutorialDone !== !0 || this._pointed || ((this._pointed = !0), setTimeout(() => this.running && !Object.keys(this.profile.quests || {}).length && this.toast("Tip: follow the gold arrow under the zone name — it points to your next quest.", "#c0d0ff"), 6000));
+  };
+}
+
+/* ---- E7_arena.js ---- */
+// ===== 1.12: PvP Arena — 2v2 / 3v3 ranked matches through the Dungeon Finder lobby, bots fill, rating, Arena Marks, rewards =====
+{
+  let GP = SC.prototype,
+    app = () => window.__app,
+    game = () => app().game,
+    me = () => app().game?.net?.pid || X.pid?.();
+  // ---------- instances ----------
+  let spot = [yI.hamlet[0] - 36, yI.hamlet[1] + 12];
+  for (let [id, n] of [
+    ["arena2", 2],
+    ["arena3", 3],
+  ]) {
+    let d = { id, name: `The Pit (${n}v${n})`, lv: 1, portal: spot, arena: !0, teamSize: n, zone: "hamlet", stat: "arena", tint: 0x9a8a7a, fog: 0x120e0a, mobs: [] };
+    X.INST[id] = d;
+    let k = Object.keys(X.INST).length - 1;
+    ((d.pocket = [1000 + k * 320, -200 + (k % 2) * 400]), (d.floorY = 2));
+  }
+  mM.push({ id: "arena", name: "The Pit — Arena", pos: spot, r: 14, lv: "PvP" });
+  // the Dungeon Finder treats an arena as 2n damage dealers of any role, no level gate, no lockout
+  let comp0 = X.lfgComp;
+  X.lfgComp = (d) => (d.arena ? { Tank: 0, Healer: 0, DPS: d.teamSize * 2 } : comp0(d));
+  let size0 = X.lfgSize;
+  X.lfgSize = (d) => (d.arena ? d.teamSize * 2 : size0(d));
+  let chk0 = X.lfgCheck;
+  X.lfgCheck = (g, d) => {
+    if (!d.arena) return chk0(g, d);
+    let s = X.group.mine();
+    if (s && s.lead !== me()) return "Only your group leader can queue for the arena";
+    if (g.player.combatT > 0) return "You cannot queue while in danger";
+    if (g.inst) return "You are already inside an instance";
+    let n = s ? s.m.filter((m) => !m.bot).length : 1;
+    if (n > d.teamSize) return `${d.name} takes teams of ${d.teamSize}`;
+    return null;
+  };
+  let il0 = GP.instLocked;
+  GP.instLocked = function (d) {
+    return d?.arena ? !1 : il0.call(this, d);
+  };
+  // queued members count as DPS for the matcher
+  let ls0 = X.lfg.start;
+  X.lfg.start = function (instId) {
+    let r = ls0.call(this, instId),
+      st = X.lfg.st;
+    st && X.INST[instId]?.arena && st.members && st.members.forEach((m) => (m.role = "DPS"));
+    return r;
+  };
+  let ui0 = X.lfg.ui;
+  X.lfg.ui = function () {
+    ui0.call(this);
+    let st = X.lfg.st,
+      el = document.getElementById("lfg-box");
+    if (st?.d?.arena && el) {
+      el.innerHTML = `<b>${st.found ? "MATCH FOUND" : "ARENA QUEUE"}</b><div>${st.d.name} \xB7 ranked</div><div class="small">${st.found ? "Gathering the teams…" : `${st.q ? st.q + " in queue \xB7 " : ""}gladiators fill in ${Math.max(0, Math.ceil(X.LFG_WAIT - (game().t - st.t0)))}s \xB7 talk to the Arena Master to cancel`}</div>`;
+    }
+  };
+  // host: fill the missing seats with bots of mixed roles, then enter
+  let hr0 = X.lfg.hostRun;
+  X.lfg.hostRun = function (instId, roster, botsFill) {
+    let d = X.INST[instId];
+    if (!d?.arena) return hr0.call(this, instId, roster, botsFill);
+    let g = game(),
+      t0 = g.t,
+      expected = roster.filter((r) => r.pid !== me()),
+      iv = setInterval(() => {
+        if (!g.running || g.inst) return clearInterval(iv);
+        let present = expected.filter((r) => [...g.remotes.keys()].some((id) => X.pidOf(id).startsWith(r.pid)));
+        if (!(present.length === expected.length || g.t - t0 > 25)) return;
+        clearInterval(iv);
+        let s = X.group.create();
+        for (let id of g.remotes.keys()) !g.remotes.get(id).bot && X.group.add(id);
+        let need = d.teamSize * 2 - s.m.length,
+          roles = ["DPS", "Healer", "DPS", "Tank", "DPS", "DPS"];
+        for (let i = 0; i < need; i++) {
+          let b = X.bots.add(g, roles[i % roles.length], Math.max(10, g.hsave.level));
+          b && X.group.add(b.id);
+        }
+        X.group.publish();
+        g.ui.banner("THE PIT", `${d.teamSize}v${d.teamSize} \xB7 best of three`, "#ff8a6a");
+        g.player.pos.set(d.portal[0] + 3, g.world.heightAt(d.portal[0] + 3, d.portal[1] + 3) + 0.3, d.portal[1] + 3);
+        g.player.combatT = 0;
+        setTimeout(() => g.running && !g.inst && g.enterInstance(instId), 1200);
+      }, 1000);
+  };
+  // ---------- the pit ----------
+  let bp0 = X.buildPocket;
+  X.buildPocket = function (game, d) {
+    if (!d.arena) return bp0(game, d);
+    if (d.built) return d.built;
+    let world = game.world,
+      [px, pz] = d.pocket,
+      fy = d.floorY,
+      G = 4,
+      grp = new eA(),
+      half = 8,
+      rng = sI(77),
+      add = (name, o, x, z, ry = 0) => {
+        let m = X.piece(name, { w: o.w, h: o.h, center: !0, tint: o.tint || d.tint });
+        if (!m) return null;
+        (m.position.set(x, fy + (o.y || 0), z), (m.rotation.y = ry), grp.add(m));
+        return m;
+      };
+    // round sand floor
+    let floor = new p(new fI(half * G + 2, 48), new xA({ color: 0x9a8060, roughness: 1 }));
+    (floor.rotation.x = -Math.PI / 2), floor.position.set(px, fy, pz), (floor.receiveShadow = !0), grp.add(floor);
+    // ring wall of stone with torches
+    for (let i = 0; i < 28; i++) {
+      let a = (i / 28) * Math.PI * 2,
+        x = px + Math.cos(a) * (half * G + 1),
+        z = pz + Math.sin(a) * (half * G + 1),
+        w = add("k_wall", { w: G, h: null }, x, z, -a + Math.PI / 2);
+      w && (w.scale.y *= 1.6);
+      world.addBox(x, z, 0.5, G / 2 + 0.3, a - Math.PI / 2, fy + 8, "wall");
+      if (i % 4 === 0) {
+        let t = add("k_torch_mounted", { h: 1.1 }, x - Math.cos(a) * 0.7, z - Math.sin(a) * 0.7, -a + Math.PI / 2);
+        t && (t.position.y = fy + 2.2);
+        world.addEmitter(x - Math.cos(a) * 0.9, fy + 2.9, z - Math.sin(a) * 0.9, 0xffa040, 2.6, 15, 0.35);
+      }
+    }
+    // four pillars to break line of sight
+    for (let [sx, sz] of [
+      [-1, -1],
+      [1, -1],
+      [-1, 1],
+      [1, 1],
+    ]) {
+      let x = px + sx * 3 * G,
+        z = pz + sz * 3 * G;
+      add("k_pillar", { h: 6 }, x, z);
+      world.addCircle(x, z, 0.8, fy + 6, "pillar");
+    }
+    // banners for the two sides
+    add("k_banner_blue", { h: 3.6 }, px - (half - 1) * G, pz, Math.PI / 2);
+    add("k_banner_red", { h: 3.6 }, px + (half - 1) * G, pz, -Math.PI / 2);
+    let big = new p(new vi(200, 200), new xA({ color: 0x0a0806, roughness: 1 }));
+    (big.rotation.set(-Math.PI / 2, 0, 0), big.position.set(px, fy - 0.1, pz), grp.add(big));
+    let ceil = new p(new vi(200, 200), new xA({ color: 0x08060a, roughness: 1, side: KA }));
+    (ceil.rotation.set(Math.PI / 2, 0, 0), ceil.position.set(px, fy + 9, pz), grp.add(ceil));
+    grp.traverse((m) => m.isMesh && (m.receiveShadow = !0));
+    world.scene.add(grp);
+    let spawnA = [px - (half - 2) * G, pz],
+      spawnB = [px + (half - 2) * G, pz];
+    d.built = { group: grp, rooms: [{ x: px, z: pz, half, idx: 0, arena: !0 }], torches: [], gates: [], entry: spawnA, spawnA, spawnB, center: [px, pz], bounds: { x0: px - 60, x1: px + 60, z0: pz - 60, z1: pz + 60 } };
+    return d.built;
+  };
+  // ---------- match state ----------
+  X.arena = {
+    cur: null, // {teams:{A:[ids],B:[ids]}, my:'A'|'B', round, score:{A,B}, phase, t}
+    hostile(id) {
+      let c = X.arena.cur;
+      if (!c) return !1;
+      let t = c.teams.A.includes(id) ? "A" : c.teams.B.includes(id) ? "B" : null;
+      return t && t !== c.my;
+    },
+    teamOf(id) {
+      let c = X.arena.cur;
+      return !c ? null : c.teams.A.includes(id) ? "A" : c.teams.B.includes(id) ? "B" : null;
+    },
+    // host: build teams from the group (humans first, host on A)
+    setup(g, d) {
+      let ids = ["self", ...[...g.remotes.keys()].filter((id) => !g.remotes.get(id).bot), ...[...g.remotes.keys()].filter((id) => g.remotes.get(id).bot)],
+        n = d.teamSize,
+        A = [],
+        B = [];
+      // humans fill team A first (a group stays together), gladiators take the remaining seats
+      ids.forEach((id) => (A.length < n ? A : B).push(id));
+      let cur = { teams: { A, B }, my: "A", round: 1, score: { A: 0, B: 0 }, phase: "count", t: 6, host: !0 };
+      X.arena.cur = cur;
+      X.arena.place(g, d);
+      X.arena.send(g, { t: "aph", teams: X.arena.wire(g, cur.teams), round: cur.round, score: cur.score, phase: "count", tt: 6 });
+      g.ui.banner("ROUND 1", "Fight begins in 6", "#ff8a6a");
+    },
+    wire(g, teams) {
+      // on the wire humans are their friend code (pid), gladiators keep their bot id
+      let conv = (id) => (id === "self" ? me() : g.remotes.get(id)?.bot ? id : X.pidOf(id));
+      return { A: teams.A.map(conv), B: teams.B.map(conv) };
+    },
+    unwire(g, teams) {
+      let conv = (id) => (id === me() ? "self" : [...g.remotes.keys()].find((k) => k === id || X.pidOf(k) === id) || id);
+      return { A: teams.A.map(conv), B: teams.B.map(conv) };
+    },
+    send(g, m) {
+      for (let id of g.remotes.keys()) g.remotes.get(id).bot || g.sendTo(id, m);
+    },
+    place(g, d) {
+      let c = X.arena.cur,
+        b = d.built,
+        put = (id, [x, z], i, n) => {
+          let zz = z + (i - (n - 1) / 2) * 2.5,
+            yaw = x < b.center[0] ? -Math.PI / 2 : Math.PI / 2;
+          if (id === "self") ((g.player.pos.set(x, d.floorY + 0.2, zz)), g.player.vel.set(0, 0, 0), (g.player.yaw = yaw));
+          else {
+            let r = g.remotes.get(id);
+            if (!r) return;
+            if (r.bot) (r.pos.set(x, d.floorY, zz), r.target.copy(r.pos), (r.yaw = yaw), (r.downed = !1), (r.dead = !1), (r.hp = r.maxHp), X.bots.packet(r));
+            else g.sendTo(id, { t: "aset", x, z: zz, yaw });
+          }
+        };
+      c.teams.A.forEach((id, i) => put(id, b.spawnA, i, c.teams.A.length));
+      c.teams.B.forEach((id, i) => put(id, b.spawnB, i, c.teams.B.length));
+      g.receiveAid({ revive: !0, healPct: 1 });
+      g.player.hp = g.player.maxHp;
+      g.player.res = g.player.maxRes;
+    },
+    alive(g, id) {
+      if (id === "self") return !(g.player.downed || g.player.dead);
+      let r = g.remotes.get(id);
+      return !!r && !(r.downed || r.dead);
+    },
+    // host tick
+    tick(g, dt) {
+      let c = X.arena.cur,
+        d = g.inst?.def;
+      if (!c || !c.host || !d?.arena) return;
+      c.t -= dt;
+      if (c.phase === "count") {
+        c.t <= 0 && ((c.phase = "fight"), (c.t = 240), X.arena.send(g, { t: "aph", phase: "fight", round: c.round, score: c.score }), g.ui.banner("FIGHT", "", "#ff8a6a"), g.audio.play("bell"));
+        return;
+      }
+      if (c.phase === "fight") {
+        X.arena.bots(g, dt);
+        let aAlive = c.teams.A.some((id) => X.arena.alive(g, id)),
+          bAlive = c.teams.B.some((id) => X.arena.alive(g, id));
+        if (!aAlive || !bAlive || c.t <= 0) {
+          let w = aAlive && !bAlive ? "A" : bAlive && !aAlive ? "B" : null;
+          w && c.score[w]++;
+          c.phase = "end";
+          c.t = 4;
+          let fin = c.score.A >= 2 || c.score.B >= 2 || (c.round >= 3 && c.score.A !== c.score.B) || (c.t <= 0 && c.round >= 3);
+          X.arena.send(g, { t: "aph", phase: "end", round: c.round, score: c.score, win: w, fin });
+          X.arena.roundBanner(g, w, fin);
+          c.fin = fin;
+        }
+        return;
+      }
+      if (c.phase === "end" && c.t <= 0) {
+        if (c.fin) {
+          let win = c.score.A > c.score.B ? "A" : c.score.B > c.score.A ? "B" : null;
+          X.arena.send(g, { t: "aend", win });
+          X.arena.finish(g, win);
+          g.after(6, () => g.inst && g.exitInstance());
+          c.phase = "done";
+          return;
+        }
+        c.round++;
+        c.phase = "count";
+        c.t = 5;
+        X.arena.place(g, d);
+        X.arena.send(g, { t: "aph", phase: "count", round: c.round, score: c.score, tt: 5 });
+        g.ui.banner(`ROUND ${c.round}`, "Fight begins in 5", "#ff8a6a");
+      }
+    },
+    roundBanner(g, w, fin) {
+      let c = X.arena.cur,
+        mine = w === c.my;
+      g.ui.banner(w ? (mine ? "ROUND WON" : "ROUND LOST") : "ROUND DRAWN", `${c.score.A} — ${c.score.B}${fin ? "" : " \xB7 next round shortly"}`, mine ? "#ffd070" : "#ff8a6a");
+      g.audio.play(mine ? "levelup" : "dark");
+    },
+    // bots: fight the other team
+    bots(g, dt) {
+      let c = X.arena.cur;
+      for (let r of g.remotes.values()) {
+        if (!r.bot || r.downed || r.dead) continue;
+        let team = X.arena.teamOf(r.id);
+        if (!team) continue;
+        let foes = (team === "A" ? c.teams.B : c.teams.A).filter((id) => X.arena.alive(g, id)),
+          mates = (team === "A" ? c.teams.A : c.teams.B).filter((id) => X.arena.alive(g, id));
+        r.cd ||= {};
+        for (let k in r.cd) r.cd[k] = Math.max(0, r.cd[k] - dt);
+        let posOf = (id) => (id === "self" ? g.player.pos : g.remotes.get(id)?.pos),
+          hpOf = (id) => (id === "self" ? [g.player.hp, g.player.maxHp] : [g.remotes.get(id)?.hp || 0, g.remotes.get(id)?.maxHp || 1]);
+        // healer: heal the weakest mate
+        if (r.role === "Healer" && !(r.cd.heal > 0)) {
+          let weak = mates.map((id) => ({ id, pos: posOf(id), hp: hpOf(id)[0], maxHp: hpOf(id)[1] })).filter((m) => m.pos && m.hp < m.maxHp * 0.8).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+          if (weak) {
+            r.cd.heal = 2;
+            r.sw++;
+            X.botHeal(g, r, weak, r.st.heal);
+          }
+        }
+        // pick a target: nearest, but re-rolled every few seconds so two gladiators do not always stack one player
+        r._tgtT = (r._tgtT || 0) - dt;
+        let cands = foes.map((id) => ({ id, pos: posOf(id) })).filter((f) => f.pos).sort((a, b) => a.pos.distanceTo(r.pos) - b.pos.distanceTo(r.pos));
+        if (r._tgtT <= 0 || !cands.some((c2) => c2.id === r._tgt)) ((r._tgtT = 4 + Math.random() * 3), (r._tgt = (cands[Math.random() < 0.65 ? 0 : cands.length - 1] || {}).id));
+        let tgt = cands.find((c2) => c2.id === r._tgt) || cands[0];
+        if (!tgt) continue;
+        let ranged = ["bow", "orb", "staff", "totem", "tide", "grimoire", "flask"].includes(FI.find((h) => h.id === r.hero)?.weapon),
+          d = tgt.pos.distanceTo(r.pos),
+          want = ranged ? 9 : 1.8;
+        if (d > want + 0.3) {
+          let dir = tgt.pos.clone().sub(r.pos).setY(0).normalize(),
+            step = Math.min(d - want, 5.2 * dt);
+          r.pos.addScaledVector(dir, step);
+          g.world.resolve(r.pos, 0.45, r.pos.y + 0.5);
+          r.pos.y = g.inst.def.floorY;
+          r.moving = !0;
+        }
+        r.yaw = Math.atan2(-(tgt.pos.x - r.pos.x), -(tgt.pos.z - r.pos.z));
+        r.atkT = (r.atkT ?? 0.5) - dt;
+        if (d <= (ranged ? 22 : want + 1.2) && r.atkT <= 0) {
+          r.atkT = ranged ? 1.3 : 1.1;
+          r.sw++;
+          let dmg = r.st.dmg * (0.8 + Math.random() * 0.4) * (r.role === "Healer" ? 0.55 : 1) * 0.16;
+          if (ranged) {
+            let from = r.pos.clone().setY(r.pos.y + 1.3),
+              dir = tgt.pos.clone().setY(tgt.pos.y + 0.8).sub(from).normalize();
+            g.spawnProj({ ghost: !0, kind: "bolt", color: 0xff8a6a, from, dir, speed: 30, life: 1.0, team: "player", radius: 0.3 });
+            g.net?.broadcast?.({ t: "proj", k: "bolt", c: 0xff8a6a, f: from.toArray(), v: dir.multiplyScalar(30).toArray(), g: 0, l: 1.0, team: "player" });
+          } else g.audio.play("swing", r.pos, 0.4);
+          X.arena.damage(g, tgt.id, dmg, r.id, r.pos);
+        }
+        r.target.copy(r.pos);
+        X.bots.packet(r);
+      }
+    },
+    // deliver PvP damage to anyone on the other team (host or guest)
+    damage(g, id, amt, by, srcPos) {
+      let src = srcPos ? { x: srcPos.x, z: srcPos.z } : null;
+      if (id === "self") return g.hurtPlayer(amt * X.arena.resil(g), { src, melee: !0, pvp: !0 });
+      let r = g.remotes.get(id);
+      if (!r) return;
+      if (r.bot) {
+        if (g.isHost) {
+          X.botHurt(g, r, amt, { src });
+          g.floatText(r.pos.clone().setY(r.pos.y + 1.8), Math.round(amt), "#ff9a7a");
+        } else {
+          let hk = [...g.remotes.keys()].find((k) => !g.remotes.get(k).bot && X.pidOf(k) === g.net?.hostPid) || [...g.remotes.keys()].find((k) => !g.remotes.get(k).bot);
+          hk && g.sendTo(hk, { t: "pvpb", id, amt: Math.round(amt), by: by || me() });
+        }
+        return;
+      }
+      g.sendTo(id, { t: "pvp", amt: Math.round(amt), by: by || me(), arena: !0 });
+    },
+    resil(g) {
+      let n = 0;
+      for (let s of XB) g.hsave?.gear?.[s]?.pvp && n++;
+      return 1 - Math.min(0.2, n * 0.04);
+    },
+    // results: rating, marks, stats
+    finish(g, win) {
+      let c = X.arena.cur;
+      if (!c || c.finished) return;
+      c.finished = !0;
+      let p = g.profile,
+        A = (p.arena ||= { rating: 1200, wins: 0, losses: 0, marks: 0, week: X.weekKey(), weekWins: 0 });
+      A.week !== X.weekKey() && ((A.week = X.weekKey()), (A.weekWins = 0));
+      let mine = win === c.my,
+        draw = !win,
+        opp = 1150,
+        exp = 1 / (1 + Math.pow(10, (opp - A.rating) / 400)),
+        s = draw ? 0.5 : mine ? 1 : 0,
+        delta = Math.round(32 * (s - exp)),
+        marks = draw ? 12 : mine ? 25 + 6 * (c.score[c.my] || 0) : 8;
+      A.rating = Math.max(0, A.rating + delta);
+      mine ? (A.wins++, A.weekWins++) : draw || A.losses++;
+      A.marks += marks;
+      A.best = Math.max(A.best || 0, A.rating);
+      g.track("arena");
+      mine && g.track("arena_wins");
+      A.rating >= 1800 && g.setStat("arena_1800", 1);
+      g.ui.banner(draw ? "DRAW" : mine ? "VICTORY" : "DEFEAT", `Rating ${A.rating} (${delta >= 0 ? "+" : ""}${delta}) \xB7 +${marks} Arena Marks`, mine ? "#ffd070" : "#c0c0c0");
+      g.audio.play(mine ? "legendary" : "dark");
+      g.save();
+      setTimeout(() => (X.arena.cur = null), 9000);
+    },
+  };
+  // host director for the pit
+  let dir0 = X.instDirector;
+  X.instDirector = function (g) {
+    let d = g.inst?.def;
+    if (!d?.arena) return dir0(g);
+    if (!X.arena.cur) X.arena.setup(g, d);
+  };
+  let upA = GP.update;
+  GP.update = function (dt) {
+    upA.call(this, dt);
+    this.inst?.def?.arena && this.isHost && X.arena.tick(this, dt);
+    // frozen during the countdown; a downed gladiator stays down until the round ends (no death screen mid-match)
+    let c = X.arena.cur;
+    if (c && this.player) {
+      c.phase === "count" && ((this.player.vel.x = 0), (this.player.vel.z = 0), (this.player.stun = Math.max(this.player.stun || 0, 0.15)));
+      this.player.downed && c.phase !== "done" && (this.player.downT = Math.max(this.player.downT || 0, 12));
+    }
+  };
+  // the dungeon companion AI stands aside in the pit (the arena drives the gladiators)
+  let ub0 = GP.updateBots;
+  GP.updateBots = function (dt) {
+    if (this.inst?.def?.arena) return;
+    return ub0.call(this, dt);
+  };
+  // no enemies spawn in the pit; the exit prompt waits for the match
+  let sp2 = GP.sysPrompt;
+  GP.sysPrompt = function () {
+    let r = sp2.call(this);
+    if (this.inst?.def?.arena && r?.near?.kind === "instexit" && X.arena.cur && X.arena.cur.phase !== "done") return null;
+    return r;
+  };
+  // ---------- hits between players ----------
+  let ma1 = GP.meleeArc;
+  GP.meleeArc = function (A, i, I, w = {}) {
+    let r = ma1.call(this, A, i, I, w),
+      c = X.arena.cur;
+    if (c && c.phase === "fight") {
+      for (let [id, o] of this.remotes) {
+        if (!X.arena.hostile(id) || o.downed || o.dead) continue;
+        let v = o.pos.clone().sub(this.player.pos),
+          d = v.length();
+        v.y = 0;
+        v.normalize();
+        d < A * this.skMod("rad") + 1 && v.dot(this.flatFwd()) > Math.cos((i * Math.PI) / 360) && X.arena.damage(this, id, I * this.dmgMul() * 0.5, me(), this.player.pos);
+      }
+    }
+    return r;
+  };
+  let up2 = GP.updateProjectiles;
+  GP.updateProjectiles = function (dt) {
+    up2.call(this, dt);
+    let c = X.arena.cur;
+    if (!c || c.phase !== "fight") return;
+    for (let I of this.projectiles) {
+      if (I.ghost || I.stuck || I.team !== "player" || !I.dmg || I.life <= 0 || I.pvpHit) continue;
+      for (let [id, o] of this.remotes) {
+        if (!X.arena.hostile(id) || o.downed || o.dead) continue;
+        if (I.pos.distanceTo(o.pos.clone().setY(o.pos.y + 1)) < 1.1) {
+          ((I.pvpHit = !0), (I.life = 0));
+          X.arena.damage(this, id, I.dmg * this.dmgMul() * 0.5, me(), this.player.pos);
+          this.particles.burst(I.pos.x, I.pos.y, I.pos.z, 8, { color: new _(0xff8a6a), speed: 2, life: 0.3, size: 0.1 });
+          break;
+        }
+      }
+    }
+  };
+  // ---------- net ----------
+  let on3 = GP.onNet;
+  GP.onNet = function (from, m) {
+    switch (m?.t) {
+      case "aph": {
+        let c = (X.arena.cur ||= { teams: { A: [], B: [] }, my: "A", round: 1, score: { A: 0, B: 0 }, phase: "count", t: 0 });
+        m.teams && ((c.teams = X.arena.unwire(this, m.teams)), (c.my = c.teams.A.includes("self") ? "A" : "B"));
+        ((c.phase = m.phase), (c.round = m.round), (c.score = m.score || c.score));
+        m.phase === "count" && this.ui.banner(`ROUND ${m.round}`, `Fight begins in ${m.tt || 5}`, "#ff8a6a");
+        m.phase === "fight" && (this.ui.banner("FIGHT", "", "#ff8a6a"), this.audio.play("bell"));
+        m.phase === "end" && X.arena.roundBanner(this, m.win, m.fin);
+        return;
+      }
+      case "aset":
+        ((this.player.pos.set(m.x, this.inst?.def?.floorY + 0.2 || this.player.pos.y, m.z)), this.player.vel.set(0, 0, 0), (this.player.yaw = m.yaw));
+        this.receiveAid({ revive: !0, healPct: 1 });
+        this.player.hp = this.player.maxHp;
+        this.player.res = this.player.maxRes;
+        return;
+      case "aend":
+        X.arena.finish(this, m.win);
+        return;
+      case "pvpb":
+        if (this.isHost) {
+          let r = this.remotes.get(m.id);
+          r?.bot && X.arena.hostile(m.id) !== null && (X.botHurt(this, r, m.amt, {}), this.floatText(r.pos.clone().setY(r.pos.y + 1.8), m.amt, "#ff9a7a"));
+        }
+        return;
+      case "pvp":
+        if (m.arena) {
+          let c = X.arena.cur;
+          if (!c || c.phase !== "fight") return;
+          let by = m.by || from,
+            src = this.remotes.get(by)?.pos || this.remotes.get(from)?.pos;
+          if (!X.arena.hostile(by) && !X.arena.hostile(from)) return;
+          this.hurtPlayer(m.amt * X.arena.resil(this), { src: src ? { x: src.x, z: src.z } : null, melee: !0, pvp: !0 });
+          return;
+        }
+        break;
+    }
+    return on3.call(this, from, m);
+  };
+  // leaving the pit clears the match
+  let ex1 = GP.exitInstance;
+  GP.exitInstance = function (fromNet) {
+    let wasArena = this.inst?.def?.arena;
+    ex1.call(this, fromNet);
+    if (wasArena) {
+      let c = X.arena.cur;
+      c && !c.finished && X.arena.finish(this, null);
+      X.arena.cur = null;
+      this.receiveAid({ revive: !0, healPct: 1 });
+    }
+  };
+  // ---------- Arena Master: queue, standings, rewards ----------
+  qI.push({ id: "kessa", name: "Arena Master Kessa", title: "Mistress of the Pit", pos: [spot[0] + 4, spot[1] + 3], shop: "arena", look: { robe: 0x6a2a2a, trim: 0xffd070, sex: "f", hair: "tail", hairC: 0x2a1a1a }, greet: "Blood, sand and glory. Which do you want first?", loc: "Dawnmere" });
+  Object.assign(ZM, { kessa: { m: "barbarian", tint: 0xd09a7a, show: ["1H_Axe"], hat: !1 } });
+  X.ARENA_SHOP = [
+    { id: "glad_w", slot: "weapon", name: "Gladiator's Edge", cost: 300 },
+    { id: "glad_h", slot: "helm", name: "Gladiator's Visor", cost: 200 },
+    { id: "glad_c", slot: "chest", name: "Gladiator's Harness", cost: 220 },
+    { id: "glad_b", slot: "boots", name: "Gladiator's Greaves", cost: 180 },
+    { id: "glad_r", slot: "relic", name: "Gladiator's Token", cost: 260 },
+  ];
+  X.MOUNTS.gladhorse = { name: "Gladiator's Warhorse", speed: 2.3, cost: -1, model: "horse", col: 0x5a1a1a, glow: 0xff8a6a, stat: ["arena_wins", 25], desc: "Reward for 25 arena victories." };
+  X.COMPANIONS.pitdog = { name: "Pit Hound", kind: "melee", cost: -1, model: "wolf", scale: 0.9, col: 0x8a3a2a, dmg: 24, stat: ["arena_wins", 10], desc: "Reward for 10 arena victories. Smells blood." };
+  Zi.aura.push({ id: "glory", name: "Gladiator's Glory", color: 0xff8a6a, cost: -1, ach: "arena_1800" });
+  WB.push(
+    { id: "arena_first", name: "First Blood (Arena)", desc: "Win an arena match.", stat: "arena_wins", goal: 1, reward: 100 },
+    { id: "arena_10", name: "Crowd Favourite", desc: "Win 10 arena matches.", stat: "arena_wins", goal: 10, reward: 300 },
+    { id: "arena_25", name: "Champion of the Pit", desc: "Win 25 arena matches. (Unlocks the Gladiator's Warhorse)", stat: "arena_wins", goal: 25, reward: 600 },
+    { id: "arena_1800", name: "Gladiator", desc: "Reach 1800 arena rating. (Unlocks the Gladiator's Glory aura)", stat: "arena_1800", goal: 1, reward: 1000 },
+  );
+  X.npcExtra = X.npcExtra || {};
+  X.npcBind = X.npcBind || {};
+  X.npcExtra.arena = function (g) {
+    let p = g.profile,
+      A = (p.arena ||= { rating: 1200, wins: 0, losses: 0, marks: 0, week: X.weekKey(), weekWins: 0 });
+    A.week !== X.weekKey() && ((A.week = X.weekKey()), (A.weekWins = 0), (A.weekChest = !1));
+    let q = X.lfg.st?.d?.arena;
+    return `<h3>The Pit <small>rating ${A.rating} \xB7 ${A.wins}W ${A.losses}L \xB7 best ${A.best || A.rating} \xB7 ⚔ ${A.marks} Arena Marks</small></h3>
+      <p class="small">Ranked 2v2 and 3v3, best of three. Your group (or just you) is one team; missing seats on both sides are filled by gladiators after ${X.LFG_WAIT}s. Damage between players is halved; Gladiator's gear reduces it further. Win +25 marks and rating, lose +8 marks.</p>
+      <div class="row">${q ? `<button data-aq="cancel">Leave the queue</button>` : `<button data-aq="arena2">Queue 2v2</button><button data-aq="arena3">Queue 3v3</button>`}</div>
+      <h3>Weekly chest <small>${A.weekWins}/5 wins this week</small></h3><div class="row"><button data-achest ${A.weekWins >= 5 && !A.weekChest ? "" : "disabled"}>${A.weekChest ? "Claimed this week" : "Claim (needs 5 wins)"}</button></div>
+      <h3>Gladiator's gear <small>Arena Marks \xB7 each piece: −4% damage taken from players (max −20%)</small></h3><div class="shop">${X.ARENA_SHOP.map((it) => `<div class="shop-i"><div class="tip-n" style="color:#ff9a7a">${it.name}</div><div class="tip-r">${it.slot} \xB7 epic, your level \xB7 ⚔ ${it.cost}</div><button data-abuy="${it.id}" ${A.marks >= it.cost ? "" : "disabled"}>Buy</button></div>`).join("")}</div>
+      <p class="small">Rewards: Pit Hound at 10 wins, Gladiator's Warhorse at 25 wins, Gladiator's Glory aura at 1800 rating.</p>`;
+  };
+  X.npcBind.arena = function (g, root, redo) {
+    root.querySelectorAll("[data-aq]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          g.ui.closeModal();
+          b.dataset.aq === "cancel" ? X.lfg.cancel("Left the arena queue") : X.lfg.start(b.dataset.aq);
+        }),
+    );
+    root.querySelectorAll("[data-abuy]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          let it = X.ARENA_SHOP.find((x) => x.id === b.dataset.abuy),
+            A = g.profile.arena;
+          if (!it || A.marks < it.cost) return;
+          if (g.profile.inventory.length >= 40) return g.toast("Your bag is full", "#ff6a5a");
+          A.marks -= it.cost;
+          let item = g.gen(g.hsave.level, 0, "epic");
+          ((item.slot = it.slot), (item.name = it.name), (item.pvp = !0), it.slot === "weapon" && (item.wtype = g.hero.weapon));
+          g.profile.inventory.push(item);
+          g.audio.play("coin");
+          g.toast(`${it.name} added to your bag`, "#ff9a7a");
+          g.save();
+          redo();
+        }),
+    );
+    root.querySelectorAll("[data-achest]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          let A = g.profile.arena;
+          if (A.weekWins < 5 || A.weekChest) return;
+          A.weekChest = !0;
+          let Q = g.player.pos.clone();
+          g.dropItem(Q, g.gen(Math.min(60, g.hsave.level + 2), 0, "legendary"));
+          A.marks += 60;
+          g.profile.marks += 100;
+          g.toast("Weekly arena chest: a Relic, 60 Arena Marks, 100 Ashen Marks", "#ffd070");
+          g.save();
+          redo();
+        }),
+    );
+  };
+  // item tooltip line
+  let ih1 = X.itemHTML;
+  X.itemHTML && (X.itemHTML = function (A, ...rest) {
+    let h = ih1.call(this, A, ...rest);
+    return A?.pvp ? h.replace("</div>", `</div><div class="tip-a" style="color:#ff9a7a">⚔ Gladiator: −4% damage from players</div>`) : h;
+  });
+  // the pit's portal marker in the world (a pair of posts and a sand circle near Kessa)
+  X.onWorld((world) => {
+    let [x, z] = spot,
+      y = world.heightAt(x, z),
+      ring = new p(new ji(5, 0.18, 8, 40), world.mat("stone", 0x6a5a4a));
+    (ring.rotation.x = Math.PI / 2), ring.position.set(x, y + 0.1, z), world.scene.add(ring);
+    for (let s of [-1, 1]) {
+      let post = X.piece("k_pillar_decorated", { h: 4.2, center: !0, tint: 0x9a8a7a }) || new p(new iA(0.6, 4, 0.6), world.mat("stone", 0x6a5a4a));
+      post.position.set(x + s * 5.5, y, z);
+      world.scene.add(post);
+      world.addCircle(x + s * 5.5, z, 0.6, y + 4, "pillar");
+    }
+    let lbl = Sg("The Pit \xB7 Arena (talk to Kessa)", "#ff9a7a", 30);
+    (lbl.position.set(x, y + 5.2, z), lbl.scale.set(6.4, 1.2, 1), world.scene.add(lbl));
+  });
 }
 
   window.__app = new bE();
