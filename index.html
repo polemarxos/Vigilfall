@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.15.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.15.1</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -7499,8 +7499,6 @@ void main() {
     ],
     hC = [
       { id: "draught", name: "Healing Draught", desc: "Refill one healing draught.", cost: 40, icon: "potion" },
-      { id: "oil", name: "Lantern Oil", desc: "Refill your lantern completely.", cost: 30, icon: "candle" },
-      { id: "calm", name: "Tincture of Calm", desc: "Restore your Sanity completely.", cost: 45, icon: "eye" },
       { id: "e_wrath", name: "Elixir of Wrath", desc: "+15% damage for 10 minutes.", cost: 180, icon: "flame", elixir: { dmg: 0.15 } },
       {
         id: "e_iron",
@@ -22173,7 +22171,7 @@ a=extmap-allow-mixed`) !== -1
               (e[t].position.set(w, C + D + 0.95, g), e[t].scale.set(4.5, 0.85, 1), (e[t].visible = !1), this.scene.add(e[t]));
             return (
               this.scene.add(Q, s),
-              { def: i, mesh: I, pos: $B(w, C, g), mk: e, baseYaw: Math.atan2(0 - w, 296 - g), yaw: 0, sfxT: 0 }
+              { def: i, mesh: I, pos: $B(w, C, g), mk: e, lbl: [Q, s], baseYaw: Math.atan2(0 - w, 296 - g), yaw: 0, sfxT: 0 }
             );
           })),
           (this.chests = Cl.map(([i, I], w) => {
@@ -24303,7 +24301,9 @@ a=extmap-allow-mixed`) !== -1
             this.game.endTutorial();
             return;
           }
-          let w = { KeyI: "inv", Tab: "inv", KeyJ: "quests", KeyK: "ach", KeyO: "social", KeyM: "map", KeyP: "skills", KeyN: "talents" };
+          let w = { KeyI: "inv", Tab: "inv", KeyJ: "quests", KeyK: "ach", KeyO: "social", KeyM: "map", KeyP: "skills", KeyN: "talents" },
+            ae = document.activeElement;
+          if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && I.code !== "Escape") return;
           if (w[I.code] && !I.repeat) {
             this.ui.panelOpen && this.ui.curPanel === w[I.code]
               ? this.ui.closeModal()
@@ -25654,14 +25654,14 @@ Object.assign(XC.prototype, {
     this.mapImg = A;
   },
   bigMap(B) {
-    let SZ = 940,
+    let SZ = X.MAPSZ || 940,
       i = document.createElement("canvas");
     i.width = i.height = SZ;
     let I = i.getContext("2d"),
       w = SZ / ao,
       g = this.app.profile,
       C = (M, n) => [(M + pi) * w, (n + pi) * w];
-    ((I.imageSmoothingEnabled = !0), I.drawImage(this.mapImg, 0, 0, SZ, SZ), (I.textAlign = "center"), (I.lineJoin = "round"));
+    ((I.imageSmoothingEnabled = !0), I.drawImage(this.mapImgHi || this.mapImg, 0, 0, SZ, SZ), (I.textAlign = "center"), (I.lineJoin = "round"));
     let Q = (M, n, o, l, E, c = "rgba(244,232,200,0.85)", d = 4) => {
       ((I.font = l), (I.lineWidth = d), (I.strokeStyle = c), I.strokeText(M, n, o), (I.fillStyle = E), I.fillText(M, n, o));
     };
@@ -33600,8 +33600,16 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.15.0";
+  X.VERSION = "1.15.1";
   X.CHANGELOG = {
+    "1.15.1": [
+      "Typing in any text box (guild name, auction price, chat…) no longer triggers hotkeys.",
+      "First person shows weapons only — no hands — held closer and larger so they fill the view.",
+      "Dawnmere: a real stable (Gellert) and kennel (Ilse) with horses and hounds east of the square, a signpost on the square pointing to them, both on the map. Townsfolk standing inside or behind walls are moved to open ground.",
+      "Old Marta no longer sells Lantern Oil or Tincture of Calm (shrines refill your oil and sanity; oil flasks still drop).",
+      "World map is now drawn at 1 m per pixel (sharp at full zoom) with houses, fences and tree cover; it is prepared in the background after the world opens.",
+      "Materials hint on your first gather: everything you pick goes to the Professions book (B) and is crafted from there.",
+    ],
     "1.15.0": [
       "Guilds: found one at Registrar Mara in Dawnmere (500 shards). Guilds need no server — the roster, bank and ledger are shared by the members themselves and merge whenever two of them meet (same world, invitations, friend pings). Invite players in your world or friends by code, four ranks (Initiate, Member, Officer, Guild Master), a message of the day, a banner colour, hand-over and disband.",
       "Guild bank (60 item slots + shards), guild chat with /g in the chat box (reaches guild mates in your world and online elsewhere), <TAG> after guild mates' names, a guild hall (enter from Mara, in your own world) with the bank chest and the ledger, a log of everything that happens.",
@@ -41151,6 +41159,344 @@ Object.assign(X.COMPANIONS, {
     return XwF(B, A);
   };
   X.Xw = (...a) => Xw(...a);
+}
+
+/* ---- EH_fixes.js ---- */
+// ===== 1.15.1: NPCs never inside walls, a real stable and kennel, weapons-only first person, sharp world map, gathering hint =====
+{
+  let GP = SC.prototype,
+    U = XC.prototype,
+    hamlet = yI.hamlet;
+  X.roadDist = (x, z) => _I(x, z);
+
+  // ---------- stable + kennel pens in Dawnmere, mount/pet NPCs beside them ----------
+  let STABLE = [hamlet[0] + 32, hamlet[1] + 26], // east side of the square, behind the quartermaster
+    KENNEL = [hamlet[0] + 54, hamlet[1] + 30];
+  let gellert = qI.find((n) => n.id === "gellert"),
+    ilse = qI.find((n) => n.id === "ilse");
+  gellert && (gellert.pos = [STABLE[0] - 7.5, STABLE[1] + 1]);
+  ilse && (ilse.pos = [KENNEL[0] - 6.5, KENNEL[1] + 1]);
+  X.buildPens = function (g) {
+    let w = g.world;
+    if (w._pens) return;
+    w._pens = !0;
+    let wood = w.mat("wood", 0x5a3e24),
+      dark = w.mat("wood", 0x3a2816),
+      hay = ZA("cloth", 0xc8a850, { rough: 1 }),
+      pen = (cx, cz, hw, hd, gateSide, animals) => {
+        let y = w.heightAt(cx, cz),
+          pts = [];
+        // rectangle of fence posts (clockwise), gate on one side
+        let corners = [
+          [cx - hw, cz - hd],
+          [cx + hw, cz - hd],
+          [cx + hw, cz + hd],
+          [cx - hw, cz + hd],
+        ];
+        for (let i = 0; i < 4; i++) {
+          let [x0, z0] = corners[i],
+            [x1, z1] = corners[(i + 1) % 4],
+            n = Math.max(2, Math.round(Math.hypot(x1 - x0, z1 - z0) / 2.4));
+          for (let k = 0; k < n; k++) pts.push([x0 + ((x1 - x0) * k) / n, z0 + ((z1 - z0) * k) / n, i, k, n]);
+        }
+        X.fencePath(w, pts, (i) => pts[i][2] === gateSide && pts[i][3] === Math.floor(pts[i][4] / 2), { color: 0x5a3e24 });
+        for (let i = 0; i < 4; i++) {
+          let [x0, z0] = corners[i],
+            [x1, z1] = corners[(i + 1) % 4];
+          if (i === gateSide) continue;
+          w.addBox((x0 + x1) / 2, (z0 + z1) / 2, Math.max(0.3, Math.abs(x1 - x0) / 2), Math.max(0.3, Math.abs(z1 - z0) / 2), 0, y + 1.6, "fence");
+        }
+        // lean-to roof on the far side, on four posts
+        let rz = gateSide === 2 ? cz - hd + 1.6 : cz + hd - 1.6,
+          roof = new p(new iA(hw * 2 + 0.6, 0.12, 3.6), dark);
+        ((roof.position.set(cx, y + 3.1, rz)), (roof.rotation.x = gateSide === 2 ? -0.22 : 0.22), (roof.castShadow = !0), w.scene.add(roof));
+        for (let sx of [-1, 1]) for (let sz of [-1, 1]) w.scene.add(v(new iA(0.22, 3.1, 0.22), wood, cx + sx * hw, y + 1.5, rz + sz * 1.5));
+        // hay, trough
+        for (let i = 0; i < 3; i++) {
+          let b = v(new iA(1.1, 0.7, 0.8), hay, cx - hw + 1.2 + i * 1.25, y + 0.35, rz + 0.3);
+          ((b.rotation.y = i * 0.3), (b.castShadow = !0), w.scene.add(b));
+        }
+        let tr = v(new iA(1.8, 0.5, 0.7), dark, cx + hw - 1.6, y + 0.25, rz - 0.2);
+        w.scene.add(tr);
+        tr.add(v(new iA(1.6, 0.1, 0.5), ZA("cloth", 0x3a6a7a, { rough: 0.2 }), 0, 0.22, 0));
+        // animals
+        animals.forEach(([kind, col, opt, x, z, yaw], i) => {
+          let m = X.creature[kind]?.(col, { wild: !0, ...opt });
+          if (!m) return;
+          let yy = w.heightAt(cx + x, cz + z);
+          (m.position.set(cx + x, yy, cz + z), (m.rotation.y = yaw), w.scene.add(m));
+          (w._penAnimals ||= []).push(m);
+        });
+      };
+    pen(STABLE[0], STABLE[1], 5, 4, 3, [
+      ["horse", 0x6a4a2e, {}, -2.2, -0.5, 0.6],
+      ["horse", 0x9a9aa8, { style: "plain" }, 1.8, 0.8, -2.4],
+    ]);
+    pen(KENNEL[0], KENNEL[1], 4, 3, 3, [
+      ["warg", 0x6a5a4a, { eye: 0xffd040 }, -1.4, 0, 1.2],
+      ["warg", 0x3a3a3a, {}, 1.6, 0.6, -1.8],
+    ]);
+    w._penAnimals?.forEach((m) => m.scale.setScalar(m.userData.parts?.rig === "quad" && m.userData.parts.body ? 1 : 1));
+    // kennel dogs are smaller
+    w._penAnimals?.slice(2).forEach((m) => m.scale.setScalar(0.6));
+    // a sign on each
+    let sign = (x, z, text) => {
+      let l = Sg(text, "#ffe4a0", 30);
+      (l.position.set(x, w.heightAt(x, z) + 3.9, z), l.scale.set(3.2, 0.55, 1), w.scene.add(l));
+    };
+    sign(STABLE[0], STABLE[1], "Gellert's Stable");
+    sign(KENNEL[0], KENNEL[1], "Ilse's Kennel");
+    // signpost at the east edge of the square pointing the way
+    let sp = [hamlet[0] + 17, hamlet[1] + 7],
+      sy = w.heightAt(sp[0], sp[1]),
+      post = v(new iA(0.18, 2.6, 0.18), wood, sp[0], sy + 1.3, sp[1]);
+    w.scene.add(post);
+    for (let [i, t] of [[0, "Stable ▸"], [1, "Kennel ▸"]]) {
+      let board = v(new iA(1.5, 0.32, 0.08), dark, 0, 0.9 - i * 0.42, 0);
+      ((board.rotation.y = -0.9), post.add(board));
+      let l = Sg(t, "#ffe4a0", 28);
+      (l.position.set(sp[0], sy + 2.25 - i * 0.42, sp[1]), l.scale.set(1.6, 0.34, 1), w.scene.add(l));
+    }
+    w.addCircle(sp[0], sp[1], 0.3, sy + 3, "prop");
+    mM.some((m) => m.id === "stable") || mM.push({ id: "stable", name: "Gellert's Stable", pos: [STABLE[0], STABLE[1]], r: 9, lv: "Stable", desc: "Mounts are bought, trained and stabled here." }, { id: "kennel", name: "Ilse's Kennel", pos: [KENNEL[0], KENNEL[1]], r: 8, lv: "Kennel", desc: "Companions wait here for a master." });
+  };
+  // idle animation for the pen animals
+  let upA = GP.update;
+  GP.update = function (dt) {
+    upA.call(this, dt);
+    let A = this.world._penAnimals;
+    if (!A || this.pocket) return;
+    for (let m of A) {
+      let P = m.userData.parts;
+      P && m.position.distanceToSquared(this.player.pos) < 3600 && Xw(P, { t: this.t, ph: 0, mv: 0 });
+    }
+  };
+
+  // ---------- NPCs: never inside a wall or a house, never hidden behind one ----------
+  let freeSpot = (w, x, z, r = 0.9) => {
+    let blocked = (px, pz) => {
+      if (w.isWater?.(px, pz)) return !0;
+      for (let [dx, dz] of [
+        [0, 0],
+        [r, 0],
+        [-r, 0],
+        [0, r],
+        [0, -r],
+      ])
+        {
+          let c = w.pointBlocked(px + dx, w.heightAt(px + dx, pz + dz) + 1, pz + dz);
+          if (c && /house|wall|prop|ruin|tree|fence|rock/.test(c.tag || "")) return !0;
+        }
+      // keep clear of house walls so the NPC is not tucked behind a building
+      for (let c of w.nearColliders(px, pz)) {
+        if (c.dead || (c.tag !== "house" && c.tag !== "wall")) continue;
+        if (c.type === "c" ? Math.hypot(px - c.x, pz - c.z) < c.r + 1.2 : Math.abs((px - c.x) * c.cos + (pz - c.z) * c.sin) < c.hx + 1.2 && Math.abs(-(px - c.x) * c.sin + (pz - c.z) * c.cos) < c.hz + 1.2) return !0;
+      }
+      return !1;
+    };
+    if (!blocked(x, z)) return null;
+    // spiral outwards, prefer towards the village square
+    let best = null,
+      bd = 1e9,
+      toC = Math.atan2(hamlet[1] - z, hamlet[0] - x);
+    for (let d = 1.5; d <= 14 && !best; d += 1) {
+      for (let k = 0; k < 16; k++) {
+        let a = toC + (k / 16) * Math.PI * 2,
+          px = x + Math.cos(a) * d,
+          pz = z + Math.sin(a) * d;
+        if (blocked(px, pz)) continue;
+        let cost = d + Math.abs(X.wrapAngle(a - toC)) * 0.8;
+        cost < bd && ((bd = cost), (best = [px, pz]));
+      }
+    }
+    return best;
+  };
+  X.fixNpcSpots = function (g) {
+    let w = g.world,
+      moved = 0;
+    for (let n of g.npcs) {
+      let [x, z] = [n.pos.x, n.pos.z],
+        s = freeSpot(w, x, z);
+      if (!s) continue;
+      let [nx, nz] = s,
+        y = w.heightAt(nx, nz),
+        dy = y - n.pos.y;
+      n.pos.set(nx, y, nz);
+      n.mesh.position.set(nx, y, nz);
+      n.lbl?.forEach((l) => ((l.position.x = nx), (l.position.z = nz), (l.position.y += dy)));
+      for (let k in n.mk) ((n.mk[k].position.x = nx), (n.mk[k].position.z = nz), (n.mk[k].position.y += dy));
+      n.def.pos = [nx, nz];
+      // collider: retire the old one, add a new one
+      for (let c of w.nearColliders(x, z)) c.type === "c" && c.r === 0.5 && Math.abs(c.x - x) < 0.01 && Math.abs(c.z - z) < 0.01 && (c.dead = !0);
+      w.addCircle(nx, nz, 0.5, y + 2);
+      n.baseYaw = Math.atan2(hamlet[0] - nx, hamlet[1] - nz);
+      moved++;
+    }
+    moved && console.log("[vf] relocated", moved, "NPCs out of walls");
+    return moved;
+  };
+  let st0 = GP.start;
+  GP.start = function (...a) {
+    let r = st0.apply(this, a);
+    try {
+      X.buildPens(this);
+      X.fixNpcSpots(this);
+    } catch (e) {
+      console.error("pens/npcs", e);
+    }
+    return r;
+  };
+
+  // ---------- first person: weapons only, brought close so the (hidden) hands are covered ----------
+  let To1 = To;
+  To = function (B, A = {}, i = {}) {
+    let n = To1(B, A, i),
+      U = n.userData,
+      o = U.right,
+      l = U.left,
+      keep = new Set();
+    for (let k of [U.weapon, U.leftWeapon, U.arrowHolder, U.arrow]) k && k.traverse((m) => keep.add(m));
+    for (let arm of [o, l]) arm && arm.traverse((m) => m.isMesh && !keep.has(m) && (m.visible = !1));
+    // closer to the eye, a touch lower and wider, and bigger
+    let near = (g, dx) => {
+      if (!g) return;
+      g.position.z += 0.13;
+      g.position.y -= 0.02;
+      g.position.x += dx;
+    };
+    near(o, 0.03);
+    near(l, -0.03);
+    for (let k of [U.weapon, U.leftWeapon]) k && k.scale.multiplyScalar(1.28);
+    U.base && ((U.base.r = o.position.clone()), (U.base.l = l.position.clone()));
+    U.weaponsOnly = !0;
+    return n;
+  };
+  X.To = (...a) => To(...a);
+
+  // ---------- world map: 1 m per pixel source, 2048 px canvas ----------
+  X.MAPSZ = 2048;
+  // heights are sampled in slices across several seconds after the world opens, so there is no hitch
+  U.mapHiPrep = function () {
+    if (this._mapHi || !this.g?.world) return;
+    let S = ao,
+      w = this.g.world,
+      g = new Float32Array(S * S),
+      row = 0,
+      self = this;
+    this._mapHi = { g, done: !1 };
+    let slice = () => {
+      let t0 = performance.now();
+      while (row < S && performance.now() - t0 < 6) {
+        for (let s = 0; s < S; s++) g[row * S + s] = w.heightAt(s - pi, row - pi);
+        row++;
+      }
+      row < S ? setTimeout(slice, 30) : (self._mapHi.done = !0);
+    };
+    setTimeout(slice, 2000);
+  };
+  U.buildMapImageHi = function () {
+    let S = ao, // 1 m per pixel
+      A = document.createElement("canvas");
+    A.width = A.height = S;
+    let i = A.getContext("2d"),
+      I = i.createImageData(S, S),
+      w = this.g.world,
+      g = this._mapHi?.done ? this._mapHi.g : null;
+    if (!g) {
+      g = new Float32Array(S * S);
+      for (let Q = 0; Q < S; Q++) for (let s = 0; s < S; s++) g[Q * S + s] = w.heightAt(s - pi, Q - pi);
+    }
+    let C = { hamlet: [196, 186, 142], mire: [150, 166, 128], ossuary: [200, 190, 168], cathedral: [176, 148, 128], citadel: [128, 110, 112], frost: [214, 222, 232], waste: [214, 184, 130], thorn: [118, 146, 104], storm: [150, 146, 170], sea: [98, 128, 138] };
+    for (let Q = 0; Q < S; Q++)
+      for (let s = 0; s < S; s++) {
+        let D = s - pi,
+          e = Q - pi,
+          t = g[Q * S + s],
+          M = (Q * S + s) * 4,
+          R = Math.hypot(D, e);
+        if (R > X.RWALL + 30) {
+          ((I.data[M] = 56), (I.data[M + 1] = 46), (I.data[M + 2] = 36), (I.data[M + 3] = 255));
+          continue;
+        }
+        let [n, o, l] = C[Vi(D, e)] || C.hamlet,
+          E = g[Q * S + Math.min(S - 1, s + 1)] - t,
+          c = g[Math.min(S - 1, Q + 1) * S + s] - t,
+          d = Math.max(0.6, Math.min(1.3, 1 - (E + c) * 0.2));
+        if (((n *= d), (o *= d), (l *= d), t > 22)) {
+          let m = Math.min(1, (t - 22) / 40);
+          ((n = n * (1 - m) + 150 * m), (o = o * (1 - m) + 140 * m), (l = l * (1 - m) + 132 * m));
+        }
+        if (t > 48) {
+          let m = Math.min(1, (t - 48) / 25);
+          ((n = n * (1 - m) + 230 * m), (o = o * (1 - m) + 232 * m), (l = l * (1 - m) + 236 * m));
+        }
+        let a = 4,
+          P = Math.floor(t / a);
+        (P !== Math.floor(g[Q * S + Math.max(0, s - 1)] / a) || P !== Math.floor(g[Math.max(0, Q - 1) * S + s] / a)) && ((n *= 0.82), (o *= 0.8), (l *= 0.76));
+        if (w.isWater(D, e)) {
+          let dep = Math.max(0, Math.min(1, (w.waterLevel - t) / 6));
+          ((n = 110 - dep * 40), (o = 140 - dep * 40), (l = 150 - dep * 30));
+          (s + Q) % 9 === 0 && ((n += 16), (o += 16), (l += 16));
+        }
+        let r = _I(D, e);
+        r < 2.6 && Vi(D, e) !== "citadel" ? ((n = 122), (o = 92), (l = 62)) : r < 4 && ((n *= 0.9), (o *= 0.88), (l *= 0.84));
+        let J = ((s * 73856093) ^ (Q * 19349663)) & 15;
+        ((n += J - 7), (o += J - 7), (l += J - 8), (I.data[M] = n), (I.data[M + 1] = o), (I.data[M + 2] = l), (I.data[M + 3] = 255));
+      }
+    i.putImageData(I, 0, 0);
+    // trees, houses, ruins, fences
+    i.fillStyle = "rgba(44,60,38,0.6)";
+    for (let Q of w.colliders) {
+      if (Q.dead) continue;
+      if (Q.tag === "tree" && ((Q.x * 7 + Q.z * 13) | 0) % 2 === 0) {
+        let s = Q.x + pi,
+          D = Q.z + pi;
+        (i.beginPath(), i.moveTo(s, D - 3.2), i.lineTo(s - 2.2, D + 1.8), i.lineTo(s + 2.2, D + 1.8), i.fill());
+      }
+    }
+    for (let Q of w.colliders) {
+      if (Q.dead) continue;
+      if (Q.tag === "house") {
+        i.save();
+        i.translate(Q.x + pi, Q.z + pi);
+        Q.type === "b" && i.rotate(-(Q.rot || 0));
+        let hw = Q.type === "b" ? Q.hx : Q.r,
+          hz = Q.type === "b" ? Q.hz : Q.r;
+        ((i.fillStyle = "rgba(96,56,40,0.9)"), i.fillRect(-hw, -hz, hw * 2, hz * 2), (i.fillStyle = "rgba(150,100,70,0.9)"), i.fillRect(-hw * 0.7, -hz * 0.7, hw * 1.4, hz * 1.4));
+        i.restore();
+      } else if (Q.tag === "ruin") ((i.fillStyle = "rgba(90,80,90,0.75)"), i.fillRect(Q.x + pi - 1.5, Q.z + pi - 1.5, 3, 3));
+      else if (Q.tag === "fence") ((i.fillStyle = "rgba(70,50,30,0.7)"), i.fillRect(Q.x + pi - 0.6, Q.z + pi - 0.6, 1.2, 1.2));
+    }
+    this.mapImgHi = A;
+  };
+  let st1 = GP.start;
+  GP.start = function (...a) {
+    let r = st1.apply(this, a);
+    this.ui.mapHiPrep?.();
+    return r;
+  };
+  let bm1 = U.bigMap;
+  U.bigMap = function (B) {
+    if (!this.mapImgHi && this.g?.world && this._mapHi?.done) {
+      try {
+        this.buildMapImageHi();
+      } catch (e) {
+        console.error("map hi", e);
+      }
+    }
+    return bm1.call(this, B);
+  };
+
+  // ---------- first gather: tell the player where things are kept and used ----------
+  let am0 = X.addMat;
+  X.addMat = function (g, id, n) {
+    let r = am0.call(this, g, id, n);
+    if (g && !g.profile.hintMats) {
+      g.profile.hintMats = !0;
+      setTimeout(() => g.running && g.ui.banner("MATERIALS", "Everything you gather is in your Professions book — press B. Craft from there (smithing needs an anvil, cooking a fire).", "#8aff9a"), 300);
+    }
+    return r;
+  };
 }
 
   window.__app = new bE();
