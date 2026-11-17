@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.15.2</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.16.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33606,8 +33606,14 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.15.2";
+  X.VERSION = "1.16.0";
   X.CHANGELOG = {
+    "1.16.0": [
+      "Interface pass. Buffs are icons with timers and bars (debuffs in red), including Well Rested, Well Fed, scrolls and your mount. The target frame shows health numbers, a ⚠ when the enemy winds up an attack, and stays for 4 s after you look away (and whatever you last hit). Skill slots show their resource cost.",
+      "Inventory: drag an item onto its slot to equip, drag an equipped item into the bag to unequip; right-click opens a menu (Equip, Lock, Deposit in guild bank, Salvage with its value). Locked items are skipped by Salvage all and cannot be salvaged by accident. Filters (All / Weapons / Armour / Relics / Upgrades). Equipment slots show icons and item levels.",
+      "Help & Controls: press F1, the Help tab, or the pause menu — every key and a short guide to each system (lantern, shrines, shards, Dungeon Finder, professions, events, guilds, PvP, housing, alts).",
+      "Settings explain each option; checkboxes, sliders and lists use the game's colours. Panel tabs wrap on narrow screens. Styled tooltips replace browser tooltips inside panels and on buffs.",
+    ],
     "1.15.2": [
       "Quests are now per hero: every class runs the whole quest chain (and gets its XP and rewards) instead of sharing one log. Your current hero keeps the quests you had.",
       "Veteran's Boon: any hero below your highest hero's level earns +50% experience (shown in the inventory stats).",
@@ -41814,6 +41820,300 @@ Object.assign(X.COMPANIONS, {
       arm.rotation.x += mv * 0.08 * (1 - sw);
     }
   };
+}
+
+/* ---- EK_ui.js ---- */
+// ===== 1.16: interface pass — buff bar with icons, sticky target frame, skill costs, inventory drag & drop + context menu + filters + locks, equipment icons, Help & Controls, styled settings, custom tooltips =====
+{
+  let GP = SC.prototype,
+    U = XC.prototype,
+    app = () => window.__app,
+    css = (t) => {
+      let s = document.createElement("style");
+      s.textContent = t;
+      document.head.appendChild(s);
+    };
+
+  // ---------- buffs: icons with timers ----------
+  let BICON = { howl: ["wind", "Howl: −30% damage taken"], pact: ["skull", "Dark Pact: leech and damage"], ward: ["shield", "Ward"], undying: ["heart", "Undying"], vanish: ["smoke", "Vanished"], shadowmeld: ["moon", "Shadowmeld"], lotus: ["lotus", "Lotus"], tempest: ["storm", "Tempest"], inferno: ["flame", "Inferno"], hexed: ["eye", "Hexed", 1], slowed: ["hourglass", "Slowed", 1], leechheal: ["drop", "Leeching"], sanct: ["cross", "Sanctuary"], rested: ["bell", "Well Rested: +15% XP"], food: ["flask", "Well Fed"], scroll: ["scroll", "Scroll"], elixir: ["potion", "Elixir"], shield: ["shield", "Shield"], regen: ["leaf", "Regeneration"], dodging: ["boot", "Dodging"], mounted: ["map", "Mounted"] };
+  let buffHtml = (id, t, max, name, de) => {
+    let [ic, lbl, dd] = BICON[id] || ["star", id];
+    de = de ?? dd;
+    let pct = max > 0 ? Math.max(0, Math.min(100, (t / max) * 100)) : 100;
+    return `<div class="bf ${de ? "de" : ""}" title="${(name || lbl).replace(/"/g, "")}">${gI(ic, de ? "#ff8a7a" : "#ffe4a0", 26)}<div class="bft">${t > 0 ? (t >= 60 ? Math.ceil(t / 60) + "m" : Math.ceil(t) + "s") : ""}</div><div class="bfb"><div style="width:${pct}%"></div></div></div>`;
+  };
+  let uh0 = U.updateHUD;
+  U.updateHUD = function (A, i) {
+    uh0.call(this, A, i);
+    let I = A.player,
+      el = document.getElementById("buffs");
+    if (!el) return;
+    this._bfT = (this._bfT || 0) + (i || 0.016);
+    if (this._bfT < 0.15) return;
+    this._bfT = 0;
+    let h = I.buffs.map((D) => buffHtml(D.name, D.t, D.max || D.t, D.name)).join("");
+    I.shield > 0 && (h += buffHtml("shield", 0, 0, `Shield ${Math.ceil(I.shield)}`));
+    I.hots?.length && (h += buffHtml("regen", Math.max(...I.hots.map((x) => x.t || 0)), Math.max(...I.hots.map((x) => x.max || x.t || 1)), `Regeneration ×${I.hots.length}`));
+    I.iframe > 0 && (h += buffHtml("dodging", 0, 0));
+    A.hsave.rested > A.t && (h += buffHtml("rested", A.hsave.rested - A.t, 1200));
+    A.hsave.food && (h += buffHtml("food", A.hsave.food.t, 1200, `Well Fed: ${A.hsave.food.name}`));
+    A.hsave.scroll && (h += buffHtml("scroll", A.hsave.scroll.t, 1800, A.hsave.scroll.name));
+    A.mounted && (h += buffHtml("mounted", 0, 0, `Riding ${A.mounted.def?.name || ""}`));
+    el.innerHTML = h;
+    // skill costs on the slots (once)
+    if (!this._costs) {
+      this._costs = !0;
+      document.querySelectorAll("#skillbar .slot[data-i]").forEach((D) => {
+        let e = A.hero.skills[+D.dataset.i];
+        e && e.cost > 0 && (D.insertAdjacentHTML("beforeend", `<div class="cost">${e.cost}</div>`), (D.querySelector(".cost").style.color = nI[A.hero.res]?.color || "#9ad0ff"));
+      });
+    }
+  };
+  // ---------- target frame: stays for 4 s after you look away, shows numbers and a wind-up warning ----------
+  let uh2 = U.updateHUD2;
+  U.updateHUD2 = function (B) {
+    uh2.call(this, B);
+    let I = document.getElementById("target");
+    if (!I) return;
+    let ht = document.getElementById("tf-h") || (() => {
+      let d = document.createElement("div");
+      d.id = "tf-h";
+      I.querySelector(".tf-bar")?.appendChild(d);
+      return d;
+    })();
+    let e = B.aimedEnemy(45);
+    if (e) this._tfS = { e, t: B.t };
+    else if (this._tfS && this._tfS.e.alive && B.t - this._tfS.t < 4 && this._tfS.e.pos.distanceTo(B.player.pos) < 60) {
+      e = this._tfS.e;
+      I.style.display = "block";
+      let n = document.getElementById("tf-n");
+      if (this._tfE !== e.id + ":" + e.level) {
+        this._tfE = e.id + ":" + e.level;
+        let g = e.level - B.hsave.level,
+          C = e.def.boss ? "#ff4a3a" : g >= 3 ? "#ff5a4a" : g >= 1 ? "#ffb040" : g >= -2 ? "#ffe08a" : "#9a9a9a";
+        n.innerHTML = `<span style="color:${C}">Lv ${e.level}</span> ${e.def.name}`;
+      }
+      document.getElementById("tf-f").style.width = `${Math.max(0, (e.hp / e.maxHp) * 100)}%`;
+    } else this._tfS = null;
+    if (e) {
+      ht.textContent = `${Math.max(0, Math.ceil(e.hp))} / ${Math.round(e.maxHp)}`;
+      I.classList.toggle("windup", e.windup > 0);
+    }
+  };
+
+  // hitting an enemy also makes it the shown target
+  let he0 = GP.hitEnemy;
+  GP.hitEnemy = function (A, i, I = {}) {
+    let r = he0.call(this, A, i, I);
+    A && A.alive && !I.ghost && (this.ui._tfS = { e: A, t: this.t });
+    return r;
+  };
+  // ---------- inventory: equipment icons, drag & drop, right-click menu, filters, locks ----------
+  let SLOTICON = { weapon: "sword", helm: "crown", chest: "shield", boots: "boot", relic: "star" };
+  let sv0 = GP.salvage;
+  GP.salvage = function (A) {
+    if (A?.lock) return this.toast(`${A.name} is locked — unlock it from its menu first`, "#ff9a6a"), !1;
+    return sv0.call(this, A);
+  };
+  let menuEl = null,
+    closeMenu = () => menuEl && (menuEl.remove(), (menuEl = null));
+  document.addEventListener("mousedown", (e) => menuEl && !menuEl.contains(e.target) && closeMenu(), !0);
+  let showMenu = (x, y, items) => {
+    closeMenu();
+    menuEl = document.createElement("div");
+    menuEl.className = "ctxmenu";
+    menuEl.innerHTML = items.map((it, i) => `<button data-i="${i}" ${it.off ? "disabled" : ""} class="${it.danger ? "danger" : ""}">${it.label}</button>`).join("");
+    document.body.appendChild(menuEl);
+    let r = menuEl.getBoundingClientRect();
+    menuEl.style.left = Math.min(x, innerWidth - r.width - 8) + "px";
+    menuEl.style.top = Math.min(y, innerHeight - r.height - 8) + "px";
+    menuEl.querySelectorAll("button").forEach((b) => (b.onclick = () => (closeMenu(), items[+b.dataset.i].act())));
+  };
+  U.invFilter = U.invFilter || "all";
+  let enhanceInv = (ui) => {
+    let g = ui.app.game,
+      p = ui.app.profile,
+      M = document.getElementById("modal");
+    if (!g || !M.querySelector(".bag")) return;
+    // equipment slots: icon + item level
+    M.querySelectorAll(".gslot").forEach((s) => {
+      let it = g.hsave.gear[s.dataset.slot],
+        col = it ? ui0.find((r) => r.id === it.rarity)?.color || "#e8d4a0" : "#555";
+      s.insertAdjacentHTML("afterbegin", `<div class="gs-i">${it ? X.itemIcon(it, 34) : gI(SLOTICON[s.dataset.slot] || "gear", "#444", 30)}</div>`);
+      it && s.querySelector(".gs-n")?.insertAdjacentHTML("beforeend", ` <small>ilvl ${it.level}</small>`);
+      s.classList.add("drop");
+      s.ondragover = (e) => (e.preventDefault(), s.classList.add("over"));
+      s.ondragleave = () => s.classList.remove("over");
+      s.ondrop = (e) => {
+        e.preventDefault();
+        s.classList.remove("over");
+        let idx = +e.dataTransfer.getData("text/vf-item");
+        let item = p.inventory[idx];
+        if (!item) return;
+        if (item.slot !== s.dataset.slot) return ui.toast(`That goes in the ${item.slot} slot`, "#ff9a6a");
+        g.equip(item) && ui.app.audio.play("hitmetal", null, 0.4);
+        ui.panel("inv");
+      };
+      // drag an equipped item back to the bag to unequip
+      if (it) {
+        s.draggable = !0;
+        s.ondragstart = (e) => e.dataTransfer.setData("text/vf-slot", s.dataset.slot);
+      }
+    });
+    let bag = M.querySelector(".bag"),
+      grid = bag.querySelector(".grid");
+    grid.ondragover = (e) => e.preventDefault();
+    grid.ondrop = (e) => {
+      let sl = e.dataTransfer.getData("text/vf-slot");
+      sl && (e.preventDefault(), g.unequip(sl), ui.panel("inv"));
+    };
+    // filter + sort bar
+    let f = ui.invFilter,
+      bar = document.createElement("div");
+    bar.className = "invbar";
+    bar.innerHTML = [
+      ["all", "All"],
+      ["weapon", "Weapons"],
+      ["armor", "Armour"],
+      ["relic", "Relics"],
+      ["up", "Upgrades"],
+    ]
+      .map(([id, nm]) => `<button class="mini-b ${f === id ? "on" : ""}" data-f="${id}">${nm}</button>`)
+      .join("") + `<span class="small" style="margin-left:auto" data-tip="Drag an item onto a slot to equip it, drag an equipped item into the bag to unequip. Right-click for Equip, Lock, Deposit, Salvage. Locked items are skipped by Salvage all.">ⓘ drag · right-click</span>`;
+    bag.insertBefore(bar, grid);
+    bar.querySelectorAll("[data-f]").forEach((b) => (b.onclick = () => ((ui.invFilter = b.dataset.f), ui.panel("inv"))));
+    M.querySelectorAll(".bag .cell").forEach((c) => {
+      let it = p.inventory[+c.dataset.i];
+      if (!it) return;
+      let show = f === "all" || (f === "weapon" && it.slot === "weapon") || (f === "armor" && ["helm", "chest", "boots"].includes(it.slot)) || (f === "relic" && it.slot === "relic") || (f === "up" && c.querySelector(".up"));
+      if (!show) {
+        c.style.display = "none";
+        return;
+      }
+      it.lock && c.insertAdjacentHTML("beforeend", `<div class="lk">🔒</div>`);
+      c.draggable = !0;
+      c.ondragstart = (e) => {
+        e.dataTransfer.setData("text/vf-item", c.dataset.i);
+        e.dataTransfer.effectAllowed = "move";
+      };
+      c.oncontextmenu = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        let inGuild = X.guild?.state?.() && !X.guild.state().disbanded && X.guild.state().members[X.myPid?.()];
+        let eq = g.hsave.gear[it.slot];
+        showMenu(e.clientX, e.clientY, [
+          { label: `Equip${eq ? ` (replaces ${eq.name})` : ""}`, act: () => (g.equip(it), ui.panel("inv")), off: g.canEquip?.(it) === !1 },
+          { label: it.lock ? "Unlock" : "Lock (protect)", act: () => ((it.lock = !it.lock), g.save(), ui.panel("inv")) },
+          { label: inGuild ? "Deposit in guild bank" : "Deposit in guild bank (no guild)", act: () => (X.guild.deposit(it.uid), ui.panel("inv")), off: !inGuild },
+          { label: `Salvage · ${(10 + it.level * 5) * (ui0.findIndex((r) => r.id === it.rarity) + 1) ** 2} ✦`, act: () => (g.salvage(it), ui.panel("inv")), off: !!it.lock, danger: !0 },
+        ]);
+      };
+    });
+  };
+  let ui0 = ui; // rarity table
+
+  // ---------- Help & Controls ----------
+  X.HELP = {
+    controls: [
+      ["W A S D", "Move"], ["Shift", "Sprint"], ["Space", "Jump"], ["Mouse", "Look · LMB attack · RMB block / secondary"], ["Q E R", "Skills (see the bar)"], ["C", "Dodge roll"], ["H", "Healing draught"], ["F", "Interact / talk / gather / fish / cast line"], ["L", "Lantern on/off"], ["Z", "Mount / dismount"], ["G", "Invite aimed player to group · travel at a lit shrine"], ["X", "Trade with aimed player"], ["Enter", "Chat · /g guild chat"], ["I / Tab", "Inventory"], ["P", "Skills"], ["N", "Talents"], ["J", "Quests"], ["K", "Achievements"], ["O", "Social"], ["B", "Professions"], [",", "Collections"], ["M", "Map (wheel/pinch to zoom, drag to pan)"], ["Esc", "Menu / close"], ["F1", "This help"],
+    ],
+    systems: [
+      ["Lantern & Oil", "Your lantern keeps the dark's sanity drain off you at night. Oil does not drain by day or near a fire; shrines refill it."],
+      ["Shrines", "Light them (F) to fast-travel between them (G at a lit shrine), refill oil and potions, and set your respawn."],
+      ["Loot & Soul Shards", "Right-click an item to salvage it into shards; Relic/Cursed items also give Ashen Marks for cosmetics. Shards buy gear, mounts, houses and guilds."],
+      ["Dungeon Finder", "Press F at any dungeon or raid portal to queue: 4 players for dungeons, 8 for raids; companions fill empty seats after 20 s."],
+      ["Professions", "Herbs glow green, ore sparkles; press F to gather. Open the book with B to craft. Cook at any fire, smith at an anvil, fish from any shore."],
+      ["World events", "Every 6–8 minutes a world boss or a caravan appears — follow the gold marker. Spend Vigil Tokens at Quartermaster Brann."],
+      ["Guilds", "Registrar Mara founds one for 500 shards. Guild tab for roster, bank and weekly quests; /g to talk."],
+      ["PvP", "Arena Master Kessa: ranked 2v2/3v3 and the Wardfall battleground. Aim at a player and press G to duel outside."],
+      ["Housing", "Buy a plot from the broker, then enter your home for the stash, bed (+15% XP), wardrobe and talent altar."],
+      ["Alts", "Quests are per hero; heroes below your best level get +50% XP (Veteran's Boon)."],
+    ],
+  };
+  U.helpHTML = function () {
+    return `<h2>Help &amp; Controls <small>press F1 any time</small></h2><div class="help"><div><h3>Controls</h3><table class="kt">${X.HELP.controls.map(([k, d]) => `<tr><td><kbd>${k}</kbd></td><td>${d}</td></tr>`).join("")}</table></div>
+      <div><h3>How things work</h3>${X.HELP.systems.map(([t, d]) => `<div class="hs"><b>${t}</b><div class="small">${d}</div></div>`).join("")}</div></div>`;
+  };
+  let ep0 = U.extraPanel;
+  U.extraPanel = function (B, A) {
+    if (B === "help") return this.helpHTML();
+    return ep0.call(this, B, A);
+  };
+  // settings: short explanations under each control
+  let SDESC = { "s-q": "Shadow quality, lights and effects. Low for weak laptops and phones.", "s-rs": "Internal rendering resolution. Below 100% is faster and softer.", "s-bl": "Glow around bright lights and flames.", "s-ao": "Soft shading in corners. Costs some performance.", "s-vd": "How far the world is drawn.", "s-fov": "Wider shows more but distorts the edges.", "s-sens": "Mouse look speed.", "s-br": "Overall brightness.", "s-mv": "Everything.", "s-mu": "Zone music and stingers.", "s-fx": "Weapons, creatures, interface." };
+  let pn0 = U.panel;
+  U.panel = function (A, i) {
+    pn0.call(this, A, i);
+    let M = document.getElementById("modal"),
+      tabs = M.querySelector(".tabs");
+    if (tabs && !tabs.querySelector('[data-tab="help"]')) {
+      let b = document.createElement("button");
+      ((b.className = "tab" + (A === "help" ? " on" : "")), (b.dataset.tab = "help"), (b.textContent = "Help"));
+      tabs.insertBefore(b, tabs.querySelector(".close"));
+      b.onclick = () => this.panel("help");
+    }
+    A === "inv" && enhanceInv(this);
+    if (A === "settings")
+      M.querySelectorAll("label").forEach((l) => {
+        let inp = l.querySelector("input,select"),
+          d = inp && SDESC[inp.id];
+        d && l.insertAdjacentHTML("beforeend", `<small class="sd">${d}</small>`);
+      });
+    // native title → styled tooltip
+    M.querySelectorAll("[title]").forEach((el) => ((el.dataset.tip = el.title), el.removeAttribute("title")));
+  };
+  let kd0 = GP.onKey;
+  GP.onKey = function (code, down) {
+    if (down && code === "F1" && this.running) {
+      this.ui.panelOpen && this.ui.curPanel === "help" ? this.ui.closeModal() : this.ui.panel("help");
+      return;
+    }
+    return kd0?.call(this, code, down);
+  };
+  addEventListener("keydown", (e) => e.code === "F1" && e.preventDefault());
+  // pause menu button
+  let pz0 = U.pause;
+  U.pause = function (A) {
+    pz0.call(this, A);
+    let col = document.querySelector("#pause .menu-col, #pause");
+    if (A && col && !col.querySelector("[data-help]")) {
+      let b = document.createElement("button");
+      ((b.dataset.help = 1), (b.textContent = "Help & Controls"), (b.onclick = () => this.panel("help")));
+      let st = col.querySelector("[data-p='settings'],[data-tab='settings']");
+      st ? st.after(b) : col.appendChild(b);
+    }
+  };
+  // tooltip element (for data-tip / titles inside panels, and HUD buffs)
+  let tipEl = document.createElement("div");
+  tipEl.id = "vtip";
+  document.body.appendChild(tipEl);
+  let showTip = (el, text) => {
+    tipEl.textContent = text;
+    tipEl.style.display = "block";
+    let r = el.getBoundingClientRect(),
+      w = tipEl.offsetWidth;
+    tipEl.style.left = Math.max(6, Math.min(innerWidth - w - 6, r.left + r.width / 2 - w / 2)) + "px";
+    tipEl.style.top = (r.top > 60 ? r.top - tipEl.offsetHeight - 8 : r.bottom + 8) + "px";
+  };
+  document.addEventListener("mouseover", (e) => {
+    let el = e.target.closest?.("[data-tip],[title]");
+    if (!el || !(el.closest("#modal") || el.closest("#buffs"))) return;
+    el.title && ((el.dataset.tip = el.title), el.removeAttribute("title"));
+    el.dataset.tip && showTip(el, el.dataset.tip);
+  });
+  document.addEventListener("mouseout", (e) => e.target.closest?.("[data-tip]") && (tipEl.style.display = "none"));
+
+  css(`
+  #buffs{display:flex;gap:5px;min-height:34px;align-items:flex-end}.bf{position:relative;width:34px;height:34px;background:rgba(20,14,8,.85);border:1px solid var(--line);border-radius:4px;display:flex;align-items:center;justify-content:center}.bf.de{border-color:#c0402a;background:rgba(60,14,8,.85)}
+  .bf .bft{position:absolute;right:1px;bottom:3px;font-size:10px;color:#fff;text-shadow:0 1px 2px #000}.bf .bfb{position:absolute;left:0;right:0;bottom:0;height:2px;background:#222}.bf .bfb div{height:100%;background:#ffd070}.bf.de .bfb div{background:#ff6a5a}
+  .slot .cost{position:absolute;top:2px;right:3px;font-size:11px;font-weight:700;text-shadow:0 1px 2px #000}
+  #target .tf-bar{position:relative}#tf-h{position:absolute;inset:0;font-size:11px;line-height:14px;text-align:center;color:#fff;text-shadow:0 1px 2px #000}#target.windup #tf-n::after{content:" ⚠";color:#ff6a3a}
+  .gslot{display:flex;align-items:center;gap:10px}.gslot .gs-i{width:36px;height:36px;display:flex;align-items:center;justify-content:center;flex:none}.gslot.over{outline:2px solid #ffd070;background:rgba(255,208,112,.12)}.gslot.drop{cursor:pointer}
+  .invbar{display:flex;gap:4px;align-items:center;margin:4px 0 8px}.invbar .mini-b{margin:0}.invbar .mini-b.on{background:#5a4a20;border-color:#ffd070}.cell{cursor:grab}.cell .lk{position:absolute;top:1px;right:2px;font-size:12px}
+  .ctxmenu{position:fixed;z-index:60;display:flex;flex-direction:column;min-width:200px;background:#0c0908;border:1px solid var(--gold);box-shadow:0 0 20px #000;padding:4px}.ctxmenu button{text-align:left;border:none;background:transparent;padding:8px 12px;color:#e8d4a0}.ctxmenu button:hover{background:rgba(201,169,106,.2)}.ctxmenu button.danger{color:#ff8a7a}.ctxmenu button:disabled{opacity:.4}
+  .tabs{flex-wrap:wrap}.help{display:grid;grid-template-columns:1fr 1.2fr;gap:24px}.kt td{padding:3px 8px;vertical-align:top}.kt kbd{display:inline-block;font:700 12px Georgia,serif;color:#fff1c2;background:rgba(8,6,4,.92);border:1px solid var(--gold);border-radius:4px;padding:2px 6px;white-space:nowrap}.hs{margin-bottom:10px}
+  #modal label{display:flex;align-items:center;gap:12px;flex-wrap:wrap}#modal label .sd{flex-basis:100%;opacity:.6;margin:-2px 0 6px}#modal input[type=checkbox]{width:20px;height:20px;accent-color:#c9a96a}#modal input[type=range]{accent-color:#c9a96a}#modal select{background:#1a1410;color:#e8d4a0;border:1px solid var(--line);padding:4px 8px}
+  #vtip{display:none;position:fixed;z-index:70;max-width:300px;background:#0a0806;border:1px solid var(--gold);padding:8px 10px;font-size:13px;color:#e8d4a0;pointer-events:none;box-shadow:0 0 16px #000}`);
 }
 
   window.__app = new bE();
