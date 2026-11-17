@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.12.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.13.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33601,8 +33601,14 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.12.0";
+  X.VERSION = "1.13.0";
   X.CHANGELOG = {
+    "1.13.0": [
+      "Mounts are real creatures now: every one of the 24 has its own body and gait — horses in barding, a skeletal charger, a nightmare with a mane of fire, elk with broad antlers, wargs, a desert lion, a boar, a ram, bears, a giant spider, drakes with beating wings and a crab that scuttles. New: Thornback Boar and Frostpeak Ram at the stable, Frostmaw Bear (Hrimgar), Mire Weaver (Thornmother), Ember Drake (The Reckoning), Storm Drake (Throne of Storms), Drowned Crab (The Deep), Vigil Warbear (10 invasions defended), Champion's Destrier (2000 rating).",
+      "Companions: real bodies too, each with an ability on a cooldown (Savage Bite, Pounce, Shield Wall, Mend, Quake, Fire Spit, Shock), companion levels 1–30 (+4% damage per level, XP from your kills) and pet bouts at the kennel (3 a day, XP and marks). New: Barrow Cat, Thornback Boarlet, Frostpeak Lamb (kennel), Clockwork Beetle (10 Mythic+ runs), Tide Hatchling (The Deep), Frost Pup (Pilgrim of Ash), Ember Drakekin (5 invasions).",
+      "Ranked PvP: parties now face each other — two players or two groups queuing separately are seated on opposite sides, gladiators fill the rest. Monthly seasons: rating is halved toward 1200 and your peak earns a title (1600 Duelist, 1800 Gladiator, 2000 Champion + the Champion's Destrier). A friends leaderboard in Kessa's dialog.",
+      "Wardfall (8v8 battleground): queue at Kessa. Three wards on a walled field; stand alone on one for 8 s to take it, each held ward scores every 2 s, first to 150 or best after 10 minutes; the fallen return at their base after 8 s. Gladiators fill empty seats when nobody else queues.",
+    ],
     "1.12.0": [
       "PvP Arena — The Pit: talk to Arena Master Kessa by the sand ring west of Dawnmere to queue ranked 2v2 or 3v3 (best of three). Your group is one team; empty seats on both sides are filled by gladiators after 20 s. Rating, Arena Marks, a weekly chest at 5 wins, Gladiator's gear (−4% damage from players per piece), the Pit Hound at 10 wins, the Gladiator's Warhorse at 25 wins and the Gladiator's Glory aura at 1800 rating.",
       "First hour: a quest compass under the zone name points at your next objective (or the nearest quest giver), the tutorial can no longer get stuck (steps also pass after 45 s), townsfolk greet you when you walk up, melee hits kick the camera and spark in your weapon's colour, footsteps vary.",
@@ -37145,6 +37151,7 @@ Object.assign(X.COMPANIONS, {
       let c = X.arena.cur;
       for (let r of g.remotes.values()) {
         if (!r.bot || r.downed || r.dead) continue;
+        if (X.arena._one && r !== X.arena._one) continue;
         let team = X.arena.teamOf(r.id);
         if (!team) continue;
         let foes = (team === "A" ? c.teams.B : c.teams.A).filter((id) => X.arena.alive(g, id)),
@@ -37236,6 +37243,7 @@ Object.assign(X.COMPANIONS, {
         delta = Math.round(32 * (s - exp)),
         marks = draw ? 12 : mine ? 25 + 6 * (c.score[c.my] || 0) : 8;
       A.rating = Math.max(0, A.rating + delta);
+      A.last = { win, my: c.my, score: { ...c.score } };
       mine ? (A.wins++, A.weekWins++) : draw || A.losses++;
       A.marks += marks;
       A.best = Math.max(A.best || 0, A.rating);
@@ -37463,6 +37471,1312 @@ Object.assign(X.COMPANIONS, {
     let lbl = Sg("The Pit \xB7 Arena (talk to Kessa)", "#ff9a7a", 30);
     (lbl.position.set(x, y + 5.2, z), lbl.scale.set(6.4, 1.2, 1), world.scene.add(lbl));
   });
+}
+
+/* ---- E8_mounts2.js ---- */
+// ===== 1.13: real mount bodies — eleven distinct creatures with their own gaits, barding/armour variants for the stable horses =====
+{
+  const V = (geo, mat, x = 0, y = 0, z = 0) => v(geo, mat, x, y, z),
+    cloth = (c, o = {}) => ZA("cloth", c, { rough: 0.85, ...o }),
+    metal = (c, o = {}) => ZA("metal", c, { metal: 0.9, rough: 0.35, ...o }),
+    bone = (c = 0xe8e0d0) => ZA("bone", c),
+    dark = (c) => cloth(new _(c).multiplyScalar(0.45).getHex()),
+    light = (c) => cloth(new _(c).lerp(new _(0xffffff), 0.3).getHex());
+  // a leg: pivot at the hip, upper + lower segment + hoof/paw
+  let leg = (len, r1, r2, mat, kneeSign = 1, paw = "hoof", pawMat) => {
+    let g = new eA(),
+      up = V(new QA(r1, r1 * 0.85, len * 0.55, 8), mat, 0, -len * 0.27, 0),
+      lo = new eA();
+    g.add(up);
+    lo.position.y = -len * 0.55;
+    lo.rotation.x = 0.25 * kneeSign;
+    lo.add(V(new QA(r2, r2 * 0.8, len * 0.5, 8), mat, 0, -len * 0.25, 0));
+    let pm = pawMat || dark(0x806040);
+    if (paw === "hoof") lo.add(V(new QA(r2 * 1.3, r2 * 1.4, r2 * 1.6, 8), pm, 0, -len * 0.5, 0.01));
+    else if (paw === "paw") {
+      let pw = V(new JA(r2 * 1.5, 8, 6), pm, 0, -len * 0.5, r2 * 0.6);
+      pw.scale.set(1, 0.6, 1.3);
+      lo.add(pw);
+    } else if (paw === "claw") lo.add(V(new Ai(r2 * 1.2, r2 * 2.2, 5), pm, 0, -len * 0.55, 0).rotateX(Math.PI));
+    g.add(lo);
+    g.userData.lower = lo;
+    return g;
+  };
+  let eyes = (head, col, y, z, w = 0.09, r = 0.03) => Rg(head, col, y, z, w, r);
+  let saddle = (w, y, z, opt = {}) => {
+    let leather = cloth(0x4a2e1a, { rough: 0.7 }),
+      g = new eA();
+    g.add(V(new iA(w * 1.4, 0.06, w * 1.7), cloth(opt.blanket || 0x7a2a2a), 0, y - 0.08, z));
+    let sd = V(new iA(w, 0.14, w * 1.25), leather, 0, y, z);
+    g.add(sd);
+    sd.add(V(new iA(w, 0.14, 0.08), leather, 0, 0.1, w * 0.6));
+    sd.add(V(new iA(w, 0.1, 0.08), leather, 0, 0.08, -w * 0.6));
+    for (let e of [-1, 1]) {
+      g.add(V(new iA(0.03, 0.6, 0.03), leather, e * w * 0.9, y - 0.34, z));
+      g.add(V(new iA(0.12, 0.03, 0.2), leather, e * w * 0.9, y - 0.64, z));
+    }
+    opt.plume && g.add(V(new Ai(0.07, 0.4, 6), cloth(opt.plume), 0, y + 0.3, z - w * 0.6));
+    return g;
+  };
+  let barding = (body, w, col, len = 1.0) => {
+    let m = metal(col);
+    for (let i = -1; i <= 1; i++) {
+      let pl = V(new iA(w * 2.2, 0.26, 0.3), m, 0, 0.16, i * len * 0.38);
+      (pl.rotation.x = 0), body.add(pl);
+    }
+    body.add(V(new iA(w * 2.3, 0.35, 0.36), m, 0, 0.02, len * 0.62)); // chest plate
+    return m;
+  };
+  let finish = (A, parts, opt, leather) => {
+    if (opt.glow) {
+      A.traverse((m) => m.isMesh && m.material !== leather && (m.material = zM(m.material, 0, opt.glow, 0.3)));
+      let gl = Zw(opt.glow, 2.6, 0.2);
+      ((gl.position.y = 1.2), A.add(gl));
+    }
+    A.traverse((m) => m.isMesh && (m.castShadow = !0));
+    parts.seed = Math.random() * 10;
+    parts.rig = "quad";
+    A.userData.parts = parts;
+    return A;
+  };
+  // ---------- bodies ----------
+  X.creature = {};
+  // horse family (plain / barding / nightmare / skeletal / tide / clockwork / plume)
+  X.creature.horse = function (col, opt = {}) {
+    let A = new eA(),
+      sk = opt.style === "skeletal",
+      ck = opt.style === "clockwork",
+      hide = sk ? bone() : ck ? metal(col) : cloth(col),
+      dk = sk ? bone(0xc8c0b0) : ck ? metal(0x2a2a30) : dark(col),
+      leather = cloth(0x4a2e1a, { rough: 0.7 }),
+      w = new eA();
+    ((w.position.y = 1.15), A.add(w));
+    if (sk) {
+      // spine + ribs
+      w.add(V(new QA(0.07, 0.07, 1.7, 8), hide, 0, 0.2, 0).rotateX(Math.PI / 2));
+      for (let i = -3; i <= 3; i++) {
+        let rib = V(new ji(0.3, 0.025, 6, 14, Math.PI * 1.2), hide, 0, 0.05, i * 0.22);
+        ((rib.rotation.y = Math.PI / 2), (rib.rotation.z = Math.PI * 0.15), w.add(rib));
+      }
+      w.add(V(new iA(0.5, 0.2, 0.6), hide, 0, 0.3, -0.45)); // pelvis
+    } else {
+      let body = V(new nw(0.34, 1.0, 8, 14), hide);
+      ((body.rotation.x = Math.PI / 2), body.scale.set(1, 1.05, 1.1), w.add(body));
+      w.add(V(new JA(0.36, 10, 8), hide, 0, 0.02, 0.5));
+      w.add(V(new JA(0.38, 10, 8), hide, 0, 0, -0.5));
+    }
+    let neck = V(new QA(0.14, 0.2, 0.7, 10), hide, 0, 0.3, 0.72);
+    ((neck.rotation.x = -0.7), w.add(neck));
+    let C = new eA();
+    (C.position.set(0, 0.62, 1.05), w.add(C));
+    C.add(V(new iA(0.24, 0.26, 0.34), hide, 0, 0, 0.05));
+    C.add(V(new iA(0.18, 0.18, 0.3), hide, 0, -0.06, 0.32));
+    for (let e of [-1, 1]) C.add(V(new Ai(0.05, 0.16, 4), hide, e * 0.1, 0.2, -0.05));
+    eyes(C, opt.eye || (sk ? 0x6aff8a : ck ? 0xffd070 : 0x201008), 0.04, 0.22, 0.09, 0.03);
+    let Q = new eA();
+    (Q.position.set(0, -0.12, 0.2), C.add(Q), Q.add(V(new iA(0.16, 0.05, 0.3), hide, 0, 0, 0.1)));
+    // mane
+    if (opt.style === "nightmare") for (let e = 0; e < 6; e++) w.add(hI(opt.flame || 0xff6a20, 0.16).translateY(0.5 + e * 0.04).translateZ(0.38 + e * 0.11));
+    else if (opt.style === "tide") for (let e = 0; e < 7; e++) w.add(V(new Ai(0.04, 0.28, 3), cloth(0x40c0a0, { rough: 0.3 }), 0, 0.5 + e * 0.04, 0.4 + e * 0.1).rotateX(-0.4));
+    else if (!sk && !ck) for (let e = 0; e < 7; e++) w.add(V(new iA(0.06, 0.2, 0.12), dk, 0, 0.42 + e * 0.05, 0.42 + e * 0.1).rotateX(-0.6));
+    // tail
+    let s = opt.style === "nightmare" ? hI(opt.flame || 0xff6a20, 0.3) : opt.style === "tide" ? V(new Ai(0.12, 0.5, 4), cloth(0x40c0a0, { rough: 0.3 })) : sk ? Ys(0.5, 0.03, 0.01, hide) : Ys(0.7, 0.05, 0.02, dk);
+    (s.position.set(0, 0.2, -0.85), (s.rotation.x = 2.6), w.add(s));
+    // armour / extras
+    opt.style === "barding" && barding(w, 0.36, opt.plate || 0x6a6a74);
+    opt.style === "plume" && (barding(w, 0.36, opt.plate || 0x8a2a2a), C.add(V(new iA(0.26, 0.3, 0.36), metal(opt.plate || 0x8a2a2a), 0, 0.02, 0.06)), C.add(V(new Ai(0.06, 0.45, 6), cloth(0xff3a3a), 0, 0.42, -0.05)));
+    opt.style === "nightmare" && [-1, 1].forEach((e) => C.add(V(new Ai(0.04, 0.3, 5), dk, e * 0.09, 0.3, 0).rotateZ(-e * 0.4)));
+    if (ck) {
+      for (let [x, z] of [
+        [0.37, 0.5],
+        [-0.37, 0.5],
+        [0.37, -0.5],
+        [-0.37, -0.5],
+      ])
+        w.add(V(new QA(0.16, 0.16, 0.05, 12), metal(0xd0a040), x, 0, z).rotateZ(Math.PI / 2));
+      w.add(V(new JA(0.14, 10, 8), mI(opt.glow || 0xa070ff, 2.5), 0, 0.1, 0.1));
+    }
+    opt.style === "tide" && [-1, 1].forEach((e) => w.add(V(new Ai(0.1, 0.4, 3), cloth(0x40c0a0, { rough: 0.3 }), e * 0.34, 0.1, 0.1).rotateZ(e * 1.2)));
+    opt.wild || w.add(saddle(0.4, 0.44, -0.05, { blanket: opt.blanket, plume: opt.style === "plume" ? 0xff3a3a : null }));
+    let D = [];
+    for (let [e, t] of [
+      [-0.22, 0.5],
+      [0.22, 0.5],
+      [-0.22, -0.5],
+      [0.22, -0.5],
+    ]) {
+      let M = leg(1.05, 0.09, 0.055, hide, t > 0 ? 1 : -1, "hoof", dk);
+      M.position.set(e, 1.1, t);
+      A.add(M);
+      D.push(M);
+    }
+    return finish(A, { body: w, bodyY: 1.15, head: C, jaw: Q, tail: s, legFL: D[0], legFR: D[1], legBL: D[2], legBR: D[3], gait: ck ? "stiff" : "trot" }, opt, leather);
+  };
+  // elk: tall, humped, broad antlers
+  X.creature.elk = function (col, opt = {}) {
+    let A = new eA(),
+      hide = cloth(col),
+      dk = dark(col),
+      w = new eA();
+    ((w.position.y = 1.3), A.add(w));
+    let body = V(new nw(0.36, 1.0, 8, 14), hide);
+    ((body.rotation.x = Math.PI / 2), body.scale.set(1, 1.15, 1.1), w.add(body));
+    w.add(V(new JA(0.42, 10, 8), hide, 0, 0.1, 0.45)); // hump
+    w.add(V(new JA(0.36, 10, 8), hide, 0, 0, -0.5));
+    let neck = V(new QA(0.16, 0.24, 0.85, 10), hide, 0, 0.4, 0.75);
+    ((neck.rotation.x = -0.55), w.add(neck));
+    let C = new eA();
+    (C.position.set(0, 0.85, 1.05), w.add(C));
+    C.add(V(new iA(0.22, 0.24, 0.4), hide, 0, 0, 0.06));
+    C.add(V(new iA(0.14, 0.14, 0.26), dk, 0, -0.06, 0.34));
+    C.add(V(new Ai(0.06, 0.2, 4), dk, 0, -0.24, 0.0)); // beard
+    for (let e of [-1, 1]) C.add(V(new Ai(0.06, 0.18, 4), hide, e * 0.13, 0.14, -0.08).rotateZ(-e * 0.7));
+    eyes(C, opt.eye || 0x201008, 0.05, 0.2, 0.1, 0.03);
+    let ant = ZA("bark", opt.antler || 0xd8c8a8);
+    for (let sgn of [-1, 1]) {
+      let b = V(new QA(0.025, 0.04, 0.6, 6), ant, sgn * 0.1, 0.35, -0.02);
+      b.rotation.z = -sgn * 0.7;
+      b.rotation.x = -0.2;
+      C.add(b);
+      let palm = V(new iA(0.36, 0.04, 0.22), ant, 0, 0.3, 0);
+      palm.rotation.z = sgn * 0.3;
+      b.add(palm);
+      for (let j = 0; j < 4; j++) palm.add(V(new Ai(0.02, 0.2, 4), ant, (j - 1.5) * 0.1, 0.1, 0));
+    }
+    let Q = new eA();
+    (Q.position.set(0, -0.12, 0.2), C.add(Q), Q.add(V(new iA(0.14, 0.05, 0.3), hide, 0, 0, 0.1)));
+    let s = Ys(0.25, 0.06, 0.03, dk);
+    (s.position.set(0, 0.25, -0.85), (s.rotation.x = 2.4), w.add(s));
+    opt.wild || w.add(saddle(0.4, 0.5, -0.1, { blanket: opt.blanket || 0x2a4a3a }));
+    let D = [];
+    for (let [e, t] of [
+      [-0.22, 0.45],
+      [0.22, 0.45],
+      [-0.22, -0.5],
+      [0.22, -0.5],
+    ]) {
+      let M = leg(1.2, 0.08, 0.05, hide, t > 0 ? 1 : -1, "hoof", dk);
+      M.position.set(e, 1.25, t);
+      A.add(M);
+      D.push(M);
+    }
+    return finish(A, { body: w, bodyY: 1.3, head: C, jaw: Q, tail: s, legFL: D[0], legFR: D[1], legBL: D[2], legBR: D[3], gait: "trot" }, opt);
+  };
+  // warg: long, low, spiky mane, bounding gait
+  X.creature.warg = function (col, opt = {}) {
+    let A = new eA(),
+      hide = cloth(col),
+      dk = dark(col),
+      w = new eA();
+    ((w.position.y = 0.95), A.add(w));
+    let body = V(new nw(0.32, 1.1, 8, 14), hide);
+    ((body.rotation.x = Math.PI / 2), body.scale.set(1, 0.95, 1), w.add(body));
+    w.add(V(new JA(0.36, 10, 8), hide, 0, 0.04, 0.5));
+    let C = new eA();
+    (C.position.set(0, 0.2, 0.95), w.add(C));
+    C.add(V(new iA(0.3, 0.26, 0.34), hide, 0, 0, 0));
+    C.add(V(new iA(0.18, 0.16, 0.34), hide, 0, -0.06, 0.3)); // snout
+    C.add(V(new JA(0.05, 6, 6), dk, 0, -0.02, 0.48)); // nose
+    for (let e of [-1, 1]) C.add(V(new Ai(0.06, 0.18, 4), hide, e * 0.12, 0.2, -0.08));
+    eyes(C, opt.eye || 0xffd040, 0.05, 0.18, 0.1, 0.03);
+    let Q = new eA();
+    (Q.position.set(0, -0.14, 0.16), C.add(Q), Q.add(V(new iA(0.16, 0.05, 0.3), dk, 0, 0, 0.12)));
+    for (let k = 0; k < 2; k++) for (let e of [-1, 1]) Q.add(V(new Ai(0.015, 0.06, 4), bone(), e * 0.06, 0.04, 0.1 + k * 0.1));
+    // mane spikes / armour
+    let spk = opt.spikes ? ZA("bone", opt.spikes) : dk;
+    for (let e = 0; e < 7; e++) w.add(V(new Ai(0.05, opt.spikes ? 0.3 : 0.2, 4), spk, 0, 0.3, 0.6 - e * 0.14).rotateX(-0.5));
+    opt.armor && w.add(V(new iA(0.7, 0.2, 0.9), metal(opt.armor), 0, 0.2, 0.1));
+    let s = Ys(0.6, 0.07, 0.03, dk);
+    (s.position.set(0, 0.15, -0.6), (s.rotation.x = 2.2), w.add(s));
+    opt.wild || w.add(saddle(0.36, 0.34, -0.1, { blanket: opt.blanket || 0x3a2a2a }));
+    let D = [];
+    for (let [e, t] of [
+      [-0.22, 0.45],
+      [0.22, 0.45],
+      [-0.22, -0.45],
+      [0.22, -0.45],
+    ]) {
+      let M = leg(0.9, 0.09, 0.06, hide, t > 0 ? 1 : -1, "paw", dk);
+      M.position.set(e, 0.9, t);
+      A.add(M);
+      D.push(M);
+    }
+    return finish(A, { body: w, bodyY: 0.95, head: C, jaw: Q, tail: s, legFL: D[0], legFR: D[1], legBL: D[2], legBR: D[3], gait: "bound" }, opt);
+  };
+  // lion: warg body with a mane ring and tufted tail
+  X.creature.lion = function (col, opt = {}) {
+    let A = X.creature.warg(col, { ...opt, wild: !0 }),
+      P = A.userData.parts,
+      mane = cloth(opt.mane || new _(col).multiplyScalar(0.55).getHex());
+    for (let i = 0; i < 14; i++) {
+      let a = (i / 14) * Math.PI * 2,
+        c = V(new Ai(0.09, 0.34, 5), mane, Math.cos(a) * 0.28, 0.1 + Math.sin(a) * 0.28, -0.12);
+      ((c.rotation.x = -Math.PI / 2), (c.rotation.z = -a), P.head.add(c));
+    }
+    P.tail.add(V(new JA(0.07, 8, 6), mane, 0, -0.6, 0));
+    opt.wild || P.body.add(saddle(0.36, 0.34, -0.15, { blanket: opt.blanket || 0xc0a040 }));
+    P.gait = "bound";
+    return A;
+  };
+  // boar: barrel body, tusks, bristle ridge, short legs
+  X.creature.boar = function (col, opt = {}) {
+    let A = new eA(),
+      hide = cloth(col),
+      dk = dark(col),
+      w = new eA();
+    ((w.position.y = 0.95), A.add(w));
+    let body = V(new nw(0.42, 0.8, 8, 14), hide);
+    ((body.rotation.x = Math.PI / 2), body.scale.set(1, 1.05, 1), w.add(body));
+    let C = new eA();
+    (C.position.set(0, 0.0, 0.85), w.add(C));
+    C.add(V(new iA(0.4, 0.4, 0.5), hide, 0, 0, 0.05));
+    C.add(V(new QA(0.1, 0.14, 0.3, 8), dk, 0, -0.08, 0.42).rotateX(Math.PI / 2)); // snout
+    C.add(V(new QA(0.11, 0.11, 0.04, 8), dark(0x806060), 0, -0.08, 0.58).rotateX(Math.PI / 2));
+    for (let e of [-1, 1]) {
+      C.add(V(new Ai(0.08, 0.16, 4), hide, e * 0.18, 0.24, -0.1).rotateZ(-e * 0.4));
+      let tusk = V(new Ai(0.03, 0.3, 5), bone(), e * 0.14, -0.14, 0.4);
+      ((tusk.rotation.x = -0.6), (tusk.rotation.z = -e * 0.6), C.add(tusk));
+    }
+    eyes(C, opt.eye || 0xff6a3a, 0.08, 0.26, 0.13, 0.03);
+    let Q = new eA();
+    (Q.position.set(0, -0.2, 0.2), C.add(Q), Q.add(V(new iA(0.2, 0.06, 0.3), dk, 0, 0, 0.12)));
+    for (let e = 0; e < 8; e++) w.add(V(new Ai(0.05, 0.22, 4), dk, 0, 0.36, 0.5 - e * 0.13).rotateX(-0.3));
+    let s = Ys(0.35, 0.03, 0.02, dk);
+    (s.position.set(0, 0.25, -0.45), (s.rotation.x = 2.6), w.add(s));
+    opt.wild || w.add(saddle(0.42, 0.42, -0.1, { blanket: opt.blanket || 0x4a3a2a }));
+    let D = [];
+    for (let [e, t] of [
+      [-0.24, 0.4],
+      [0.24, 0.4],
+      [-0.24, -0.4],
+      [0.24, -0.4],
+    ]) {
+      let M = leg(0.85, 0.1, 0.07, hide, t > 0 ? 1 : -1, "hoof", dk);
+      M.position.set(e, 0.85, t);
+      A.add(M);
+      D.push(M);
+    }
+    return finish(A, { body: w, bodyY: 0.95, head: C, jaw: Q, tail: s, legFL: D[0], legFR: D[1], legBL: D[2], legBR: D[3], gait: "trot" }, opt);
+  };
+  // bear: huge round body, lumbering
+  X.creature.bear = function (col, opt = {}) {
+    let A = new eA(),
+      hide = cloth(col),
+      dk = dark(col),
+      w = new eA();
+    ((w.position.y = 1.15), A.add(w));
+    let body = V(new JA(0.62, 12, 10), hide);
+    (body.scale.set(1, 0.9, 1.35), w.add(body));
+    w.add(V(new JA(0.5, 10, 8), hide, 0, 0.15, 0.55)); // shoulders
+    let C = new eA();
+    (C.position.set(0, 0.35, 1.0), w.add(C));
+    C.add(V(new JA(0.3, 10, 8), hide, 0, 0, 0));
+    C.add(V(new iA(0.2, 0.18, 0.28), hide, 0, -0.08, 0.3));
+    C.add(V(new JA(0.06, 6, 6), dk, 0, -0.04, 0.46));
+    for (let e of [-1, 1]) C.add(V(new JA(0.09, 8, 6), hide, e * 0.22, 0.22, -0.05));
+    eyes(C, opt.eye || 0x201008, 0.06, 0.26, 0.1, 0.03);
+    let Q = new eA();
+    (Q.position.set(0, -0.18, 0.2), C.add(Q), Q.add(V(new iA(0.18, 0.06, 0.28), dk, 0, 0, 0.1)));
+    let s = V(new JA(0.08, 6, 6), dk, 0, 0.05, -0.85);
+    w.add(s);
+    opt.wild || w.add(saddle(0.46, 0.6, -0.15, { blanket: opt.blanket || 0x3a4a6a }));
+    let D = [];
+    for (let [e, t] of [
+      [-0.3, 0.45],
+      [0.3, 0.45],
+      [-0.3, -0.45],
+      [0.3, -0.45],
+    ]) {
+      let M = leg(0.95, 0.15, 0.12, hide, t > 0 ? 1 : -1, "paw", dk);
+      M.position.set(e, 0.95, t);
+      A.add(M);
+      D.push(M);
+    }
+    return finish(A, { body: w, bodyY: 1.15, head: C, jaw: Q, tail: s, legFL: D[0], legFR: D[1], legBL: D[2], legBR: D[3], gait: "lumber" }, opt);
+  };
+  // ram: compact, woolly, curled horns, bounding
+  X.creature.ram = function (col, opt = {}) {
+    let A = new eA(),
+      wool = cloth(col, { rough: 1 }),
+      dk = dark(col),
+      w = new eA();
+    ((w.position.y = 1.0), A.add(w));
+    let body = V(new nw(0.36, 0.7, 8, 14), wool);
+    ((body.rotation.x = Math.PI / 2), w.add(body));
+    for (let i = 0; i < 10; i++) w.add(V(new JA(0.16, 7, 6), wool, (Math.sin(i * 2.4) * 0.3), 0.15 + Math.cos(i * 1.7) * 0.15, -0.4 + i * 0.09));
+    let C = new eA();
+    (C.position.set(0, 0.35, 0.75), w.add(C));
+    C.add(V(new iA(0.22, 0.26, 0.36), dk, 0, 0, 0.05));
+    for (let e of [-1, 1]) {
+      let horn = V(new ji(0.14, 0.045, 8, 16, Math.PI * 1.6), bone(0xd8c8a8), e * 0.17, 0.1, -0.02);
+      ((horn.rotation.y = e * Math.PI / 2), (horn.rotation.z = -e * 0.2), C.add(horn));
+    }
+    eyes(C, opt.eye || 0xffd040, 0.06, 0.2, 0.1, 0.03);
+    let Q = new eA();
+    (Q.position.set(0, -0.14, 0.18), C.add(Q), Q.add(V(new iA(0.14, 0.05, 0.26), dk, 0, 0, 0.1)));
+    let s = V(new JA(0.07, 6, 6), wool, 0, 0.1, -0.55);
+    w.add(s);
+    opt.wild || w.add(saddle(0.36, 0.4, -0.05, { blanket: opt.blanket || 0x5a3a2a }));
+    let D = [];
+    for (let [e, t] of [
+      [-0.2, 0.35],
+      [0.2, 0.35],
+      [-0.2, -0.35],
+      [0.2, -0.35],
+    ]) {
+      let M = leg(0.95, 0.07, 0.05, dk, t > 0 ? 1 : -1, "hoof", dk);
+      M.position.set(e, 0.95, t);
+      A.add(M);
+      D.push(M);
+    }
+    return finish(A, { body: w, bodyY: 1.0, head: C, jaw: Q, tail: s, legFL: D[0], legFR: D[1], legBL: D[2], legBR: D[3], gait: "bound" }, opt);
+  };
+  // drake: scaled quad with wings and a long spade tail
+  X.creature.drake = function (col, opt = {}) {
+    let A = new eA(),
+      hide = cloth(col, { rough: 0.5 }),
+      dk = dark(col),
+      wing = new xA({ color: opt.wing || new _(col).multiplyScalar(0.6).getHex(), side: KA, roughness: 0.7, transparent: !0, opacity: 0.92 }),
+      w = new eA();
+    ((w.position.y = 1.1), A.add(w));
+    let body = V(new nw(0.34, 1.1, 8, 14), hide);
+    ((body.rotation.x = Math.PI / 2), w.add(body));
+    let neck = V(new QA(0.12, 0.2, 0.8, 8), hide, 0, 0.3, 0.75);
+    ((neck.rotation.x = -0.9), w.add(neck));
+    let C = new eA();
+    (C.position.set(0, 0.55, 1.15), w.add(C));
+    C.add(V(new iA(0.26, 0.22, 0.5), hide, 0, 0, 0.1));
+    for (let e of [-1, 1]) C.add(V(new Ai(0.05, 0.3, 5), bone(0xd8d0c0), e * 0.1, 0.22, -0.15).rotateX(-0.8));
+    eyes(C, opt.eye || 0xffb020, 0.04, 0.3, 0.1, 0.035);
+    let Q = new eA();
+    (Q.position.set(0, -0.1, 0.1), C.add(Q), Q.add(V(new iA(0.2, 0.06, 0.4), dk, 0, 0, 0.18)));
+    for (let k = 0; k < 3; k++) for (let e of [-1, 1]) Q.add(V(new Ai(0.015, 0.06, 4), bone(), e * 0.07, 0.04, 0.1 + k * 0.1));
+    // spines
+    for (let e = 0; e < 8; e++) w.add(V(new Ai(0.04, 0.16, 4), dk, 0, 0.34, 0.5 - e * 0.15));
+    // wings
+    let wings = [];
+    for (let e of [-1, 1]) {
+      let W = new eA();
+      W.position.set(e * 0.3, 0.25, 0.1);
+      let sh = new jB();
+      (sh.moveTo(0, 0), sh.lineTo(1.4 * e, 0.6), sh.lineTo(1.9 * e, 0.1), sh.lineTo(1.6 * e, -0.5), sh.lineTo(1.0 * e, -0.75), sh.lineTo(0.4 * e, -0.55), sh.lineTo(0, -0.1));
+      let mem = new p(new YB(sh, { depth: 0.01, bevelEnabled: !1 }), wing);
+      mem.rotation.x = -Math.PI / 2;
+      W.add(mem);
+      for (let [x, y] of [
+        [1.4, 0.6],
+        [1.9, 0.1],
+        [1.6, -0.5],
+      ]) {
+        let b = V(new QA(0.012, 0.025, Math.hypot(x, y), 5), dk, (e * x) / 2, 0.01, -y / 2);
+        b.rotation.x = Math.PI / 2;
+        b.rotation.z = -Math.atan2(y, e * x) + Math.PI / 2;
+        W.add(b);
+      }
+      w.add(W);
+      wings.push(W);
+    }
+    let s = new eA();
+    s.add(V(new QA(0.09, 0.03, 1.1, 6), hide, 0, -0.55, 0));
+    s.add(V(new Ai(0.14, 0.3, 4), dk, 0, -1.2, 0).rotateX(Math.PI));
+    (s.position.set(0, 0.15, -0.6), (s.rotation.x = 2.3), w.add(s));
+    opt.wild || w.add(saddle(0.38, 0.4, -0.05, { blanket: opt.blanket || 0x3a1a1a }));
+    let D = [];
+    for (let [e, t] of [
+      [-0.24, 0.45],
+      [0.24, 0.45],
+      [-0.24, -0.45],
+      [0.24, -0.45],
+    ]) {
+      let M = leg(1.0, 0.09, 0.06, hide, t > 0 ? 1 : -1, "claw", dk);
+      M.position.set(e, 1.05, t);
+      A.add(M);
+      D.push(M);
+    }
+    return finish(A, { body: w, bodyY: 1.1, head: C, jaw: Q, tail: s, legFL: D[0], legFR: D[1], legBL: D[2], legBR: D[3], wings, gait: "fly" }, opt);
+  };
+  // spider: eight legs, abdomen, skittering
+  X.creature.spider = function (col, opt = {}) {
+    let A = new eA(),
+      hide = cloth(col, { rough: 0.6 }),
+      dk = dark(col),
+      w = new eA();
+    ((w.position.y = 0.9), A.add(w));
+    let ceph = V(new JA(0.42, 10, 8), hide, 0, 0, 0.25);
+    ceph.scale.set(1, 0.7, 1);
+    w.add(ceph);
+    let ab = V(new JA(0.55, 12, 10), hide, 0, 0.15, -0.55);
+    ab.scale.set(1, 0.9, 1.2);
+    w.add(ab);
+    opt.mark && ab.add(V(new iA(0.3, 0.1, 0.5), cloth(opt.mark), 0, 0.5, 0));
+    let C = new eA();
+    (C.position.set(0, 0.05, 0.6), w.add(C));
+    C.add(V(new JA(0.22, 8, 6), hide));
+    for (let i = 0; i < 6; i++) C.add(V(new JA(0.035, 6, 5), mI(opt.eye || 0xff3030, 2.5), (i % 3) * 0.08 - 0.08, 0.1 - Math.floor(i / 3) * 0.08, 0.2));
+    let Q = new eA();
+    (Q.position.set(0, -0.12, 0.12), C.add(Q));
+    for (let e of [-1, 1]) Q.add(V(new Ai(0.03, 0.18, 5), dk, e * 0.08, -0.06, 0.1).rotateX(Math.PI * 0.8));
+    opt.wild || w.add(saddle(0.36, 0.3, -0.15, { blanket: opt.blanket || 0x2a1a3a }));
+    let legsX = [];
+    for (let e of [-1, 1])
+      for (let i = 0; i < 4; i++) {
+        let g = new eA(),
+          z = 0.45 - i * 0.3,
+          seg1 = V(new QA(0.035, 0.05, 0.75, 6), hide, e * 0.35, 0.3, 0),
+          knee = new eA();
+        g.position.set(e * 0.3, 0.1, z);
+        g.rotation.y = e * (0.6 - i * 0.4);
+        seg1.rotation.z = -e * 1.0;
+        g.add(seg1);
+        knee.position.set(e * 0.7, 0.55, 0);
+        knee.add(V(new QA(0.025, 0.035, 0.9, 6), dk, e * 0.2, -0.42, 0).rotateZ(e * 0.45));
+        g.add(knee);
+        w.add(g);
+        legsX.push({ g, phase: (i % 2 === 0 ? 0 : Math.PI) + (e > 0 ? Math.PI / 2 : 0), e, base: g.rotation.y });
+      }
+    // dummy quad legs so the base rig is satisfied
+    let D = [0, 1, 2, 3].map(() => new eA());
+    D.forEach((d) => A.add(d));
+    return finish(A, { body: w, bodyY: 0.9, head: C, jaw: Q, tail: null, legFL: D[0], legFR: D[1], legBL: D[2], legBR: D[3], legsX, gait: "skitter" }, opt);
+  };
+  // crab: wide shell, side legs, two claws, eye stalks
+  X.creature.crab = function (col, opt = {}) {
+    let A = new eA(),
+      shell = cloth(col, { rough: 0.4 }),
+      dk = dark(col),
+      w = new eA();
+    ((w.position.y = 0.75), A.add(w));
+    let body = V(new JA(0.7, 12, 10), shell);
+    (body.scale.set(1.3, 0.55, 1), w.add(body));
+    for (let i = 0; i < 6; i++) w.add(V(new Ai(0.06, 0.18, 4), dk, (i - 2.5) * 0.3, 0.32, 0.1));
+    let C = new eA();
+    (C.position.set(0, 0.1, 0.7), w.add(C));
+    for (let e of [-1, 1]) {
+      C.add(V(new QA(0.03, 0.03, 0.3, 6), dk, e * 0.15, 0.2, 0));
+      C.add(V(new JA(0.07, 8, 6), mI(opt.eye || 0x40ffd0, 2.5), e * 0.15, 0.38, 0));
+    }
+    let Q = new eA();
+    C.add(Q);
+    let legsX = [];
+    for (let e of [-1, 1]) {
+      // claw
+      let cl = new eA();
+      cl.position.set(e * 0.7, 0.05, 0.5);
+      cl.rotation.y = e * 0.5;
+      cl.add(V(new QA(0.07, 0.09, 0.5, 8), shell, e * 0.2, 0, 0.1).rotateZ(-e * 1.2));
+      let pin = new eA();
+      pin.position.set(e * 0.45, 0.05, 0.2);
+      pin.add(V(new iA(0.14, 0.12, 0.42), shell, 0, 0.06, 0.18));
+      pin.add(V(new iA(0.1, 0.06, 0.4), dk, 0, -0.05, 0.2));
+      cl.add(pin);
+      w.add(cl);
+      legsX.push({ g: cl, phase: 0, e, base: cl.rotation.y, claw: !0 });
+      for (let i = 0; i < 3; i++) {
+        let g = new eA(),
+          z = 0.2 - i * 0.3;
+        g.position.set(e * 0.75, 0, z);
+        g.rotation.y = e * (0.3 - i * 0.3);
+        g.add(V(new QA(0.04, 0.05, 0.6, 6), shell, e * 0.28, 0.1, 0).rotateZ(-e * 1.2));
+        let knee = new eA();
+        knee.position.set(e * 0.56, 0.2, 0);
+        knee.add(V(new QA(0.03, 0.035, 0.75, 6), dk, e * 0.12, -0.35, 0).rotateZ(e * 0.35));
+        g.add(knee);
+        w.add(g);
+        legsX.push({ g, phase: (i % 2 === 0 ? 0 : Math.PI) + (e > 0 ? Math.PI / 2 : 0), e, base: g.rotation.y });
+      }
+    }
+    opt.wild || w.add(saddle(0.4, 0.42, -0.1, { blanket: opt.blanket || 0x1a3a4a }));
+    let D = [0, 1, 2, 3].map(() => new eA());
+    D.forEach((d) => A.add(d));
+    return finish(A, { body: w, bodyY: 0.75, head: C, jaw: Q, tail: null, legFL: D[0], legFR: D[1], legBL: D[2], legBR: D[3], legsX, gait: "skitter" }, opt);
+  };
+
+  // ---------- gait modifiers on top of the quad rig ----------
+  let Xw3 = Xw;
+  Xw = function (B, A) {
+    Xw3(B, A);
+    if (B?.rig !== "quad" || !B.gait) return;
+    let ph = A.ph || 0,
+      mv = A.mv ?? 0,
+      t = A.t || 0,
+      I = Math.min(1, mv * 1.4);
+    if (B.gait === "bound") {
+      let f = Math.sin(ph * 1.1),
+        b = Math.sin(ph * 1.1 + Math.PI * 0.8);
+      ((B.legFL.rotation.x = -f * 0.95 * I), (B.legFR.rotation.x = -f * 0.95 * I - 0.1 * I), (B.legBL.rotation.x = b * 0.9 * I), (B.legBR.rotation.x = b * 0.9 * I + 0.1 * I));
+      B.body.rotation.x += -f * 0.12 * I;
+      B.body.position.y = B.bodyY + Math.max(0, f) * 0.14 * I;
+    } else if (B.gait === "lumber") {
+      let s = Math.sin(ph * 0.75);
+      ((B.legFL.rotation.x = -s * 0.6 * I), (B.legFR.rotation.x = s * 0.6 * I), (B.legBL.rotation.x = s * 0.6 * I), (B.legBR.rotation.x = -s * 0.6 * I));
+      B.body.rotation.z = s * 0.08 * I;
+      B.body.position.y = B.bodyY + Math.abs(s) * 0.04 * I;
+      B.head.rotation.z = -s * 0.06 * I;
+    } else if (B.gait === "stiff") {
+      let s = Math.sin(ph);
+      ((B.legFL.rotation.x = -s * 0.45 * I), (B.legFR.rotation.x = s * 0.45 * I), (B.legBL.rotation.x = s * 0.45 * I), (B.legBR.rotation.x = -s * 0.45 * I));
+      B.body.position.y = B.bodyY;
+      B.body.rotation.x = 0;
+    } else if (B.gait === "skitter") {
+      for (let L of B.legsX) {
+        if (L.claw) {
+          L.g.rotation.y = L.base + Math.sin(t * 3 + L.e) * 0.15;
+          L.g.children[1] && (L.g.children[1].rotation.y = L.e * (0.2 + Math.max(0, Math.sin(t * 5 + L.e * 2)) * 0.5));
+          continue;
+        }
+        let s = Math.sin(ph * 2.4 + L.phase);
+        L.g.rotation.y = L.base + s * 0.3 * I;
+        L.g.rotation.z = Math.max(0, Math.cos(ph * 2.4 + L.phase)) * 0.25 * I * -L.e;
+      }
+      B.body.position.y = B.bodyY + Math.abs(Math.sin(ph * 2.4)) * 0.03 * I;
+      B.body.rotation.x = Math.sin(t * 1.3) * 0.02;
+    } else if (B.gait === "fly") {
+      let flap = Math.sin(t * 7) * (0.35 + I * 0.4),
+        leap = A.leap || 0;
+      for (let i = 0; i < B.wings.length; i++) B.wings[i].rotation.z = (i ? -1 : 1) * (0.2 + flap) * (0.4 + I * 0.6 + leap);
+      B.tail && (B.tail.rotation.y = Math.sin(t * 3) * 0.3);
+    }
+    // all gaits: the lower leg bends with the stride
+    for (let L of [B.legFL, B.legFR, B.legBL, B.legBR]) {
+      let lo = L?.userData?.lower;
+      lo && (lo.rotation.x = 0.25 * Math.sign(lo.rotation.x || 1) + Math.max(0, -L.rotation.x) * 0.9);
+    }
+  };
+
+  // ---------- the stable: every mount gets a body ----------
+  Object.assign(X.MOUNTS, {
+    horse: { ...X.MOUNTS.horse, body: ["horse", {}], desc: "A steady brown courser from Gellert's stable." },
+    greyhorse: { ...X.MOUNTS.greyhorse, body: ["horse", { style: "barding", plate: 0x9a9aa8, blanket: 0x2a3a6a }], desc: "Quick and sure-footed, in light grey barding." },
+    wolf: { ...X.MOUNTS.wolf, name: "Tamed Dire Warg", body: ["warg", {}], desc: "It still growls at strangers." },
+    stag: { ...X.MOUNTS.stag, name: "Spirit Elk", body: ["elk", { antler: 0xd0e8ff, eye: 0x9ad0ff }], desc: "A ghost of the old forest. Leaves no tracks." },
+    frostwolf: { ...X.MOUNTS.frostwolf, body: ["warg", { spikes: 0xd0ecff, eye: 0x9ad0ff }], desc: "Rare drop from Hrimgar. Ice grows along its spine." },
+    jackal: { ...X.MOUNTS.jackal, name: "Sunscorch Lion", body: ["lion", { mane: 0x8a4a20, eye: 0xffd040 }], desc: "Rare drop from Ash-Khan Varek. A desert lion with a scorched mane." },
+    thornstag: { ...X.MOUNTS.thornstag, name: "Thornwood Elk", body: ["elk", { antler: 0x3a6a2a, eye: 0x3aff3a, blanket: 0x2a4a2a }], desc: "Rare drop from the Thornmother. Moss grows on its antlers." },
+    stormsteed: { ...X.MOUNTS.stormsteed, body: ["horse", { style: "barding", plate: 0x4a4a7a, blanket: 0x2a2a5a, eye: 0xb0a0ff }], desc: "Rare drop from Azrakul. Lightning crawls over its barding." },
+    bonecharger: { ...X.MOUNTS.bonecharger, body: ["horse", { style: "skeletal", eye: 0xff3a6a }], desc: "Drops from The Reckoning raid. Nothing but bone and spite." },
+    unboundsteed: { ...X.MOUNTS.unboundsteed, name: "Nightmare of the Unbound", body: ["horse", { style: "nightmare", flame: 0xff2a6a, eye: 0xff2a6a }], desc: "Drops from the Throne of Storms. Its mane is fire." },
+    tidesteed: { ...X.MOUNTS.tidesteed, body: ["horse", { style: "tide", eye: 0x40ffd0, blanket: 0x1a3a4a }], desc: "Drops from The Drowned Deep. Fins for a mane, kelp for a tail." },
+    ashcharger: { ...X.MOUNTS.ashcharger, body: ["horse", { style: "barding", plate: 0x2a2626, blanket: 0x4a1a1a, eye: 0xff6a20 }], desc: "A warhorse in black plate that walked through the Cathedral fire." },
+    moondoe: { ...X.MOUNTS.moondoe, body: ["elk", { antler: 0xf0f0ff, eye: 0xc0d0ff, blanket: 0xd0d0ff }], desc: "Reward for The Reaper's Apprentice. Silent as snowfall." },
+    vigilhound: { ...X.MOUNTS.vigilhound, body: ["warg", { armor: 0xc0a040, eye: 0xffd070 }], desc: "Reward for 25 dungeon clears. Armoured, and it knows every crypt by smell." },
+    keyhorse: { ...X.MOUNTS.keyhorse, name: "Keystone Automaton", body: ["horse", { style: "clockwork", eye: 0xa070ff }], desc: "Reward for 10 timed Mythic+ runs. Brass, gears and a keystone heart." },
+    gladhorse: { ...X.MOUNTS.gladhorse, body: ["horse", { style: "plume", plate: 0x8a2a2a, blanket: 0x3a1a1a }], desc: "Reward for 25 arena victories. Red plume, red plate." },
+    // new creatures
+    boar: { name: "Thornback Boar", speed: 1.85, cost: 3000, model: "boar", col: 0x5a4030, body: ["boar", {}], desc: "Low, fast and bad-tempered. Sold at the stable." },
+    ram: { name: "Frostpeak Ram", speed: 1.95, cost: 5000, model: "ram", col: 0xe8e4dc, body: ["ram", { eye: 0xffd040 }], desc: "Climbs like it owns the mountain. Sold at the stable." },
+    bear: { name: "Frostmaw Bear", speed: 1.9, cost: -1, model: "bear", col: 0xe0e8f0, glow: 0x9ad0ff, drop: "hrimgar", body: ["bear", { eye: 0x9ad0ff }], desc: "Rare drop from Hrimgar. Slow to anger, impossible to stop." },
+    weaver: { name: "Mire Weaver", speed: 2.0, cost: -1, model: "spider", col: 0x2a1a3a, glow: 0x9a60ff, drop: "thornmother", body: ["spider", { eye: 0xff3030, mark: 0x9a60ff }], desc: "Rare drop from the Thornmother. Eight legs, no mercy." },
+    emberdrake: { name: "Ember Drake", speed: 2.3, cost: -1, model: "drake", col: 0x8a2a1a, glow: 0xff6a20, drop: "raid_citadel", body: ["drake", { eye: 0xffb020, wing: 0xff6a20 }], desc: "Drops from The Reckoning raid. Wings that never quite carry you." },
+    stormdrake: { name: "Storm Drake", speed: 2.4, cost: -1, model: "drake", col: 0x3a3a6a, glow: 0xb0a0ff, drop: "raid_throne", body: ["drake", { eye: 0xb0a0ff, wing: 0x8080ff }], desc: "Drops from the Throne of Storms." },
+    deepcrab: { name: "Drowned Crab", speed: 2.1, cost: -1, model: "crab", col: 0x2a6a7a, glow: 0x40ffd0, drop: "raid_deep", body: ["crab", { eye: 0x40ffd0 }], desc: "Drops from The Drowned Deep. Sideways is also forwards." },
+    warbear: { name: "Vigil Warbear", speed: 2.0, cost: -1, model: "bear", col: 0x4a3a2a, stat: ["invasions_won", 10], body: ["bear", { eye: 0xffd070, blanket: 0x6a2a2a }], desc: "Reward for defending 10 invasions." },
+  });
+  let mm0 = X.mountModel;
+  X.mountModel = function (id) {
+    let d = X.MOUNTS[id];
+    if (!d) return null;
+    if (d.body && X.creature[d.body[0]]) return X.creature[d.body[0]](d.col, { glow: d.glow, ...d.body[1] });
+    return mm0(id);
+  };
+  // first person: the creature's own head in front of the camera
+  let GP = SC.prototype,
+    tm0 = GP.toggleMount;
+  GP.toggleMount = function () {
+    let r = tm0.call(this);
+    let M = this.mounted;
+    if (M && M.fp) {
+      let d = X.MOUNTS[M.id];
+      if (d?.body && X.creature[d.body[0]]) {
+        this.camera.remove(M.fp);
+        let fp = X.creature[d.body[0]](d.col, { glow: d.glow, wild: !0, ...d.body[1] });
+        fp.traverse((c) => c.isMesh && (c.castShadow = !1));
+        let P = fp.userData.parts,
+          s = d.body[0] === "spider" || d.body[0] === "crab" ? 0.5 : d.body[0] === "bear" ? 0.5 : 0.55;
+        fp.scale.setScalar(s);
+        fp.position.set(0, -(P.bodyY * s + 0.5), -0.35);
+        fp.rotation.y = Math.PI;
+        for (let L of [P.legFL, P.legFR, P.legBL, P.legBR, P.tail]) L && (L.visible = !1);
+        P.legsX && P.legsX.forEach((L) => (L.g.visible = !1));
+        this.camera.add(fp);
+        M.fp = fp;
+        M.fpParts = P;
+      }
+    }
+    return r;
+  };
+  // riders sit at the creature's back height
+  let urs1 = GP.updateRemotes;
+  GP.updateRemotes = function (dt) {
+    urs1.call(this, dt);
+    for (let R of this.remotes.values()) {
+      let P = R.mount?.userData?.parts;
+      if (!P) continue;
+      R.model.position.y += (P.bodyY || 1.15) + 0.25 - 1.0;
+    }
+  };
+  // invasions counter for the Warbear
+  let ifn = X.invasion?.finish;
+  ifn && (X.invasion.finish = function (g, won, ...a) {
+    let r = ifn.call(this, g, won, ...a);
+    won && g.track?.("invasions_won");
+    return r;
+  });
+  WB.push({ id: "mount_10", name: "Stable Full", desc: "Collect 10 mounts.", stat: "mounts", goal: 10, reward: 300 }, { id: "mount_20", name: "A Mount for Every Mood", desc: "Collect 20 mounts.", stat: "mounts", goal: 20, reward: 800 });
+}
+
+/* ---- E9_pets.js ---- */
+// ===== 1.13: companions — real bodies, levelling, an ability each, and pet bouts at the kennel =====
+{
+  let GP = SC.prototype;
+  // ---------- roster: bodies from the creature builders, scaled down ----------
+  Object.assign(X.COMPANIONS, {
+    pup: { ...X.COMPANIONS.pup, body: ["warg", { eye: 0xffd040 }], bs: 0.42, ability: "bite" },
+    hound: { ...X.COMPANIONS.hound, body: ["warg", { armor: 0x3a3a3a, eye: 0xff6a3a }], bs: 0.55, ability: "bite" },
+    squire: { ...X.COMPANIONS.squire, ability: "shieldwall" },
+    wisp: { ...X.COMPANIONS.wisp, ability: "mend" },
+    golem: { ...X.COMPANIONS.golem, ability: "quake" },
+    drake: { ...X.COMPANIONS.drake, body: ["drake", { eye: 0xffb020, wing: 0xff6a20 }], bs: 0.4, ability: "firespit" },
+    frostwisp: { ...X.COMPANIONS.frostwisp, ability: "mend" },
+    cryptrat: { ...X.COMPANIONS.cryptrat, body: ["boar", { eye: 0xff3030 }], bs: 0.3, ability: "bite", desc: "Reward for 5 Barrow Crypts clears. A rat the size of a hound, surprisingly loyal." },
+    clockgolem: { ...X.COMPANIONS.clockgolem, ability: "quake" },
+    stormdrake: { ...X.COMPANIONS.stormdrake, body: ["drake", { eye: 0xb0a0ff, wing: 0x8080ff }], bs: 0.42, ability: "shock" },
+    deepwisp: { ...X.COMPANIONS.deepwisp, ability: "mend" },
+    pitdog: { ...X.COMPANIONS.pitdog, body: ["warg", { armor: 0x8a3a2a, eye: 0xff6a3a }], bs: 0.5, ability: "bite" },
+    // new companions
+    barrowcat: { name: "Barrow Cat", kind: "melee", cost: 1500, model: "cat", col: 0x3a3a44, dmg: 16, body: ["lion", { mane: 0x3a3a44, eye: 0x8aff8a }], bs: 0.32, ability: "pounce", desc: "Sold at the kennel. Pounces on anything that moves." },
+    boarlet: { name: "Thornback Boarlet", kind: "tank", cost: 2500, model: "boar", col: 0x5a4030, dmg: 14, body: ["boar", { eye: 0xff6a3a }], bs: 0.5, ability: "shieldwall", desc: "Sold at the kennel. Small, round, and refuses to move." },
+    lamb: { name: "Frostpeak Lamb", kind: "heal", cost: 3000, model: "ram", col: 0xf0ece4, dmg: 0, body: ["ram", { eye: 0xffd040 }], bs: 0.4, ability: "mend", desc: "Sold at the kennel. Its wool smells of mountain herbs." },
+    beetle: { name: "Clockwork Beetle", kind: "ranged", cost: -1, model: "crab", col: 0xb08a40, glow: 0xffd070, dmg: 22, stat: ["mplus_runs", 10], body: ["crab", { eye: 0xffd070 }], bs: 0.38, ability: "shock", desc: "Reward for 10 Mythic+ runs. Sparks when it is happy." },
+    hatchling: { name: "Tide Hatchling", kind: "melee", cost: -1, model: "crab", col: 0x2a6a7a, glow: 0x40ffd0, dmg: 20, drop: "raid_deep", body: ["crab", { eye: 0x40ffd0 }], bs: 0.42, ability: "pounce", desc: "Drops from The Drowned Deep. Pinches." },
+    frostpup: { name: "Frost Pup", kind: "melee", cost: -1, model: "warg", col: 0xd8e8ff, glow: 0x9ad0ff, dmg: 18, ach: "shrines_all", body: ["warg", { spikes: 0xd0ecff, eye: 0x9ad0ff }], bs: 0.4, ability: "bite", desc: "Reward for Pilgrim of Ash." },
+    emberkin: { name: "Ember Drakekin", kind: "ranged", cost: -1, model: "drake", col: 0xff8a2a, glow: 0xff6a20, dmg: 26, stat: ["invasions_won", 5], body: ["drake", { eye: 0xffd040, wing: 0xff3a1a }], bs: 0.36, ability: "firespit", desc: "Reward for defending 5 invasions." },
+  });
+  X.PET_ABILITY = {
+    bite: { name: "Savage Bite", cd: 10, text: "a heavy bite that bleeds" },
+    pounce: { name: "Pounce", cd: 9, text: "leaps at its target for triple damage" },
+    shieldwall: { name: "Shield Wall", cd: 14, text: "taunts every enemy within 8 m" },
+    mend: { name: "Mend", cd: 12, text: "heals you for 12% of your health" },
+    quake: { name: "Quake", cd: 15, text: "stuns enemies within 5 m for 1.5 s" },
+    firespit: { name: "Fire Spit", cd: 11, text: "a burning bolt that spreads to nearby enemies" },
+    shock: { name: "Shock", cd: 11, text: "lightning that arcs to two more enemies" },
+  };
+  let cm0 = X.companionModel;
+  X.companionModel = function (id) {
+    let d = X.COMPANIONS[id];
+    if (d?.body && X.creature[d.body[0]]) {
+      let m = X.creature[d.body[0]](d.col, { wild: !0, glow: d.glow, ...d.body[1] });
+      m.scale.setScalar(d.bs || 0.4);
+      m.userData.creature = !0;
+      return m;
+    }
+    return cm0(id);
+  };
+  // ---------- levelling ----------
+  X.petData = (g, id) => ((g.profile.pets ||= {})[id] ||= { xp: 0, lv: 1 });
+  X.petXpFor = (lv) => 40 + lv * lv * 12;
+  X.petGain = function (g, id, xp) {
+    let P = X.petData(g, id);
+    P.xp += xp;
+    while (P.lv < 30 && P.xp >= X.petXpFor(P.lv)) {
+      P.xp -= X.petXpFor(P.lv);
+      P.lv++;
+      g.ui.banner("", `${X.COMPANIONS[id].name} reaches companion level ${P.lv}`, "#9ad0ff");
+      g.audio.play("levelup", null, 0.4);
+    }
+  };
+  X.petMul = (g, id) => 1 + 0.04 * ((X.petData(g, id).lv || 1) - 1);
+  // ---------- abilities ----------
+  X.petAbility = function (g, C) {
+    let d = C.def,
+      ab = X.PET_ABILITY[d.ability],
+      A = g.player;
+    if (!ab) return;
+    C.abT = ab.cd;
+    let lv = g.hsave.level,
+      dmg = (d.dmg || 10) * (1 + 0.13 * (lv - 1)) * (1 + g.stats.power / 200) * X.petMul(g, g.profile.companion),
+      near = [...g.enemies.values()].filter((e) => e.alive && e.pos.distanceTo(C.pos) < (d.kind === "ranged" ? 20 : 8)),
+      tgt = near.sort((a, b) => a.pos.distanceTo(C.pos) - b.pos.distanceTo(C.pos))[0],
+      say = (t, col) => g.floatText(C.pos.clone().setY(C.pos.y + 1.4), t, col || "#ffd070");
+    switch (d.ability) {
+      case "bite":
+        if (!tgt) return (C.abT = 1);
+        g.hitEnemy(tgt, dmg * 1.8, { noCrit: !0, dot: { dps: dmg * 0.3, dur: 5, kind: "bleed" } });
+        say("SAVAGE BITE");
+        break;
+      case "pounce":
+        if (!tgt) return (C.abT = 1);
+        C.pos.copy(tgt.pos).add(ii(0.8, 0, 0.8));
+        g.hitEnemy(tgt, dmg * 3, { noCrit: !0 });
+        g.fx?.("burst", tgt.pos.clone().setY(tgt.pos.y + 1), { color: d.col, n: 12 });
+        say("POUNCE");
+        break;
+      case "shieldwall":
+        if (!near.length) return (C.abT = 1);
+        for (let e of near) ((e.target = "companion"), (e.tauntT = 4), g.taunt?.(e, "companion"));
+        say("SHIELD WALL", "#9ad0ff");
+        break;
+      case "mend":
+        if (A.hp > A.maxHp * 0.85) return (C.abT = 2);
+        g.healSelf(A.maxHp * 0.12);
+        g.fx?.("beam", C.pos.clone().setY(C.pos.y + 1.2), { to: A.pos.clone().setY(A.pos.y + 1.2), color: d.col });
+        say("MEND", "#8affc0");
+        break;
+      case "quake":
+        if (!near.length) return (C.abT = 1);
+        for (let e of near.filter((e) => e.pos.distanceTo(C.pos) < 5)) ((e.stun = Math.max(e.stun || 0, 1.5)), g.hitEnemy(e, dmg, { noCrit: !0 }));
+        g.fx?.("nova", C.pos.clone(), { color: 0xa0a0a0, r: 5 });
+        g.shake?.(0.3);
+        say("QUAKE");
+        break;
+      case "firespit":
+        if (!tgt) return (C.abT = 1);
+        g.hitEnemy(tgt, dmg * 1.5, { noCrit: !0, dot: { dps: dmg * 0.35, dur: 4, kind: "fire", spread: !0 } });
+        g.fx?.("burst", tgt.pos.clone().setY(tgt.pos.y + 1), { color: 0xff6a20, n: 14 });
+        say("FIRE SPIT", "#ff9a4a");
+        break;
+      case "shock": {
+        if (!tgt) return (C.abT = 1);
+        let chain = [tgt, ...near.filter((e) => e !== tgt).slice(0, 2)];
+        for (let e of chain) (g.hitEnemy(e, dmg * 1.2, { noCrit: !0 }), g.fx?.("burst", e.pos.clone().setY(e.pos.y + 1), { color: 0xb0a0ff, n: 8 }));
+        say("SHOCK", "#c0b0ff");
+        break;
+      }
+    }
+    g.audio.play(d.kind === "heal" ? "heal" : "hit", C.pos, 0.4);
+  };
+  let uc0 = GP.updateCompanion;
+  GP.updateCompanion = function (dt) {
+    let C = this.companion;
+    uc0.call(this, dt);
+    if (!C || !this.companion || this.player.dead) return;
+    C.abT = (C.abT ?? 4) - dt;
+    C.abT <= 0 && X.petAbility(this, C);
+    // creature bodies: ground height and tag height come from the rig
+    if (C.model.userData.creature) {
+      let P = C.model.userData.parts;
+      C.tag.position.y = C.pos.y + (P.bodyY || 1) * C.model.scale.y + 0.9;
+    }
+  };
+  // pet xp: a share of the kills while a companion is out
+  let ok3 = GP.onKill;
+  GP.onKill = function (type, pos, lv, mine, ent, rareId) {
+    let r = ok3.call(this, type, pos, lv, mine, ent, rareId);
+    if (mine && this.companion && this.profile.companion) X.petGain(this, this.profile.companion, rw[type]?.boss ? 60 : 3 + Math.round((lv || 1) / 4));
+    return r;
+  };
+  // damage scales with companion level
+  let he2 = GP.hitEnemy;
+  GP.hitEnemy = function (A, i, I = {}) {
+    if (I && I.noCrit && this.companion && !I._pet && this._inPet) i *= X.petMul(this, this.profile.companion);
+    return he2.call(this, A, i, I);
+  };
+  let uc1 = GP.updateCompanion;
+  GP.updateCompanion = function (dt) {
+    this._inPet = !0;
+    try {
+      return uc1.call(this, dt);
+    } finally {
+      this._inPet = !1;
+    }
+  };
+  // ---------- pet bouts at the kennel (Ilse): a 3-round auto-battle against a wild challenger ----------
+  X.petBout = function (g) {
+    let p = g.profile,
+      id = p.companion;
+    if (!id) return "<p class='small'>Summon a companion first.</p>";
+    let d = X.COMPANIONS[id],
+      P = X.petData(g, id),
+      today = X.dayKey();
+    (p.petBouts ||= {}).day !== today && (p.petBouts = { day: today, n: 0 });
+    if (p.petBouts.n >= 3) return `<p class="small">${d.name} has fought three bouts today. Come back tomorrow.</p>`;
+    let pool = Object.keys(X.COMPANIONS).filter((k) => k !== id),
+      oid = pool[(Math.random() * pool.length) | 0],
+      o = X.COMPANIONS[oid],
+      olv = Math.max(1, P.lv + ((Math.random() * 5) | 0) - 2),
+      st = (dd, lv) => ({ hp: 100 + 12 * lv + (dd.kind === "tank" ? 60 : 0), dmg: (dd.dmg || 8) * 0.6 + lv * 1.2 + (dd.kind === "heal" ? 4 : 0), heal: dd.kind === "heal" ? 10 + lv : 0 }),
+      me = { ...st(d, P.lv), n: d.name, max: 0 },
+      foe = { ...st(o, olv), n: o.name, max: 0 };
+    ((me.max = me.hp), (foe.max = foe.hp));
+    let log = [],
+      round = 0;
+    while (me.hp > 0 && foe.hp > 0 && round < 40) {
+      round++;
+      let a = me.dmg * (0.8 + Math.random() * 0.4),
+        b = foe.dmg * (0.8 + Math.random() * 0.4),
+        crit = Math.random() < 0.12;
+      crit && (a *= 2);
+      foe.hp -= a;
+      log.push(`${me.n} hits for ${Math.round(a)}${crit ? "!" : ""}`);
+      me.heal && round % 3 === 0 && ((me.hp = Math.min(me.max, me.hp + me.heal)), log.push(`${me.n} mends ${me.heal}`));
+      if (foe.hp <= 0) break;
+      me.hp -= b;
+      log.push(`${foe.n} hits for ${Math.round(b)}`);
+      foe.heal && round % 3 === 0 && ((foe.hp = Math.min(foe.max, foe.hp + foe.heal)), log.push(`${foe.n} mends ${foe.heal}`));
+    }
+    let won = foe.hp <= 0;
+    p.petBouts.n++;
+    X.petGain(g, id, won ? 25 + olv * 3 : 8);
+    won && ((p.marks += 10), g.track("petbouts_won"));
+    g.track("petbouts");
+    g.audio.play(won ? "levelup" : "dark", null, 0.4);
+    g.save();
+    return `<h3>${won ? "Victory" : "Defeat"} <small>${d.name} (lv ${P.lv}) vs ${o.name} (lv ${olv}) \xB7 bout ${p.petBouts.n}/3 today</small></h3>
+      <div class="small" style="max-height:160px;overflow:auto">${log.map((l) => `<div>${l}</div>`).join("")}</div>
+      <p class="small">${won ? `+${25 + olv * 3} companion XP, +10 Ashen Marks` : "+8 companion XP"}</p>`;
+  };
+  let kx1 = X.npcExtra.kennel;
+  X.npcExtra.kennel = function (g) {
+    let html = kx1.call(this, g),
+      p = g.profile,
+      id = p.companion,
+      lv = id ? X.petData(g, id) : null,
+      ab = id && X.PET_ABILITY[X.COMPANIONS[id].ability];
+    return (
+      `<h3>Your companion <small>${id ? `${X.COMPANIONS[id].name} \xB7 level ${lv.lv} (${lv.xp}/${X.petXpFor(lv.lv)} XP) \xB7 +${Math.round((X.petMul(g, id) - 1) * 100)}% damage \xB7 ${ab ? ab.name + ": " + ab.text : ""}` : "none summoned"}</small></h3>
+       <div class="row"><button data-petbout ${id ? "" : "disabled"}>Pet bout (3 a day)</button></div><div id="petbout-out"></div>` + html
+    );
+  };
+  let kb1 = X.npcBind.kennel;
+  X.npcBind.kennel = function (g, root, redo) {
+    kb1?.call(this, g, root, redo);
+    root.querySelectorAll("[data-petbout]").forEach((b) => (b.onclick = () => ((root.querySelector("#petbout-out").innerHTML = X.petBout(g)), (b.disabled = (g.profile.petBouts?.n || 0) >= 3))));
+  };
+  // companion levels in the Collections journal
+  let ch0 = XC.prototype.collectionsHTML;
+  ch0 &&
+    (XC.prototype.collectionsHTML = function () {
+      let h = ch0.call(this),
+        g = this.app.game,
+        p = this.app.profile;
+      for (let id of p.companions || []) {
+        let P = X.petData(g, id),
+          d = X.COMPANIONS[id];
+        d && (h = h.replace(`${d.name}</div>`, `${d.name} <small>lv ${P.lv}</small></div>`));
+      }
+      return h;
+    });
+  WB.push(
+    { id: "pet_10", name: "Good Boy", desc: "Raise a companion to level 10.", stat: "pet_lv10", goal: 1, reward: 200 },
+    { id: "pet_bouts", name: "Kennel Champion", desc: "Win 10 pet bouts.", stat: "petbouts_won", goal: 10, reward: 300 },
+  );
+  let pg0 = X.petGain;
+  X.petGain = function (g, id, xp) {
+    pg0(g, id, xp);
+    X.petData(g, id).lv >= 10 && g.setStat("pet_lv10", 1);
+  };
+}
+
+/* ---- EA_pvp2.js ---- */
+// ===== 1.13: human-vs-human ranked arena (parties face each other), seasons + friends leaderboard, Wardfall battleground (8v8) =====
+{
+  let GP = SC.prototype,
+    app = () => window.__app,
+    game = () => app().game,
+    me = () => app().game?.net?.pid || X.pid?.();
+  // ---------- parties survive the lobby: every queued member carries its party lead ----------
+  let ls1 = X.lfg.start;
+  X.lfg.start = function (instId) {
+    let r = ls1.call(this, instId),
+      st = X.lfg.st;
+    st?.members && st.members.forEach((m) => (m.lead = me()));
+    return r;
+  };
+  // ---------- battleground instance ----------
+  let bgSpot = [yI.hamlet[0] - 44, yI.hamlet[1] + 22];
+  {
+    let d = { id: "bg", name: "Wardfall (8v8)", lv: 1, portal: bgSpot, arena: !0, bg: !0, teamSize: 8, zone: "hamlet", stat: "bg", tint: 0x8a9a7a, fog: 0x0e1410, mobs: [] };
+    X.INST.bg = d;
+    let k = Object.keys(X.INST).length - 1;
+    ((d.pocket = [1000 + k * 320, -200 + (k % 2) * 400]), (d.floorY = 2));
+  }
+  let bp1 = X.buildPocket;
+  X.buildPocket = function (game, d) {
+    if (!d.bg) return bp1(game, d);
+    if (d.built) return d.built;
+    let world = game.world,
+      [px, pz] = d.pocket,
+      fy = d.floorY,
+      G = 4,
+      grp = new eA(),
+      W = 70,
+      H = 34,
+      add = (name, o, x, z, ry = 0) => {
+        let m = X.piece(name, { w: o.w, h: o.h, center: !0, tint: o.tint || d.tint });
+        if (!m) return null;
+        (m.position.set(x, fy + (o.y || 0), z), (m.rotation.y = ry), grp.add(m));
+        return m;
+      };
+    let floor = new p(new vi(W * 2 + 8, H * 2 + 8), new xA({ color: 0x5a6a4a, roughness: 1 }));
+    (floor.rotation.x = -Math.PI / 2), floor.position.set(px, fy, pz), (floor.receiveShadow = !0), grp.add(floor);
+    // perimeter walls
+    for (let x = -W; x <= W; x += G) for (let s of [-1, 1]) {
+      let z = pz + s * H;
+      add("k_wall", { w: G, h: null }, px + x, z, 0)?.scale.setY(1.6);
+      world.addBox(px + x, z, G / 2, 0.5, 0, fy + 8, "wall");
+    }
+    for (let z = -H; z <= H; z += G) for (let s of [-1, 1]) {
+      let x = px + s * W;
+      add("k_wall", { w: G, h: null }, x, pz + z, Math.PI / 2)?.scale.setY(1.6);
+      world.addBox(x, pz + z, 0.5, G / 2, 0, fy + 8, "wall");
+    }
+    // cover: ruins and pillars
+    let rng = sI(4242);
+    for (let i = 0; i < 26; i++) {
+      let x = px + (rng() - 0.5) * (W * 2 - 20),
+        z = pz + (rng() - 0.5) * (H * 2 - 10);
+      if (Math.abs(x - px) < 8 || Math.abs(Math.abs(x - px) - 40) < 7) continue;
+      if (rng() < 0.5) {
+        add("k_pillar", { h: 5 }, x, z);
+        world.addCircle(x, z, 0.8, fy + 5, "pillar");
+      } else {
+        let w = add("k_wall_broken", { w: G, h: null }, x, z, rng() * 6.28);
+        w && world.addBox(x, z, G / 2, 0.5, -w.rotation.y, fy + 4, "wall");
+      }
+    }
+    // three wards: west, centre, east
+    let wards = [];
+    for (let [name, x] of [
+      ["West Ward", -40],
+      ["Centre Ward", 0],
+      ["East Ward", 40],
+    ]) {
+      let ring = new p(new ji(5.5, 0.22, 8, 40), world.mat("stone", 0x8a8a7a));
+      (ring.rotation.x = Math.PI / 2), ring.position.set(px + x, fy + 0.12, pz), grp.add(ring);
+      let base = new p(new QA(1.2, 1.5, 1.0, 10), world.mat("stone", 0x6a6a5a));
+      base.position.set(px + x, fy + 0.5, pz);
+      grp.add(base);
+      world.addCircle(px + x, pz, 1.3, fy + 2, "prop");
+      let flame = world.flameMesh(1.4, 0x9a9a9a);
+      (flame.position.set(px + x, fy + 1.3, pz), grp.add(flame));
+      let dome = new p(new JA(6, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), X.domeMat());
+      dome.position.set(px + x, fy, pz);
+      dome.visible = !1;
+      grp.add(dome);
+      let lbl = Sg(name, "#e8d4a0", 36);
+      (lbl.position.set(px + x, fy + 6.5, pz), lbl.scale.set(5, 1, 1), grp.add(lbl));
+      wards.push({ name, x: px + x, z: pz, owner: null, prog: 0, flame, dome, lbl });
+    }
+    // bases
+    add("k_banner_blue", { h: 3.6 }, px - W + 6, pz - 4, Math.PI / 2);
+    add("k_banner_blue", { h: 3.6 }, px - W + 6, pz + 4, Math.PI / 2);
+    add("k_banner_red", { h: 3.6 }, px + W - 6, pz - 4, -Math.PI / 2);
+    add("k_banner_red", { h: 3.6 }, px + W - 6, pz + 4, -Math.PI / 2);
+    let big = new p(new vi(400, 300), new xA({ color: 0x0a0c08, roughness: 1 }));
+    (big.rotation.set(-Math.PI / 2, 0, 0), big.position.set(px, fy - 0.1, pz), grp.add(big));
+    let ceil = new p(new vi(400, 300), new xA({ color: 0x08080a, roughness: 1, side: KA }));
+    (ceil.rotation.set(Math.PI / 2, 0, 0), ceil.position.set(px, fy + 14, pz), grp.add(ceil));
+    grp.traverse((m) => m.isMesh && (m.receiveShadow = !0));
+    world.scene.add(grp);
+    d.built = { group: grp, rooms: [{ x: px, z: pz, half: 10, idx: 0, arena: !0 }], torches: [], gates: [], entry: [px - W + 8, pz], spawnA: [px - W + 8, pz], spawnB: [px + W - 8, pz], center: [px, pz], wards, bounds: { x0: px - 120, x1: px + 120, z0: pz - 100, z1: pz + 100 } };
+    return d.built;
+  };
+  // ---------- team assignment: parties face each other ----------
+  X.arena.setup = function (g, d) {
+    let roster = g._lfgRoster || [],
+      leadOf = (id) => {
+        let pid = id === "self" ? me() : X.pidOf(id),
+          r = roster.find((m) => m.pid === pid);
+        return r?.lead || pid;
+      },
+      humans = ["self", ...[...g.remotes.keys()].filter((id) => !g.remotes.get(id).bot)],
+      bots = [...g.remotes.keys()].filter((id) => g.remotes.get(id).bot),
+      parties = new Map();
+    for (let id of humans) {
+      let l = leadOf(id);
+      parties.has(l) || parties.set(l, []);
+      parties.get(l).push(id);
+    }
+    let n = d.teamSize,
+      A = [],
+      B = [],
+      order = [...parties.values()].sort((a, b) => b.length - a.length || (a.includes("self") ? -1 : 1));
+    for (let party of order) {
+      let tgt = A.length + party.length <= n && (A.length <= B.length || B.length + party.length > n) ? A : B.length + party.length <= n ? B : A;
+      tgt.push(...party);
+    }
+    for (let id of bots) (A.length < n ? A : B).push(id);
+    let cur = { teams: { A, B }, my: A.includes("self") ? "A" : "B", round: 1, score: { A: 0, B: 0 }, phase: "count", t: 6, host: !0, bg: !!d.bg };
+    if (d.bg) Object.assign(cur, { t: 8, bgTime: 600, wards: d.built.wards.map((w) => ({ owner: null, prog: 0 })) });
+    X.arena.cur = cur;
+    X.arena.place(g, d);
+    X.arena.send(g, { t: "aph", teams: X.arena.wire(g, cur.teams), round: 1, score: cur.score, phase: "count", tt: cur.t, bg: !!d.bg });
+    g.ui.banner(d.bg ? "WARDFALL" : "ROUND 1", d.bg ? `Hold the wards \xB7 first to 150 \xB7 begins in 8` : "Fight begins in 6", "#ff8a6a");
+    let hvh = A.some((id) => id !== "self" && !g.remotes.get(id)?.bot) && B.some((id) => !g.remotes.get(id)?.bot) || (A.includes("self") && B.some((id) => !g.remotes.get(id)?.bot));
+    hvh && g.toast("Ranked: humans on both sides", "#ffd070");
+  };
+  // ---------- battleground rules inside the arena tick ----------
+  let tick0 = X.arena.tick;
+  X.arena.tick = function (g, dt) {
+    let c = X.arena.cur,
+      d = g.inst?.def;
+    if (!c?.host || !d?.bg) return tick0.call(this, g, dt);
+    c.t -= dt;
+    if (c.phase === "count") {
+      c.t <= 0 && ((c.phase = "fight"), X.arena.send(g, { t: "aph", phase: "fight", round: 1, score: c.score }), g.ui.banner("WARDFALL", "Take the wards!", "#ff8a6a"), g.audio.play("bell"));
+      return;
+    }
+    if (c.phase !== "fight") {
+      if (c.phase === "end" && c.t <= 0) {
+        let win = c.score.A > c.score.B ? "A" : c.score.B > c.score.A ? "B" : null;
+        X.arena.send(g, { t: "aend", win, bg: !0 });
+        X.arena.finish(g, win);
+        g.after(6, () => g.inst && g.exitInstance());
+        c.phase = "done";
+      }
+      return;
+    }
+    c.bgTime -= dt;
+    X.arena.bots(g, dt);
+    // respawns: anyone down for 8 s comes back at their base
+    let now = g.t;
+    for (let team of ["A", "B"])
+      for (let id of c.teams[team]) {
+        let down = !X.arena.alive(g, id);
+        if (!down) {
+          delete c["dt_" + id];
+          continue;
+        }
+        c["dt_" + id] ??= now;
+        if (now - c["dt_" + id] > 8) {
+          delete c["dt_" + id];
+          X.arena.respawn(g, d, id, team);
+        }
+      }
+    // wards
+    let W = d.built.wards,
+      pos = (id) => (id === "self" ? g.player.pos : g.remotes.get(id)?.pos);
+    c._wt = (c._wt || 0) + dt;
+    W.forEach((w, i) => {
+      let st = c.wards[i],
+        near = { A: 0, B: 0 };
+      for (let team of ["A", "B"]) for (let id of c.teams[team]) if (X.arena.alive(g, id)) { let p = pos(id); p && Math.hypot(p.x - w.x, p.z - w.z) < 6 && near[team]++; }
+      let claim = near.A && !near.B ? "A" : near.B && !near.A ? "B" : null;
+      if (claim && claim !== st.owner) {
+        st.prog += dt / 8;
+        if (st.prog >= 1) {
+          st.owner = claim;
+          st.prog = 0;
+          X.arena.send(g, { t: "award", i, owner: claim });
+          X.arena.wardFx(g, w, claim);
+          g.ui.banner("", `${w.name} taken by ${claim === c.my ? "your team" : "the enemy"}`, claim === c.my ? "#9ad0ff" : "#ff8a6a");
+        }
+      } else if (!claim) st.prog = Math.max(0, st.prog - dt / 8);
+    });
+    if (c._wt >= 2) {
+      c._wt = 0;
+      for (let st of c.wards) st.owner && c.score[st.owner]++;
+      X.arena.send(g, { t: "aph", phase: "fight", round: 1, score: c.score, time: Math.round(c.bgTime) });
+    }
+    if (c.score.A >= 150 || c.score.B >= 150 || c.bgTime <= 0) {
+      c.phase = "end";
+      c.t = 4;
+      let w = c.score.A > c.score.B ? "A" : c.score.B > c.score.A ? "B" : null;
+      X.arena.send(g, { t: "aph", phase: "end", round: 1, score: c.score, win: w, fin: !0 });
+      X.arena.roundBanner(g, w, !0);
+    }
+  };
+  X.arena.wardFx = function (g, w, owner) {
+    let col = owner === "A" ? 0x4a8cff : 0xff4a3a;
+    w.flame.traverse((m) => m.material?.color && m.material.color.setHex(col));
+    w.dome.visible = !0;
+    w.dome.material.uniforms && (w.dome.material.uniforms.uHitT.value = g.world.time || 0);
+    g.fx?.("nova", ii(w.x, g.inst.def.floorY + 0.5, w.z), { color: col, r: 6 });
+  };
+  X.arena.respawn = function (g, d, id, team) {
+    let b = d.built,
+      [x, z] = team === "A" ? b.spawnA : b.spawnB;
+    if (id === "self") {
+      g.player.pos.set(x, d.floorY + 0.2, z + (Math.random() - 0.5) * 6);
+      g.receiveAid({ revive: !0, healPct: 1 });
+      g.player.hp = g.player.maxHp;
+      g.toast("Back into the fight", "#9ad0ff");
+    } else {
+      let r = g.remotes.get(id);
+      if (!r) return;
+      if (r.bot) ((r.downed = !1), (r.dead = !1), (r.hp = r.maxHp), r.pos.set(x, d.floorY, z + (Math.random() - 0.5) * 6), r.target.copy(r.pos), X.bots.packet(r));
+      else g.sendTo(id, { t: "aset", x, z: z + (Math.random() - 0.5) * 6, yaw: team === "A" ? -Math.PI / 2 : Math.PI / 2 });
+    }
+  };
+  // bots in the battleground: go for a ward that is not ours, fight whoever is close
+  let bots0 = X.arena.bots;
+  X.arena.bots = function (g, dt) {
+    let c = X.arena.cur,
+      d = g.inst?.def;
+    if (!c?.bg) return bots0.call(this, g, dt);
+    let W = d.built.wards;
+    for (let r of g.remotes.values()) {
+      if (!r.bot || r.downed || r.dead) continue;
+      let team = X.arena.teamOf(r.id);
+      if (!team) continue;
+      let foes = (team === "A" ? c.teams.B : c.teams.A).filter((id) => X.arena.alive(g, id)),
+        posOf = (id) => (id === "self" ? g.player.pos : g.remotes.get(id)?.pos),
+        nearFoe = foes.map((id) => ({ id, pos: posOf(id) })).filter((f) => f.pos && f.pos.distanceTo(r.pos) < 16).sort((a, b) => a.pos.distanceTo(r.pos) - b.pos.distanceTo(r.pos))[0];
+      if (nearFoe) {
+        // borrow the arena duel behaviour for this one bot by faking a tiny arena state
+        X.arena._one = r;
+        bots0.call(this, g, dt);
+        X.arena._one = null;
+        continue;
+      }
+      // objective: nearest ward not held by us (bots spread: each bot sticks to an index)
+      r._ward ??= (Math.random() * 3) | 0;
+      let w = W[r._ward],
+        st = c.wards[r._ward];
+      if (st.owner === team && Math.random() < dt * 0.3) r._ward = (r._ward + 1 + ((Math.random() * 2) | 0)) % 3;
+      let dx = w.x - r.pos.x,
+        dz = w.z - r.pos.z,
+        dist = Math.hypot(dx, dz);
+      if (dist > 3.5) {
+        r.pos.x += (dx / dist) * Math.min(dist - 3, 5.2 * dt);
+        r.pos.z += (dz / dist) * Math.min(dist - 3, 5.2 * dt);
+        g.world.resolve(r.pos, 0.45, r.pos.y + 0.5);
+        r.pos.y = d.floorY;
+        r.yaw = Math.atan2(-dx, -dz);
+        r.moving = !0;
+      }
+      r.target.copy(r.pos);
+      X.bots.packet(r);
+    }
+  };
+  // lobby matches keep each member's party lead so the host can seat parties against each other
+  let lm0 = X.Lobby.prototype.match;
+  X.Lobby.prototype.match = function () {
+    let comp = X.lfgComp(this.d),
+      need = { ...comp },
+      order = this.parties.slice().sort((a, b) => a.at - b.at),
+      pick = [],
+      fits = (p, n) => {
+        let h = { Tank: 0, Healer: 0, DPS: 0 };
+        for (let m of p.members) h[m.role]++;
+        return Object.keys(n).every((k) => h[k] <= n[k]);
+      };
+    for (let p of order) {
+      if (!fits(p, need)) continue;
+      pick.push(p);
+      for (let m of p.members) need[m.role]--;
+      if (Object.values(need).every((v) => v === 0)) break;
+    }
+    if (!Object.values(need).every((v) => v === 0)) {
+      let n = this.parties.reduce((a, p) => a + p.members.length, 0);
+      for (let p of this.parties) p.conn.open && p.conn.send({ t: "queued", n });
+      return;
+    }
+    let members = pick.flatMap((p) => p.members),
+      host = members[(Math.random() * members.length) | 0].pid;
+    for (let p of pick) {
+      p.conn.open && p.conn.send({ t: "match", host, roster: members.map((m) => ({ pid: m.pid, name: m.name, hero: m.hero, lv: m.lv, role: m.role, lead: m.lead })) });
+      this.parties = this.parties.filter((q) => q !== p);
+    }
+  };
+  // ---------- net additions ----------
+  let on4 = GP.onNet;
+  GP.onNet = function (from, m) {
+    if (m?.t === "award" && this.inst?.def?.bg) {
+      let c = X.arena.cur,
+        w = this.inst.def.built.wards[m.i];
+      c && w && ((c.wards ||= [{}, {}, {}]), (c.wards[m.i].owner = m.owner), X.arena.wardFx(this, w, m.owner), this.ui.banner("", `${w.name} taken by ${m.owner === c.my ? "your team" : "the enemy"}`, m.owner === c.my ? "#9ad0ff" : "#ff8a6a"));
+      return;
+    }
+    if (m?.t === "aph" && m.bg) {
+      let c = (X.arena.cur ||= { teams: { A: [], B: [] }, my: "A", round: 1, score: { A: 0, B: 0 }, phase: "count", t: 0 });
+      c.bg = !0;
+    }
+    if (m?.t === "aph" && m.time !== void 0 && X.arena.cur) X.arena.cur.bgTime = m.time;
+    return on4.call(this, from, m);
+  };
+  // HUD line for the battleground
+  let uh0 = XC.prototype.updateHUD;
+  XC.prototype.updateHUD = function (...a) {
+    uh0.apply(this, a);
+    let g = this.app.game,
+      c = X.arena.cur;
+    if (!g?.inst?.def?.bg || !c) return;
+    let o = document.querySelector("#tracker .tr-o");
+    o && (o.textContent = `Wardfall — ${c.score.A} : ${c.score.B} \xB7 ${c.wards ? c.wards.filter((w) => w.owner === c.my).length : 0}/3 wards \xB7 ${Math.max(0, Math.round(c.bgTime || 0))}s`);
+  };
+  // ---------- seasons, titles, leaderboard ----------
+  X.season = () => {
+    let d = new Date();
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  };
+  X.SEASON_TITLES = [
+    [1600, "Duelist"],
+    [1800, "Gladiator"],
+    [2000, "Champion of the Pit"],
+  ];
+  X.arenaSeasonCheck = function (g) {
+    let p = g.profile,
+      A = (p.arena ||= { rating: 1200, wins: 0, losses: 0, marks: 0, week: X.weekKey(), weekWins: 0 });
+    A.season ||= X.season();
+    if (A.season !== X.season()) {
+      let peak = A.best || A.rating,
+        earned = X.SEASON_TITLES.filter(([r]) => peak >= r).map(([, t]) => t);
+      (A.titles ||= []).push(...earned.filter((t) => !A.titles.includes(t)));
+      A.history = [...(A.history || []), { season: A.season, peak, wins: A.wins, losses: A.losses }].slice(-12);
+      peak >= 2000 && g.setStat("arena_2000", 1);
+      A.rating = Math.round((A.rating + 1200) / 2);
+      A.best = A.rating;
+      A.wins = A.losses = 0;
+      A.season = X.season();
+      earned.length && g.ui.banner("NEW SEASON", `Last season peak ${peak} \xB7 title: ${earned[earned.length - 1]}`, "#ffd070");
+      g.save();
+    }
+  };
+  X.MOUNTS.champdestrier = { name: "Champion's Destrier", speed: 2.45, cost: -1, model: "horse", col: 0xf0e0c0, glow: 0xffd070, stat: ["arena_2000", 1], body: ["horse", { style: "plume", plate: 0xd0a040, blanket: 0x4a2a0a }], desc: "Reward for ending a season at 2000+ arena rating." };
+  WB.push({ id: "bg_first", name: "Ward Taker", desc: "Win a Wardfall battleground.", stat: "bg_wins", goal: 1, reward: 150 }, { id: "bg_10", name: "Warden of the Field", desc: "Win 10 Wardfall battlegrounds.", stat: "bg_wins", goal: 10, reward: 500 });
+  // finish: battleground rewards + season check
+  let fin0 = X.arena.finish;
+  X.arena.finish = function (g, win) {
+    let c = X.arena.cur,
+      bg = c?.bg;
+    fin0.call(this, g, win);
+    if (bg && c && c.finished) {
+      let A = g.profile.arena,
+        mine = win === c.my;
+      A.marks += mine ? 15 : 7; // on top of the arena marks
+      mine && g.track("bg_wins");
+      g.track("bg");
+      g.save();
+    }
+    X.arenaSeasonCheck(g);
+  };
+  // leaderboard among friends: ratings travel with the friend pong
+  let nst = X.Net?.prototype?._status;
+  nst && (X.Net.prototype._status = function () {
+    let s = nst.call(this),
+      A = this.app.profile?.arena;
+    A && ((s.ar = A.rating), (s.aw = A.wins), (s.at = (A.titles || []).slice(-1)[0] || ""));
+    return s;
+  });
+  X.arenaBoard = function (g) {
+    let p = g.profile,
+      rows = [{ name: p.name + " (you)", ar: p.arena?.rating || 1200, aw: p.arena?.wins || 0, at: (p.arena?.titles || []).slice(-1)[0] || "" }];
+    for (let pid in X.fstat || {}) {
+      let s = X.fstat[pid];
+      s?.ar !== void 0 && rows.push({ name: s.name, ar: s.ar, aw: s.aw || 0, at: s.at || "" });
+    }
+    rows.sort((a, b) => b.ar - a.ar);
+    return rows;
+  };
+  let kx0 = X.npcExtra.arena;
+  X.npcExtra.arena = function (g) {
+    X.arenaSeasonCheck(g);
+    let A = g.profile.arena,
+      q = X.lfg.st?.d,
+      board = X.arenaBoard(g),
+      html = kx0.call(this, g);
+    html = html.replace(
+      `<div class="row">${q?.arena ? `<button data-aq="cancel">Leave the queue</button>` : `<button data-aq="arena2">Queue 2v2</button><button data-aq="arena3">Queue 3v3</button>`}</div>`,
+      `<div class="row">${q?.arena ? `<button data-aq="cancel">Leave the queue</button>` : `<button data-aq="arena2">Queue 2v2</button><button data-aq="arena3">Queue 3v3</button><button data-aq="bg">Queue Wardfall 8v8</button>`}</div>
+       <p class="small">Season ${A.season} \xB7 titles: ${(A.titles || []).join(", ") || "none yet"} \xB7 seasons end monthly: rating is halved toward 1200 and your peak earns a title (1600 Duelist, 1800 Gladiator, 2000 Champion + the Champion's Destrier).</p>
+       <h3>Friends leaderboard</h3><table class="lb">${board.map((r, i) => `<tr><td>${i + 1}</td><td>${r.name}</td><td>${r.ar}</td><td>${r.aw}W</td><td>${r.at}</td></tr>`).join("")}</table>
+       <p class="small">Wardfall: two teams of eight (humans first, gladiators fill), three wards — stand alone on a ward for 8 s to take it, every held ward scores a point each 2 s, first to 150 or best after 10 minutes. Downed fighters return at their base after 8 s.</p>`,
+    );
+    return html;
+  };
+  let st = document.createElement("style");
+  st.textContent = `table.lb{border-collapse:collapse;margin:4px 0 8px}table.lb td{padding:2px 10px 2px 0;border-bottom:1px solid #332}`;
+  document.head.appendChild(st);
 }
 
   window.__app = new bE();
