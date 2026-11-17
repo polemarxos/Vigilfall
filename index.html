@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.14.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.15.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -24171,7 +24171,7 @@ a=extmap-allow-mixed`) !== -1
         let A = (this.renderer = new gM({ antialias: !1, powerPreference: "high-performance", stencil: !1 }));
         (A.setSize(innerWidth, innerHeight),
           (A.shadowMap.enabled = !0),
-          (A.shadowMap.type = ee),
+          (A.shadowMap.type = As),
           (A.toneMapping = Zg),
           (A.toneMappingExposure = this.settings.exposure * 1.35),
           (A.outputColorSpace = yi),
@@ -33600,8 +33600,14 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.14.0";
+  X.VERSION = "1.15.0";
   X.CHANGELOG = {
+    "1.15.0": [
+      "Guilds: found one at Registrar Mara in Dawnmere (500 shards). Guilds need no server — the roster, bank and ledger are shared by the members themselves and merge whenever two of them meet (same world, invitations, friend pings). Invite players in your world or friends by code, four ranks (Initiate, Member, Officer, Guild Master), a message of the day, a banner colour, hand-over and disband.",
+      "Guild bank (60 item slots + shards), guild chat with /g in the chat box (reaches guild mates in your world and online elsewhere), <TAG> after guild mates' names, a guild hall (enter from Mara, in your own world) with the bank chest and the ledger, a log of everything that happens.",
+      "Weekly guild quests: three a week drawn for your guild, everyone's progress counts; each completion gives every contributor 150 shards and 10 Vigil Tokens, and raises the guild level (+1% XP per level for all members, up to +10%). Ten guild achievements, three personal ones.",
+      "Polish pass: wisp companions have real bodies now (core, rings, tail, motes), creature idle voices are quieter and rarer, world-event clocks pause while you are in a dungeon or arena, guild/quest sync traffic is rate-limited, the removed soft-shadow mode no longer logs a warning. Headless sweep of all 12 heroes, every panel, NPC, instance, mount, companion and skill: no errors.",
+    ],
     "1.14.0": [
       "Riders sit in the saddle: mounted players (and gladiators) now ride with bent legs, feet in the stirrups and hands on the reins, seated at each creature's real saddle height instead of standing on its back.",
       "Sound & music pass: every zone has its own music (lute in Dawnmere, glass bells in the Reaches, hand drums and flute in the Wastes, flute in Thornwood, organ and thunder on the Heights, swells at sea, pulses in dungeons, war drums in the arena), combat stingers when a fight starts, ends or a boss appears, victory fanfares and a defeat theme. Creatures have voices — skeletons moan, wolves snarl, wraiths wail, bosses roar — when idle, hurt and dying. Footsteps on snow, sand, wood and stone; hooves, paws and claws when mounted; drakes beat their wings. Mounts call when summoned. Potions gulp, gear clinks or rustles, menus tick and click.",
@@ -39269,9 +39275,9 @@ Object.assign(X.COMPANIONS, {
       this._voiceT = 1.4 + Math.random() * 2.2;
       let near = [];
       for (let e of this.enemies.values()) e.alive && !e.submerged && e.pos.distanceToSquared(p.pos) < 900 && near.push(e);
-      if (near.length && Math.random() < 0.55) {
+      if (near.length && Math.random() < 0.4) {
         let e = pick(near);
-        au.play(X.voiceOf(e), e.pos, e.def.boss ? 0.5 : 0.45);
+        au.play(X.voiceOf(e), e.pos, e.def.boss ? 0.5 : 0.35);
       }
     }
     // instance cleared → fanfare
@@ -39760,6 +39766,7 @@ Object.assign(X.COMPANIONS, {
       g.toast(`World event: ${E.name} (${E.zoneName}). A gold marker shows the way.`, "#ffd070");
     },
     hostTick(g, E, dt) {
+      if (g.inst || X.arena?.cur) return; // the clock pauses while the host is in a dungeon or arena
       E.t += dt;
       if (E.kind === "boss") {
         let e = g.enemies.get(E.eid);
@@ -40249,6 +40256,901 @@ Object.assign(X.COMPANIONS, {
 #bigmap.zoomable{position:relative;overflow:hidden;touch-action:none;cursor:grab;border-radius:4px}#bigmap.zoomable canvas{transform-origin:center center;transition:transform .05s linear;will-change:transform}
 .mapzoom{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:4px;z-index:2}.mapzoom button{width:32px;height:32px;padding:0;font-size:18px;line-height:1;border-radius:6px;background:rgba(30,22,14,.85);color:#e8d4a0;border:1px solid rgba(200,170,110,.6)}`;
   document.head.appendChild(css);
+}
+
+/* ---- EF_guilds.js ---- */
+// ===== 1.15: Guilds & community — serverless guilds shared as an op-log that members merge whenever they meet (same world, friend pings, invites) =====
+{
+  let GP = SC.prototype,
+    U = XC.prototype,
+    app = () => window.__app,
+    game = () => app()?.game,
+    net = () => app()?.net,
+    me = () => net()?.pid || X.pid?.(app()),
+    myName = () => app()?.profile?.name || "Vigil",
+    uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3),
+    RANKS = ["Initiate", "Member", "Officer", "Guild Master"],
+    hash = (s) => {
+      let h = 2166136261;
+      for (let c of String(s)) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0;
+      return h >>> 0;
+    };
+
+  // ---------- weekly guild quest pool ----------
+  X.GQUESTS = [
+    { id: "kills", name: "Culling the Dark", desc: "Slay 600 enemies", stat: "kills", goal: 600 },
+    { id: "dungeons", name: "Into the Deep Places", desc: "Clear 12 dungeons", stat: "dungeons", goal: 12 },
+    { id: "raids", name: "Banners in the Citadel", desc: "Clear 2 raids", stat: "raids", goal: 2 },
+    { id: "arena", name: "Blood on the Sand", desc: "Win 10 arena matches", stat: "arena_wins", goal: 10 },
+    { id: "fish", name: "Nets Full", desc: "Catch 120 fish", stat: "fish_caught", goal: 120 },
+    { id: "crafts", name: "Forge and Loom", desc: "Craft 60 things", stat: "crafts", goal: 60 },
+    { id: "caravans", name: "Roads Kept Open", desc: "Bring 4 caravans home", stat: "caravans", goal: 4 },
+    { id: "wbosses", name: "Wardens of the Roads", desc: "Defeat 3 world bosses", stat: "world_bosses", goal: 3 },
+    { id: "quests", name: "Errands of Aldmoor", desc: "Complete 40 quests", stat: "quests_done", goal: 40 },
+    { id: "mplus", name: "Keystones Turned", desc: "Finish 6 Mythic+ runs", stat: "mplus_runs", goal: 6 },
+    { id: "mats", name: "Provisioners", desc: "Gather 400 materials", stat: "mats_gathered", goal: 400 },
+    { id: "bg", name: "Hold the Wards", desc: "Win 4 Wardfall battles", stat: "bg_wins", goal: 4 },
+  ];
+  X.guildWeekQuests = (gid, week = X.weekKey()) => {
+    let pool = X.GQUESTS.slice(),
+      out = [],
+      h = hash(gid + week);
+    for (let i = 0; i < 3 && pool.length; i++) {
+      h = (Math.imul(h, 1103515245) + 12345) >>> 0;
+      out.push(pool.splice(h % pool.length, 1)[0]);
+    }
+    return out;
+  };
+  X.GACH = [
+    { id: "g_found", name: "A Banner Raised", test: (s) => !!s.name },
+    { id: "g_five", name: "Fellowship", test: (s) => Object.keys(s.members).length >= 5 },
+    { id: "g_ten", name: "A Proper Hall", test: (s) => Object.keys(s.members).length >= 10 },
+    { id: "g_bank20", name: "Shared Spoils", test: (s) => s.bank.length >= 20 },
+    { id: "g_gold5k", name: "War Chest", test: (s) => s.goldTotal >= 5000 },
+    { id: "g_q1", name: "First Charge", test: (s) => s.completed >= 1 },
+    { id: "g_q10", name: "Tried and Tested", test: (s) => s.completed >= 10 },
+    { id: "g_q50", name: "Legends of the Vigil", test: (s) => s.completed >= 50 },
+    { id: "g_lv5", name: "Rising Banner", test: (s) => s.level >= 5 },
+    { id: "g_lv10", name: "Pillar of Aldmoor", test: (s) => s.level >= 10 },
+  ];
+  X.guildLevel = (completed) => Math.min(20, 1 + Math.floor(Math.sqrt(completed * 1.2)));
+
+  // ---------- the op-log ----------
+  let CACHE = new WeakMap();
+  X.guild = {
+    rec: () => app()?.profile?.guild || null,
+    rank: (s, pid) => s?.members[pid]?.rank ?? -1,
+    myRank: () => X.guild.rank(X.guild.state(), me()),
+    // replay all ops (sorted by time, then id) into a state
+    state(rec = X.guild.rec()) {
+      if (!rec) return null;
+      let keys = Object.keys(rec.ops),
+        sig = keys.length + ":" + rec.id,
+        c = CACHE.get(rec);
+      if (c && c.sig === sig && !rec._dirty) return c.s;
+      let ops = keys.map((k) => rec.ops[k]).sort((a, b) => a.t - b.t || (a.id < b.id ? -1 : 1)),
+        s = { id: rec.id, name: "", tag: "", color: 0xc0392b, motd: "", members: {}, invited: {}, bank: [], gold: 0, goldTotal: 0, log: [], q: {}, rewarded: {}, disbanded: !1, completed: 0 },
+        rk = (pid) => s.members[pid]?.rank ?? -1,
+        log = (op, text) => s.log.push({ t: op.t, by: op.name || op.by, text });
+      for (let op of ops) {
+        try {
+          switch (op.k) {
+            case "found":
+              if (s.name) break;
+              ((s.name = op.gname), (s.tag = op.tag), (s.color = op.color), (s.founded = op.t), (s.leader = op.by));
+              s.members[op.by] = { pid: op.by, name: op.name, rank: 3, joined: op.t };
+              log(op, `founded ${op.gname}`);
+              break;
+            case "inv":
+              rk(op.by) >= 2 && !s.members[op.pid] && (s.invited[op.pid] = { by: op.by, t: op.t, name: op.pname });
+              break;
+            case "join":
+              if (s.members[op.by] || !s.invited[op.by]) break;
+              ((s.members[op.by] = { pid: op.by, name: op.name, rank: 0, joined: op.t }), delete s.invited[op.by], log(op, "joined the guild"));
+              break;
+            case "leave":
+              if (!s.members[op.by] || rk(op.by) === 3) break;
+              (delete s.members[op.by], log(op, "left the guild"));
+              break;
+            case "kick":
+              if (rk(op.by) < 2 || !s.members[op.pid] || rk(op.pid) >= rk(op.by)) break;
+              log(op, `removed ${s.members[op.pid].name}`);
+              delete s.members[op.pid];
+              break;
+            case "rank":
+              if (rk(op.by) !== 3 || !s.members[op.pid] || op.pid === op.by || op.r < 0 || op.r > 2) break;
+              ((s.members[op.pid].rank = op.r), log(op, `made ${s.members[op.pid].name} ${RANKS[op.r]}`));
+              break;
+            case "handover":
+              if (rk(op.by) !== 3 || !s.members[op.pid]) break;
+              ((s.members[op.by].rank = 2), (s.members[op.pid].rank = 3), (s.leader = op.pid), log(op, `handed the guild to ${s.members[op.pid].name}`));
+              break;
+            case "motd":
+              rk(op.by) >= 2 && ((s.motd = String(op.text || "").slice(0, 200)), log(op, "changed the message of the day"));
+              break;
+            case "color":
+              rk(op.by) === 3 && ((s.color = op.color), log(op, "changed the banner"));
+              break;
+            case "dep":
+              if (rk(op.by) < 0 || !op.item || s.bank.some((b) => b.item.uid === op.item.uid)) break;
+              (s.bank.push({ item: op.item, by: op.name, t: op.t }), log(op, `deposited ${op.item.name}`));
+              break;
+            case "wd": {
+              if (rk(op.by) < 1) break;
+              let i = s.bank.findIndex((b) => b.item.uid === op.uid);
+              if (i < 0) {
+                op.by === me() && (s.lostWd ||= []).push(op.uid);
+                break;
+              }
+              log(op, `took ${s.bank[i].item.name}`);
+              s.bank.splice(i, 1);
+              break;
+            }
+            case "gold":
+              if (rk(op.by) < 0) break;
+              if (op.d < 0 && (rk(op.by) < 2 || s.gold + op.d < 0)) break;
+              ((s.gold += op.d), op.d > 0 && (s.goldTotal += op.d), log(op, `${op.d > 0 ? "deposited" : "withdrew"} ${Math.abs(op.d)} shards`));
+              break;
+            case "qprog":
+              if (rk(op.by) < 0) break;
+              ((s.q[op.week] ||= {})[op.qid] ||= {})[op.by] = Math.max(((s.q[op.week] || {})[op.qid] || {})[op.by] || 0, op.n);
+              break;
+            case "disband":
+              rk(op.by) === 3 && ((s.disbanded = !0), log(op, "disbanded the guild"));
+              break;
+          }
+        } catch (e) {}
+      }
+      // quest completion → guild level
+      for (let week in s.q) {
+        for (let qid in s.q[week]) {
+          let Q = X.GQUESTS.find((q) => q.id === qid);
+          if (!Q) continue;
+          let total = Object.values(s.q[week][qid]).reduce((a, b) => a + b, 0);
+          total >= Q.goal && (s.completed++, (s.rewarded[week + ":" + qid] = !0));
+        }
+      }
+      s.level = X.guildLevel(s.completed);
+      s.ach = X.GACH.filter((a) => a.test(s)).map((a) => a.id);
+      s.log = s.log.slice(-40).reverse();
+      CACHE.set(rec, { sig, s });
+      rec._dirty = !1;
+      return s;
+    },
+    // record an op of my own
+    op(k, data = {}) {
+      let rec = X.guild.rec();
+      if (!rec) return null;
+      let op = { id: uid(), t: Date.now(), by: me(), name: myName(), k, ...data };
+      rec.ops[op.id] = op;
+      rec._dirty = !0;
+      app().saveProfile?.();
+      X.guild.push();
+      return op;
+    },
+    // merge another record into mine (union of ops)
+    merge(other) {
+      let rec = X.guild.rec();
+      if (!other || !other.ops || !rec || rec.id !== other.id) return !1;
+      let changed = !1;
+      for (let id in other.ops) if (!rec.ops[id]) ((rec.ops[id] = other.ops[id]), (changed = !0));
+      if (changed) {
+        rec._dirty = !0;
+        app().saveProfile?.();
+        let s = X.guild.state();
+        // a withdrawal of mine that lost to someone else's: give the item back to the bank's truth
+        if (s.lostWd?.length) {
+          let p = app().profile;
+          for (let u of s.lostWd) {
+            let i = p.inventory.findIndex((it) => it.uid === u);
+            i >= 0 && (p.inventory.splice(i, 1), game()?.toast("A guild bank item you took had already been taken by someone else — it was returned", "#ff9a6a"));
+          }
+          s.lostWd = [];
+        }
+        X.guild.afterSync();
+      }
+      return changed;
+    },
+    wire: () => {
+      let r = X.guild.rec();
+      return r ? { id: r.id, ops: r.ops } : null;
+    },
+    // push my record to members in this world and (rate-limited) to online members elsewhere
+    push() {
+      let g = game(),
+        w = X.guild.wire();
+      if (!g || !w) return;
+      clearTimeout(this._pushT);
+      let wait = Math.max(800, 5000 - (Date.now() - (this._pushAt || 0)));
+      this._pushT = setTimeout(() => {
+        this._pushAt = Date.now();
+        let w2 = X.guild.wire();
+        w2 && g.net && (g.isHost ? g.net.broadcast({ t: "gsync", g: w2 }) : g.net.send({ t: "gsync", g: w2 }));
+        X.guild.syncRemote();
+      }, wait);
+    },
+    async syncRemote(force) {
+      let s = X.guild.state(),
+        n = net();
+      if (!s || !n?.peer || n.offline) return;
+      let now = Date.now();
+      this._last ||= {};
+      let inWorld = new Set([...(game()?.remotes.keys() || [])].map((k) => X.pidOf(k)));
+      for (let pid in s.members) {
+        if (pid === me() || inWorld.has(pid)) continue;
+        if (!force && now - (this._last[pid] || 0) < 60000) continue;
+        this._last[pid] = now;
+        let r = await n.request(pid, { t: "gsync", g: X.guild.wire(), from: me() }, 4000);
+        r?.g && (X.guild.merge(r.g), (X.guild.seen ||= {})[pid] = Date.now());
+      }
+    },
+    afterSync() {
+      let u = app()?.ui;
+      u?.curPanel === "guild" && u.panel("guild");
+      X.guild.checkRewards();
+      X.guild.refreshTags();
+    },
+    // ---------- actions ----------
+    found(name, tag, color) {
+      let p = app().profile,
+        g = game();
+      name = String(name || "").trim().slice(0, 24);
+      tag = String(tag || "")
+        .trim()
+        .toUpperCase()
+        .slice(0, 4);
+      if (name.length < 3) return "Name needs at least 3 letters";
+      if (tag.length < 2) return "Tag needs 2–4 letters";
+      if (X.guild.rec() && !X.guild.state().disbanded) return "You are already in a guild";
+      if (p.shards < 500) return "Founding a guild costs 500 shards";
+      p.shards -= 500;
+      p.guild = { id: uid(), ops: {} };
+      X.guild.op("found", { gname: name, tag, color });
+      g?.ui.banner(name.toUpperCase(), `<${tag}> — your guild is founded`, "#ffd070");
+      g?.audio.play("fanfare");
+      g?.track("guild_founded");
+      X.guild.refreshTags();
+      return "";
+    },
+    leave() {
+      let s = X.guild.state(),
+        p = app().profile;
+      if (!s) return;
+      if (X.guild.myRank() === 3) {
+        let others = Object.values(s.members).filter((m) => m.pid !== me());
+        if (others.length) return game()?.toast("Hand the guild to an officer first (Settings), or disband it", "#ff9a6a");
+        X.guild.op("disband");
+      } else X.guild.op("leave");
+      // say goodbye right away, before the record is dropped
+      clearTimeout(X.guild._pushT);
+      let g = game(),
+        w = X.guild.wire();
+      g?.net && w && (g.isHost ? g.net.broadcast({ t: "gsync", g: w }) : g.net.send({ t: "gsync", g: w }));
+      X.guild.syncRemote(!0);
+      setTimeout(() => {
+        p.guild = null;
+        app().saveProfile?.();
+        X.guild.refreshTags();
+        game()?.toast("You have left the guild", "#c0c0c0");
+        app().ui.curPanel === "guild" && app().ui.panel("social");
+      }, 1200);
+    },
+    // invites: in-world by remote key, elsewhere by friend pid
+    invite(pid, name, remoteKey) {
+      let s = X.guild.state(),
+        g = game();
+      if (!s || X.guild.myRank() < 2) return g?.toast("Only officers can invite", "#ff9a6a");
+      if (s.members[pid]) return g?.toast(`${name} is already a member`, "#ff9a6a");
+      X.guild.op("inv", { pid, pname: name });
+      let m = { t: "ginvite", from: me(), name: myName(), gname: s.name, tag: s.tag, g: X.guild.wire() };
+      if (remoteKey) g.sendTo(remoteKey, m);
+      else net().request(pid, m, 6000).then((r) => r?.g && X.guild.merge(r.g));
+      g?.toast(`Guild invitation sent to ${name}`, "#8affc0");
+    },
+    onInvite(pid, m, reply) {
+      let g = game();
+      if (X.guild.rec() && !X.guild.state()?.disbanded) return reply?.({ t: "gno" }), g?.toast(`${m.name} invited you to <${m.tag}> but you are already in a guild`, "#ff9a6a");
+      X.social.ask(
+        `${m.name} invites you to the guild ${m.gname} <${m.tag}>`,
+        "Accept [Y] · Decline [N]",
+        () => {
+          app().profile.guild = { id: m.g.id, ops: { ...m.g.ops } };
+          X.guild.op("join");
+          g?.ui.banner(m.gname.toUpperCase(), `You joined <${m.tag}>`, "#ffd070");
+          g?.audio.play("fanfare");
+          reply?.({ t: "gjoin", g: X.guild.wire() });
+          X.guild.refreshTags();
+          // tell everyone else too
+          X.guild.push();
+        },
+        () => reply?.({ t: "gno" }),
+      );
+    },
+    deposit(uidItem) {
+      let p = app().profile,
+        i = p.inventory.findIndex((it) => it.uid === uidItem);
+      if (i < 0) return;
+      let s = X.guild.state();
+      if (s.bank.length >= 60) return game()?.toast("The guild bank is full (60 slots)", "#ff6a5a");
+      let it = p.inventory.splice(i, 1)[0];
+      X.guild.op("dep", { item: it });
+      game()?.audio.play("chest", null, 0.6);
+    },
+    withdraw(u) {
+      let p = app().profile,
+        s = X.guild.state(),
+        b = s.bank.find((x) => x.item.uid === u);
+      if (!b) return;
+      if (X.guild.myRank() < 1) return game()?.toast("Initiates cannot take from the bank", "#ff9a6a");
+      if (p.inventory.length >= 40) return game()?.toast("Inventory full", "#ff4a3a");
+      p.inventory.push(b.item);
+      X.guild.op("wd", { uid: u });
+      game()?.ui.lootToast(b.item, game());
+    },
+    gold(d) {
+      let p = app().profile,
+        s = X.guild.state();
+      d = Math.round(+d || 0);
+      if (!d) return;
+      if (d > 0 && p.shards < d) return game()?.toast("Not enough shards", "#ff6a5a");
+      if (d < 0 && (X.guild.myRank() < 2 || s.gold + d < 0)) return game()?.toast("Officers can withdraw up to the bank's balance", "#ff9a6a");
+      p.shards -= d;
+      X.guild.op("gold", { d });
+      game()?.audio.play(d > 0 ? "coin" : "coinspend", null, 0.7);
+    },
+    // weekly quests: my contribution rides on track()
+    progress(stat, n) {
+      let s = X.guild.state();
+      if (!s || s.disbanded || !s.members[me()]) return;
+      let week = X.weekKey(),
+        p = app().profile;
+      for (let Q of X.guildWeekQuests(s.id, week)) {
+        if (Q.stat !== stat) continue;
+        let key = week + ":" + Q.id,
+          mine = ((p.guildQ ||= {})[key] = (p.guildQ[key] || 0) + n),
+          rec = X.guild.rec(),
+          id = `q:${key}:${me()}`,
+          total = Object.values(s.q[week]?.[Q.id] || {}).reduce((a, b) => a + b, 0);
+        rec.ops[id] = { id, t: Date.now(), by: me(), name: myName(), k: "qprog", week, qid: Q.id, n: mine };
+        rec._dirty = !0;
+        if (total < Q.goal && total + n >= Q.goal) {
+          game()?.ui.banner("GUILD QUEST COMPLETE", Q.name, "#ffd070");
+          game()?.audio.play("fanfare");
+          setTimeout(() => X.guild.checkRewards(), 50);
+        }
+        X.guild.push();
+      }
+    },
+    checkRewards() {
+      let s = X.guild.state(),
+        p = app()?.profile,
+        g = game();
+      if (!s || !p || !g) return;
+      p.guildRew ||= {};
+      for (let key in s.rewarded) {
+        if (p.guildRew[key]) continue;
+        let [week, qid] = key.split(":"),
+          Q = X.GQUESTS.find((q) => q.id === qid),
+          mine = (s.q[week]?.[qid] || {})[me()] || 0;
+        if (!Q || mine < Q.goal * 0.05) continue;
+        p.guildRew[key] = 1;
+        p.shards += 150;
+        p.tokens = (p.tokens || 0) + 10;
+        g.toast(`Guild quest reward: ${Q.name} — +150 shards, +10 Vigil Tokens`, "#ffd070");
+        g.track("guild_quests");
+      }
+    },
+    // name tags: <TAG> after the name of guild mates in the world
+    refreshTags() {},
+    myTag() {
+      let s = X.guild.state();
+      return s && !s.disbanded && s.members[me()] ? s.tag : "";
+    },
+    chat(text) {
+      let s = X.guild.state(),
+        g = game();
+      if (!s || !s.members[me()]) return g?.toast("You are not in a guild", "#ff9a6a");
+      let m = { t: "gchat", gid: s.id, n: myName(), m: text.slice(0, 140), tag: s.tag };
+      g.ui.chatLine(`[Guild] ${m.n}`, m.m);
+      let inWorld = new Set();
+      if (g.net) {
+        g.isHost ? g.net.broadcast(m) : g.net.send(m);
+        for (let k of g.remotes.keys()) inWorld.add(X.pidOf(k));
+      }
+      let n = net();
+      if (!n?.peer || n.offline) return;
+      for (let pid in s.members) {
+        if (pid === me() || inWorld.has(pid)) continue;
+        let seen = Math.max(X.guild.seen?.[pid] || 0, X.fstat?.[pid]?.at || 0);
+        Date.now() - seen < 900000 && n.request(pid, { ...m, from: me() }, 3000);
+      }
+    },
+  };
+
+  // ---------- net plumbing ----------
+  let on0 = GP.onNet;
+  GP.onNet = function (from, m) {
+    switch (m?.t) {
+      case "gsync": {
+        let rec = X.guild.rec();
+        if (rec && m.g?.id === rec.id) {
+          let before = Object.keys(rec.ops).length;
+          X.guild.merge(m.g);
+          // answer with mine when I know more
+          Object.keys(rec.ops).length > Object.keys(m.g.ops).length && this.sendTo(from, { t: "gsync", g: X.guild.wire() });
+        }
+        this.isHost && this.net.broadcast(m, from);
+        return;
+      }
+      case "ginvite":
+        X.guild.onInvite(X.pidOf(from), m, (r) => this.sendTo(from, { ...r, inv: 1 }));
+        return;
+      case "gjoin":
+        m.g && X.guild.merge(m.g);
+        return;
+      case "gno":
+        m.inv && this.toast("Guild invitation declined", "#c0c0c0");
+        return;
+      case "gchat": {
+        let s = X.guild.state();
+        s && s.id === m.gid && this.ui.chatLine(`[Guild] ${m.n}`, m.m);
+        this.isHost && this.net.broadcast(m, from);
+        return;
+      }
+    }
+    return on0.call(this, from, m);
+  };
+  // aux (cross-world one-shot connections)
+  X.onAux?.((pid, m, reply) => {
+    if (m.t === "gsync") {
+      let rec = X.guild.rec();
+      if (rec && m.g?.id === rec.id) {
+        X.guild.merge(m.g);
+        (X.guild.seen ||= {})[pid] = Date.now();
+        reply({ t: "gsync", g: X.guild.wire() });
+      } else reply({ t: "gno" });
+      return !0;
+    }
+    if (m.t === "ginvite") {
+      X.guild.onInvite(pid, m, reply);
+      return !0;
+    }
+    if (m.t === "gchat") {
+      let s = X.guild.state();
+      s && s.id === m.gid && game()?.ui.chatLine(`[Guild] ${m.n}`, m.m);
+      reply({ t: "ok" });
+      return !0;
+    }
+    return !1;
+  });
+  // friends' pong shows the guild
+  let st0 = X.Net.prototype._status;
+  X.Net.prototype._status = function () {
+    let s = st0.call(this),
+      G = X.guild.state();
+    G && !G.disbanded && G.members[me()] && (s.guild = { id: G.id, name: G.name, tag: G.tag });
+    return s;
+  };
+  // my tag travels in the movement packet (and the host's snapshot); tags on remotes
+  let ns0 = GP.netSend;
+  GP.netSend = function () {
+    let n0 = this.net;
+    if (!n0) return ns0.call(this);
+    let send0 = n0.send,
+      bc0 = n0.broadcast,
+      tag = X.guild.myTag(),
+      patch = (m) => {
+        m && m.t === "me" && (m.gt = tag);
+        m && m.t === "snap" && m.ps?.host && (m.ps.host.gt = tag);
+        return m;
+      };
+    n0.send = function (m) {
+      return send0.call(this, patch(m));
+    };
+    n0.broadcast = function (m, ex) {
+      return bc0.call(this, patch(m), ex);
+    };
+    try {
+      ns0.call(this);
+    } finally {
+      ((n0.send = send0), (n0.broadcast = bc0));
+    }
+  };
+  let ur0 = GP.updateRemote;
+  GP.updateRemote = function (id, m) {
+    ur0.call(this, id, m);
+    let R = this.remotes.get(id);
+    R && m.gt !== void 0 && (R.gt = m.gt || "");
+  };
+  let pt0 = U.placeTag;
+  U.placeTag = function (A, i, I, w) {
+    pt0.call(this, A, i, I, w);
+    if (I?.gt && A.style.display !== "none") {
+      let sm = A.querySelector("small");
+      sm && (sm.textContent = `<${I.gt}> ` + sm.textContent);
+    }
+  };
+  let gs0 = GP.start;
+  GP.start = function (...a) {
+    let r = gs0.apply(this, a);
+    setTimeout(() => {
+      X.guild.push();
+      X.guild.checkRewards();
+    }, 4000);
+    return r;
+  };
+  // periodic sync with members in this world and elsewhere
+  let up0 = GP.update;
+  GP.update = function (dt) {
+    up0.call(this, dt);
+    this._gsT = (this._gsT || 0) + dt;
+    if (this._gsT > 90 && X.guild.rec()) {
+      this._gsT = 0;
+      X.guild.push();
+    }
+  };
+  // quest progress rides on track()
+  let tr0 = GP.track;
+  GP.track = function (A, i = 1) {
+    let r = tr0.call(this, A, i);
+    try {
+      X.guild.progress(A, i);
+    } catch (e) {}
+    return r;
+  };
+  // guild level: +1% XP per level (max +10%)
+  let gx0 = GP.gainXp;
+  GP.gainXp = function (a) {
+    let s = X.guild.state(),
+      lv = s && !s.disbanded && s.members[me()] ? s.level : 0;
+    return gx0.call(this, lv > 1 ? a * (1 + Math.min(10, lv - 1) * 0.01) : a);
+  };
+  // "/g text" in chat goes to the guild
+  let co0 = U.chatOpen;
+  U.chatOpen = function (...a) {
+    let r = co0.apply(this, a),
+      B = document.querySelector("#chatin");
+    if (!B || B._gWrapped) return r;
+    B._gWrapped = !0;
+    let kd = B.onkeydown;
+    B.onkeydown = (e) => {
+      if (e.key === "Enter" && /^\/g\s+\S/.test(B.value)) {
+        e.stopPropagation();
+        X.guild.chat(B.value.replace(/^\/g\s+/, "").slice(0, 140));
+        ((B.style.display = "none"), (this.chatting = !1), B.blur(), (B.value = ""), this.app.lock());
+        return;
+      }
+      return kd?.(e);
+    };
+    return r;
+  };
+
+  // ---------- registrar NPC + hall ----------
+  let hamlet = yI.hamlet,
+    spot = [hamlet[0] - 12, hamlet[1] + 24];
+  qI.push({ id: "mara", name: "Registrar Mara", title: "Keeper of the Guild Rolls", pos: spot, shop: "guild", look: { robe: 0x3a2a4a, trim: 0xffd070, sex: "f", hair: "long", hairC: 0x8a6a4a }, greet: "Banners, oaths and ledgers. Found a guild, or find your hall.", loc: "Dawnmere" });
+  Object.assign(ZM, { mara: { m: "mage", tint: 0xd8c8ff, show: [], hat: !1 } });
+  X.npcExtra = X.npcExtra || {};
+  X.npcBind = X.npcBind || {};
+  X.npcExtra.guild = function (g) {
+    let s = X.guild.state();
+    if (!s || s.disbanded || !s.members[me()]) return `<h3>Found a guild <small>500 shards</small></h3><p class="small">A guild is shared by its members wherever they play: roster, bank, chat (<b>/g</b> in chat), weekly guild quests and a hall. Members sync whenever they meet — in the same world, or through friend pings.</p>
+      <div class="row"><input id="gname" placeholder="Guild name" maxlength="24"> <input id="gtag" placeholder="TAG" maxlength="4" style="width:70px;text-transform:uppercase"> <input id="gcol" type="color" value="#c0392b"> <button data-gfound>Found (500 ✦)</button></div><div id="gmsg" class="small"></div>
+      <p class="small">Already in a guild elsewhere? Ask an officer to invite you — from the same world, or by friend code.</p>`;
+    return `<h3>${s.name} <small>&lt;${s.tag}&gt; · level ${s.level} · ${Object.keys(s.members).length} members</small></h3>
+      <div class="row"><button data-gpanel>Open the guild ledger</button>${!g.net || g.isHost ? `<button data-ghall>Enter the guild hall</button>` : `<span class="small">(the hall opens from your own world)</span>`}</div>`;
+  };
+  X.npcBind.guild = function (g, root, redo) {
+    root.querySelector("[data-gfound]") &&
+      (root.querySelector("[data-gfound]").onclick = () => {
+        let r = X.guild.found(root.querySelector("#gname").value, root.querySelector("#gtag").value, parseInt(root.querySelector("#gcol").value.slice(1), 16));
+        r ? (root.querySelector("#gmsg").textContent = r) : redo();
+      });
+    root.querySelector("[data-gpanel]") && (root.querySelector("[data-gpanel]").onclick = () => (g.ui.closeModal(), g.ui.panel("guild")));
+    root.querySelector("[data-ghall]") && (root.querySelector("[data-ghall]").onclick = () => (g.ui.closeModal(), X.enterHall(g)));
+  };
+  // the hall: a pocket like the manor, in the guild's colour
+  X.HALL = { pocket: [1000, 600] };
+  X.buildHall = function (g) {
+    let w = g.world,
+      s = X.guild.state(),
+      key = "hall:" + (s?.color || 0) + ":" + s?.tag;
+    if (w.hallBuilt?.key === key) return w.hallBuilt;
+    w.hallBuilt && w.scene.remove(w.hallBuilt.group);
+    let [px, pz] = X.HALL.pocket,
+      fy = X.HOUSE.floorY,
+      G = 3,
+      grp = new eA(),
+      add = (name, o, x, z, ry = 0) => {
+        let m = X.piece(name, { w: o.w, h: o.h, center: !0, tint: o.tint || 0xd8c8a8 });
+        if (!m) return null;
+        (m.position.set(x, fy + (o.y || 0), z), (m.rotation.y = ry), grp.add(m));
+        return m;
+      },
+      W = 5,
+      H = 3;
+    for (let i = -W; i <= W; i++) for (let j = -H; j <= H; j++) add("k_floor_wood_large", { w: G }, px + i * G, pz + j * G);
+    for (let i = -W; i <= W; i++)
+      for (let sd of [-1, 1]) {
+        let z = pz + sd * (H + 0.5) * G,
+          isDoor = sd === 1 && i === 0,
+          m = add(isDoor ? "k_wall_doorway" : i % 3 === 0 ? "k_wall_window_open" : "k_wall", { w: G }, px + i * G, z, sd === 1 ? 0 : Math.PI);
+        m && (m.scale.y *= 1.8);
+        isDoor || w.addBox(px + i * G, z, G / 2, 0.5, 0, fy + 8, "wall");
+        if (!isDoor && (i + W) % 2 === 1) {
+          let tt = add("k_torch_mounted", { h: 1 }, px + i * G, z - sd * 0.5, sd === 1 ? Math.PI : 0);
+          tt && (tt.position.y = fy + 2);
+          w.addEmitter(px + i * G, fy + 2.6, z - sd * 0.6, 0xffb060, 2.2, 12, 0.3);
+        }
+      }
+    for (let j = -H; j <= H; j++)
+      for (let sd of [-1, 1]) {
+        let x = px + sd * (W + 0.5) * G,
+          m = add(j % 2 === 0 ? "k_wall_window_open" : "k_wall", { w: G }, x, pz + j * G, sd > 0 ? Math.PI / 2 : -Math.PI / 2);
+        m && (m.scale.y *= 1.8);
+        w.addBox(x, pz + j * G, 0.5, G / 2, 0, fy + 8, "wall");
+      }
+    let entry = [px, pz + H * G - 1],
+      feats = [],
+      put = (name, o, x, z, ry, feat) => {
+        let m = add(name, o, x, z, ry);
+        m && w.addCircle(x, z, o.r || 0.8, fy + 2, "prop");
+        feat && feats.push({ ...feat, pos: [x, z] });
+        return m;
+      };
+    // long table, bank chest, quest board, banners in the guild colour
+    put("k_table_long", { w: 4 }, px, pz, 0) || put("k_table_medium", { w: 3 }, px, pz, 0);
+    for (let i = -2; i <= 2; i++) i && add("k_chair", { w: 0.8 }, px + i * 1.3, pz + 1.3, Math.PI), i && add("k_chair", { w: 0.8 }, px + i * 1.3, pz - 1.3, 0);
+    put("k_chest_gold", { w: 1.6 }, px + (W - 1) * G, pz - (H - 1) * G, -Math.PI / 2, { kind: "gbank", text: "Open the guild bank" });
+    put("k_shelves", { w: 2 }, px - (W - 1) * G, pz - (H - 1) * G, Math.PI / 2, { kind: "gboard", text: "Read the guild ledger (roster, quests, log)" });
+    let col = s?.color || 0xc0392b,
+      ban = (x, z) => {
+        let b = add("k_banner_red", { h: 2.6 }, x, z, 0);
+        if (b) {
+          b.position.y = fy + 1.2;
+          b.traverse((m) => m.isMesh && (m.material = zM(m.material, col, 0, 0, !0)));
+        }
+      };
+    for (let i = -W + 1; i <= W - 1; i += 2) Math.abs(i) > 0 && ban(px + i * G, pz - H * G + 0.3);
+    let lbl = Sg(`${s?.name || "Guild Hall"}  <${s?.tag || ""}>`, "#ffe4a0", 30);
+    (lbl.position.set(px, fy + 4.6, pz - H * G + 0.4), lbl.scale.set(5, 0.9, 1), grp.add(lbl));
+    let hearth = new p(new iA(2.2, 1.6, 0.8), w.mat("stone", 0x6a6058));
+    (hearth.position.set(px, fy + 0.8, pz - H * G + 0.6), grp.add(hearth), w.addBox(px, pz - H * G + 0.6, 1.1, 0.5, 0, fy + 2, "prop"));
+    let fl = w.flameMesh(1);
+    (fl.position.set(px, fy + 0.2, pz - H * G + 1.1), grp.add(fl), w.addEmitter(px, fy + 1, pz - H * G + 1.2, 0xffa040, 4, 18, 0.35));
+    let ceil = new p(new vi((2 * W + 3) * G, (2 * H + 3) * G), new xA({ color: 0x2a1a10, roughness: 1, side: KA }));
+    (ceil.rotation.set(Math.PI / 2, 0, 0), ceil.position.set(px, fy + 6.2, pz), grp.add(ceil));
+    let big = new p(new vi(200, 200), new xA({ color: 0x0a0a0c, roughness: 1 }));
+    (big.rotation.set(-Math.PI / 2, 0, 0), big.position.set(px, fy - 0.1, pz), grp.add(big));
+    grp.traverse((m) => m.isMesh && (m.receiveShadow = !0));
+    w.scene.add(grp);
+    return (w.hallBuilt = { key, group: grp, entry, feats, hall: !0, bounds: { x0: px - 60, x1: px + 60, z0: pz - 60, z1: pz + 60 } });
+  };
+  X.enterHall = function (g) {
+    if (g.inst || g.home) return;
+    if (g.net && !g.isHost) return g.toast("The guild hall opens from your own world (you are a guest here)", "#ff9a6a");
+    let b = X.buildHall(g),
+      A = g.player;
+    g.dismount?.(!0);
+    for (let e of [...g.enemies.values()]) g.removeEnemy(e);
+    ((g.world.pocket = b.bounds), (g.world.pocketY = X.HOUSE.floorY), (g._homeReturn = [A.pos.x, A.pos.z]), (g.pocket = !0), (g.home = b));
+    A.pos.set(b.entry[0], X.HOUSE.floorY + 0.2, b.entry[1]);
+    A.vel.set(0, 0, 0);
+    g.lookAt(ii(b.entry[0], 0, b.entry[1] - 10));
+    (g.world.sky.visible = !1), g.world.clouds && g.world.clouds.forEach((L) => (L.mesh.visible = !1));
+    g.ui.banner("GUILD HALL", X.guild.state()?.name || "", "#ffd070");
+    g.audio.play("bell", null, 0.5);
+  };
+  let sp0 = GP.sysPrompt;
+  GP.sysPrompt = function () {
+    if (this.home?.hall) {
+      let A = this.player,
+        b = this.home;
+      for (let f of b.feats) if (Math.hypot(A.pos.x - f.pos[0], A.pos.z - f.pos[1]) < 2.4) return { text: `[F] ${f.text}`, near: { kind: "home_" + f.kind } };
+      if (Math.hypot(A.pos.x - b.entry[0], A.pos.z - b.entry[1]) < 2.2) return { text: "[F] Leave the hall", near: { kind: "home_exit" } };
+      return null;
+    }
+    return sp0.call(this);
+  };
+  let si0 = GP.sysInteract;
+  GP.sysInteract = function (n) {
+    if (n.kind === "home_gbank") return this.ui.panel("guild", "bank"), !0;
+    if (n.kind === "home_gboard") return this.ui.panel("guild"), !0;
+    return si0.call(this, n);
+  };
+
+  // ---------- the guild panel ----------
+  U.guildHTML = function (tab) {
+    let g = this.app.game,
+      p = this.app.profile,
+      s = X.guild.state();
+    if (!s || s.disbanded || !s.members[me()]) return `<h2>Guild</h2><p class="small">You are not in a guild. Found one at Registrar Mara in Dawnmere (500 shards), or ask an officer of an existing guild to invite you.</p>`;
+    tab = tab || this._gtab || "roster";
+    this._gtab = tab;
+    let rk = X.guild.myRank(),
+      week = X.weekKey(),
+      online = (pid) => pid === me() || [...g.remotes.keys()].some((k) => X.pidOf(k) === pid) || Date.now() - Math.max(X.guild.seen?.[pid] || 0, X.fstat?.[pid]?.at || 0) < 300000,
+      members = Object.values(s.members).sort((a, b) => b.rank - a.rank || a.name.localeCompare(b.name)),
+      tabs = [
+        ["roster", "Roster"],
+        ["bank", "Bank"],
+        ["quests", "Weekly quests"],
+        ["ach", "Achievements"],
+        ["log", "Log"],
+        ["settings", "Settings"],
+      ]
+        .map(([id, nm]) => `<button class="tab ${id === tab ? "on" : ""}" data-gtab="${id}">${nm}</button>`)
+        .join(""),
+      body = "";
+    if (tab === "roster") {
+      let inWorld = [...g.remotes.entries()].filter(([k, R]) => !R.bot && !s.members[X.pidOf(k)]),
+        friends = (p.friends || []).filter((f) => !s.members[f.pid]);
+      body = `<div class="dgrid">${members.map((m) => `<div class="recipe"><div><b>${m.name}</b> ${m.pid === me() ? "(you)" : ""}<div class="small">${RANKS[m.rank]} · ${online(m.pid) ? '<span style="color:#8aff9a">online</span>' : "offline"} · joined ${new Date(m.joined).toLocaleDateString()}</div></div>
+        ${rk >= 2 && m.pid !== me() && m.rank < rk ? `<div class="row">${rk === 3 ? `<select data-grank="${m.pid}">${[0, 1, 2].map((r) => `<option value="${r}" ${r === m.rank ? "selected" : ""}>${RANKS[r]}</option>`).join("")}</select>` : ""}<button data-gkick="${m.pid}" class="ghost">Remove</button></div>` : ""}</div>`).join("")}</div>
+      ${rk >= 2 ? `<h3>Invite</h3><div class="dgrid">${inWorld.map(([k, R]) => `<div class="recipe"><div><b>${R.name}</b><div class="small">in this world</div></div><button data-ginv="${X.pidOf(k)}|${R.name}|${k}">Invite</button></div>`).join("")}${friends.map((f) => `<div class="recipe"><div><b>${f.name}</b><div class="small">friend · ${X.fstat?.[f.pid] ? "online" : "last seen offline"}</div></div><button data-ginv="${f.pid}|${f.name}|">Invite</button></div>`).join("") || (inWorld.length ? "" : '<div class="small">Nobody to invite right now — players in your world and your friends appear here.</div>')}</div>` : ""}`;
+    } else if (tab === "bank") {
+      let ih = (it) => `<span style="color:${ui.find((x) => x.id === it.rarity)?.color || "#fff"}">${it.name}</span> <small>ilvl ${it.level} · ${it.slot}</small>`;
+      body = `<h3>Shards <small>${s.gold} in the bank · you have ${p.shards}</small></h3><div class="row"><input id="ggold" type="number" min="1" value="100" style="width:90px"> <button data-ggold="in">Deposit</button>${rk >= 2 ? `<button data-ggold="out">Withdraw</button>` : ""}</div>
+        <h3>Items <small>${s.bank.length}/60 · ${rk >= 1 ? "members may take items" : "initiates may only deposit"}</small></h3><div class="dgrid">${s.bank.map((b) => `<div class="recipe"><div>${ih(b.item)}<div class="small">from ${b.by}</div></div><button data-gwd="${b.item.uid}" ${rk >= 1 ? "" : "disabled"}>Take</button></div>`).join("") || '<div class="small">The bank is empty.</div>'}</div>
+        <h3>Deposit from your bag</h3><div class="dgrid">${p.inventory.map((it) => `<div class="recipe"><div>${ih(it)}</div><button data-gdep="${it.uid}">Deposit</button></div>`).join("") || '<div class="small">Your bag is empty.</div>'}</div>`;
+    } else if (tab === "quests") {
+      let Qs = X.guildWeekQuests(s.id, week);
+      body = `<p class="small">Three guild quests each week; everyone's progress counts. When one completes, every member who contributed at least 5% gets 150 shards and 10 Vigil Tokens, and the guild gains a level (+1% XP per level for all members, up to +10%).</p><div class="dgrid">${Qs.map((Q) => {
+        let per = s.q[week]?.[Q.id] || {},
+          tot = Math.min(Q.goal, Object.values(per).reduce((a, b) => a + b, 0)),
+          mine = per[me()] || 0;
+        return `<div class="recipe"><div><b style="color:${tot >= Q.goal ? "#8aff9a" : "#ffe08a"}">${Q.name}</b> <small>${Q.desc}</small><div class="pbar" style="height:8px;background:#222;border-radius:4px;margin:4px 0"><div style="width:${(tot / Q.goal) * 100}%;height:100%;background:#ffd070;border-radius:4px"></div></div><div class="small">${tot} / ${Q.goal} · yours ${mine}${tot >= Q.goal ? " · complete" : ""}</div></div></div>`;
+      }).join("")}</div><p class="small">Guild level ${s.level} · ${s.completed} quests completed in all.</p>`;
+    } else if (tab === "ach") {
+      body = `<div class="dgrid">${X.GACH.map((a) => `<div class="recipe ${s.ach.includes(a.id) ? "" : "no"}"><div><b>${s.ach.includes(a.id) ? "🏆 " : ""}${a.name}</b></div></div>`).join("")}</div>`;
+    } else if (tab === "log") {
+      body = `<div class="small">${s.log.map((l) => `<div>${new Date(l.t).toLocaleString()} — <b>${l.by}</b> ${l.text}</div>`).join("") || "Nothing yet."}</div>`;
+    } else if (tab === "settings") {
+      body = `<h3>Message of the day</h3>${rk >= 2 ? `<div class="row"><input id="gmotd" value="${(s.motd || "").replace(/"/g, "&quot;")}" maxlength="200" style="flex:1"> <button data-gmotd>Set</button></div>` : `<div class="small">${s.motd || "—"}</div>`}
+        ${rk === 3 ? `<h3>Banner colour</h3><div class="row"><input id="gcol2" type="color" value="#${s.color.toString(16).padStart(6, "0")}"> <button data-gcol>Set</button></div>
+        <h3>Hand over leadership</h3><div class="row"><select id="ghand">${members.filter((m) => m.pid !== me()).map((m) => `<option value="${m.pid}">${m.name} (${RANKS[m.rank]})</option>`).join("")}</select> <button data-ghand>Hand over</button></div>` : ""}
+        <h3>Leave</h3><div class="row"><button data-gleave class="ghost">${rk === 3 && members.length > 1 ? "Disband (hand over first to keep the guild)" : rk === 3 ? "Disband the guild" : "Leave the guild"}</button></div>`;
+    }
+    return `<h2>${s.name} <small>&lt;${s.tag}&gt; · level ${s.level} · ${members.filter((m) => online(m.pid)).length}/${members.length} online · you are ${RANKS[rk]}</small></h2>
+      ${s.motd ? `<div class="small" style="margin:-4px 0 8px;color:#ffe08a">“${s.motd}”</div>` : ""}<div class="ptabs">${tabs}</div>${body}
+      <p class="small">Type <b>/g message</b> in chat to talk to your guild. Guild mates in your world show &lt;${s.tag}&gt; after their name.</p>`;
+  };
+  U.bindGuild = function () {
+    let g = this.app.game,
+      M = document.getElementById("modal"),
+      redo = () => this.panel("guild");
+    M.querySelectorAll("[data-gtab]").forEach((b) => (b.onclick = () => ((this._gtab = b.dataset.gtab), redo())));
+    M.querySelectorAll("[data-ginv]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          let [pid, name, key] = b.dataset.ginv.split("|");
+          X.guild.invite(pid, name, key || null);
+          b.textContent = "Sent";
+          b.disabled = !0;
+        }),
+    );
+    M.querySelectorAll("[data-gkick]").forEach((b) => (b.onclick = () => (X.guild.op("kick", { pid: b.dataset.gkick }), redo())));
+    M.querySelectorAll("[data-grank]").forEach((sel) => (sel.onchange = () => (X.guild.op("rank", { pid: sel.dataset.grank, r: +sel.value }), redo())));
+    M.querySelectorAll("[data-gdep]").forEach((b) => (b.onclick = () => (X.guild.deposit(b.dataset.gdep), redo())));
+    M.querySelectorAll("[data-gwd]").forEach((b) => (b.onclick = () => (X.guild.withdraw(b.dataset.gwd), redo())));
+    M.querySelectorAll("[data-ggold]").forEach((b) => (b.onclick = () => (X.guild.gold((b.dataset.ggold === "in" ? 1 : -1) * +M.querySelector("#ggold").value), redo())));
+    M.querySelector("[data-gmotd]") && (M.querySelector("[data-gmotd]").onclick = () => (X.guild.op("motd", { text: M.querySelector("#gmotd").value }), redo()));
+    M.querySelector("[data-gcol]") && (M.querySelector("[data-gcol]").onclick = () => (X.guild.op("color", { color: parseInt(M.querySelector("#gcol2").value.slice(1), 16) }), redo()));
+    M.querySelector("[data-ghand]") && (M.querySelector("[data-ghand]").onclick = () => (X.guild.op("handover", { pid: M.querySelector("#ghand").value }), redo()));
+    M.querySelector("[data-gleave]") && (M.querySelector("[data-gleave]").onclick = () => X.guild.leave());
+  };
+  let ep0 = U.extraPanel;
+  U.extraPanel = function (B, A) {
+    if (B === "guild") return this.guildHTML(A);
+    return ep0.call(this, B, A);
+  };
+  let be0 = U.bindExtra;
+  U.bindExtra = function (B, A, i) {
+    B === "guild" && this.bindGuild();
+    return be0.call(this, B, A, i);
+  };
+  let pn0 = U.panel;
+  U.panel = function (A, i) {
+    pn0.call(this, A, i);
+    let tabs = document.querySelector("#modal .tabs");
+    if (tabs && !tabs.querySelector('[data-tab="guild"]')) {
+      let b = document.createElement("button");
+      ((b.className = "tab" + (A === "guild" ? " on" : "")), (b.dataset.tab = "guild"), (b.textContent = "Guild"));
+      let soc = tabs.querySelector('[data-tab="social"]');
+      soc ? soc.after(b) : tabs.insertBefore(b, tabs.querySelector(".close"));
+      b.onclick = () => this.panel("guild");
+    }
+  };
+  // social panel: a line about the guild
+  let sph0 = X.social.panelHTML;
+  X.social.panelHTML = function () {
+    let h = sph0.call(this),
+      s = X.guild.state(),
+      line = s && !s.disbanded && s.members[me()] ? `<p class="small">Guild: <b>${s.name}</b> &lt;${s.tag}&gt; — open the <b>Guild</b> tab for roster, bank and weekly quests.</p>` : `<p class="small">No guild yet — Registrar Mara in Dawnmere founds one for 500 shards.</p>`;
+    return h.replace('<div class="social">', line + '<div class="social">');
+  };
+  // friends list shows their guild tag when known
+  WB.push(
+    { id: "guild_found", name: "Banner Bearer", desc: "Found a guild.", stat: "guild_founded", goal: 1, reward: 100 },
+    { id: "guild_q5", name: "Shoulder to Shoulder", desc: "Earn 5 guild quest rewards.", stat: "guild_quests", goal: 5, reward: 300 },
+    { id: "guild_q25", name: "Pillar of the Guild", desc: "Earn 25 guild quest rewards.", stat: "guild_quests", goal: 25, reward: 800 },
+  );
+}
+
+/* ---- EG_polish.js ---- */
+// ===== 1.15: polish pass — wisp companions get real bodies, small fixes found by the headless sweep =====
+{
+  // ---------- wisps: a lantern-spirit body instead of a bare flame sprite ----------
+  let wispBody = (col, glow) => {
+    let g = new eA(),
+      c = new _(col),
+      core = v(new JA(0.22, 14, 10), mI(col, 3.2), 0, 1.3, 0),
+      shell = v(new JA(0.4, 6, 4), new xA({ color: c.clone().lerp(new _(0xffffff), 0.3), emissive: c, emissiveIntensity: 0.6, transparent: !0, opacity: 0.35, roughness: 0.2, flatShading: !0 }), 0, 1.3, 0),
+      ring = v(new ji(0.5, 0.025, 6, 24), mI(col, 1.6), 0, 1.3, 0),
+      ring2 = v(new ji(0.36, 0.02, 6, 20), mI(col, 1.2), 0, 1.3, 0);
+    ((ring.rotation.x = 1.1), (ring2.rotation.x = -0.8), (ring2.rotation.z = 0.6));
+    g.add(core, shell, ring, ring2);
+    // eyes: two dark slits so it reads as a creature
+    for (let e of [-1, 1]) {
+      let eye = v(new JA(0.045, 6, 6), new si({ color: 0x1a1008 }), e * 0.08, 0.05, 0.19);
+      eye.scale.set(1, 1.6, 0.6);
+      core.add(eye);
+    }
+    // trailing tail of three fading drops
+    let tail = [];
+    for (let i = 0; i < 3; i++) {
+      let t = v(new Ai(0.09 - i * 0.02, 0.26, 6), mI(col, 1.4 - i * 0.3), 0, 1.0 - i * 0.22, -0.05 - i * 0.05);
+      ((t.rotation.x = Math.PI), (t.material.transparent = !0), (t.material.opacity = 0.8 - i * 0.2), g.add(t), tail.push(t));
+    }
+    // orbiting motes
+    let motes = [];
+    for (let i = 0; i < 4; i++) {
+      let m = Zw(col, 0.45, 0.7);
+      g.add(m);
+      motes.push(m);
+    }
+    let halo = Zw(col, 2.4, 0.28);
+    ((halo.position.y = 1.3), g.add(halo));
+    g.traverse((m) => m.isMesh && (m.castShadow = !1));
+    g.userData.parts = { rig: "wispf", core, shell, ring, ring2, tail, motes, seed: Math.random() * 10 };
+    g.userData.wisp = !0;
+    return g;
+  };
+  let cm1 = X.companionModel;
+  X.companionModel = function (id) {
+    let d = X.COMPANIONS[id];
+    if (d?.model === "wisp" && !d.body) {
+      let m = wispBody(d.col, d.glow);
+      m.scale.setScalar(d.scale || 1);
+      return m;
+    }
+    return cm1(id);
+  };
+  let XwF = Xw;
+  Xw = function (B, A) {
+    if (B?.rig === "wispf") {
+      let t = (A.t || 0) + B.seed,
+        mv = A.mv || 0;
+      ((B.ring.rotation.y = t * 1.8), (B.ring.rotation.x = 1.1 + Math.sin(t * 0.7) * 0.3), (B.ring2.rotation.y = -t * 1.3));
+      B.core.position.y = 1.3 + Math.sin(t * 2.2) * 0.06;
+      B.shell.position.y = B.core.position.y;
+      B.shell.rotation.set(t * 0.5, t * 0.8, 0);
+      let s = 1 + Math.sin(t * 6) * 0.05;
+      B.core.scale.setScalar(s);
+      B.tail.forEach((d, i) => {
+        d.position.y = B.core.position.y - 0.3 - i * 0.22;
+        d.position.z = -0.05 - i * 0.05 - mv * (0.15 + i * 0.12);
+        d.rotation.z = Math.sin(t * 5 + i) * 0.25;
+      });
+      B.motes.forEach((m, i) => {
+        let a = t * (1.2 + i * 0.3) + (i * Math.PI) / 2;
+        m.position.set(Math.cos(a) * 0.6, 1.3 + Math.sin(t * 2 + i) * 0.25, Math.sin(a) * 0.6);
+      });
+      return;
+    }
+    return XwF(B, A);
+  };
+  X.Xw = (...a) => Xw(...a);
 }
 
   window.__app = new bE();
