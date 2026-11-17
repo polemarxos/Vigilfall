@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.16.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.16.1</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -14884,6 +14884,7 @@ void main() {
       (this.updateBarrier(!0),
         I.campaign.victory && this.setupRift(),
         this.syncChests(),
+        this.viewModel && this.camera.remove(this.viewModel),
         (this.viewModel = To(this.hero, I.cos, yC(this.hsave.gear))),
         this.camera.add(this.viewModel),
         this.camera.parent || this.scene.add(this.camera),
@@ -33606,8 +33607,16 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.16.0";
+  X.VERSION = "1.16.1";
   X.CHANGELOG = {
+    "1.16.1": [
+      "Riding is third person: the camera sits behind and above your mount and you see your own hero in the saddle; it returns to first person when you dismount (Z).",
+      "Companions are cosmetic now: a third of your size, they follow you and wait at a random spot about 5 m away (no circling when you turn), never fight and are ignored by enemies. Pet bouts, levels and abilities are gone; the kennel just lists companions. The Stone Golem has a proper body.",
+      "First person: casters always have something in hand — the warlock, witch and mystic hold a wand in the right hand, staff wielders carry the staff fully in view with a glowing focus in the left hand; the knight's sword sits closer; melee swings travel further across the screen with a slight camera roll.",
+      "Steady Aim roots the archer while held; Vanish makes your weapons 70% transparent. The target frame shows damage-over-time stacks (Agony ×3). Salvage all asks with an in-game prompt.",
+      "Chest lids are hinged the moment a chest is built. Ilse's kennel is beside the stable, inside the wards. A hero's weapons no longer linger in view after changing hero from the menu.",
+      "Performance: draw calls per frame roughly halved with no change to the picture — herb/ore nodes, torch flames and every glow sprite are drawn as a handful of instanced meshes, fence posts and the props placed in settlements and dungeons are merged into static batches, ambient occlusion is computed at 60% resolution, the vignette is part of the colour grade (one screen pass less) and shadow maps refresh every other frame.",
+    ],
     "1.16.0": [
       "Interface pass. Buffs are icons with timers and bars (debuffs in red), including Well Rested, Well Fed, scrolls and your mount. The target frame shows health numbers, a ⚠ when the enemy winds up an attack, and stays for 4 s after you look away (and whatever you last hit). Skill slots show their resource cost.",
       "Inventory: drag an item onto its slot to equip, drag an equipped item into the bag to unequip; right-click opens a menu (Equip, Lock, Deposit in guild bank, Salvage with its value). Locked items are skipped by Salvage all and cannot be salvaged by accident. Filters (All / Weapons / Armour / Relics / Upgrades). Equipment slots show icons and item levels.",
@@ -41193,11 +41202,11 @@ Object.assign(X.COMPANIONS, {
 
   // ---------- stable + kennel pens in Dawnmere, mount/pet NPCs beside them ----------
   let STABLE = [hamlet[0] + 32, hamlet[1] + 26], // east side of the square, behind the quartermaster
-    KENNEL = [hamlet[0] + 54, hamlet[1] + 30];
+    KENNEL = [hamlet[0] + 44, hamlet[1] + 20];
   let gellert = qI.find((n) => n.id === "gellert"),
     ilse = qI.find((n) => n.id === "ilse");
   gellert && (gellert.pos = [STABLE[0] - 7.5, STABLE[1] + 1]);
-  ilse && (ilse.pos = [KENNEL[0] - 6.5, KENNEL[1] + 1]);
+  ilse && (ilse.pos = [KENNEL[0] - 5, KENNEL[1] - 4.5]);
   X.buildPens = function (g) {
     let w = g.world;
     if (w._pens) return;
@@ -42114,6 +42123,826 @@ Object.assign(X.COMPANIONS, {
   .tabs{flex-wrap:wrap}.help{display:grid;grid-template-columns:1fr 1.2fr;gap:24px}.kt td{padding:3px 8px;vertical-align:top}.kt kbd{display:inline-block;font:700 12px Georgia,serif;color:#fff1c2;background:rgba(8,6,4,.92);border:1px solid var(--gold);border-radius:4px;padding:2px 6px;white-space:nowrap}.hs{margin-bottom:10px}
   #modal label{display:flex;align-items:center;gap:12px;flex-wrap:wrap}#modal label .sd{flex-basis:100%;opacity:.6;margin:-2px 0 6px}#modal input[type=checkbox]{width:20px;height:20px;accent-color:#c9a96a}#modal input[type=range]{accent-color:#c9a96a}#modal select{background:#1a1410;color:#e8d4a0;border:1px solid var(--line);padding:4px 8px}
   #vtip{display:none;position:fixed;z-index:70;max-width:300px;background:#0a0806;border:1px solid var(--gold);padding:8px 10px;font-size:13px;color:#e8d4a0;pointer-events:none;box-shadow:0 0 16px #000}`);
+}
+
+/* ---- EL_rework.js ---- */
+// ===== 1.16.1: chest hinge at creation, DoT stacks on the target frame, third-person while mounted, cosmetic companions (1/3 size, random spot 5 m away, no mechanics), stone golem body, caster weapons visible, in-game salvage prompt, Steady Aim roots, Vanish translucency, closer knight sword, meatier swings, kennel beside the stable =====
+{
+  let GP = SC.prototype,
+    U = XC.prototype,
+    app = () => window.__app,
+    hamlet = yI.hamlet;
+
+  // ---------- chests: hinge every lid the moment the chest is built ----------
+  let kl0 = kl;
+  kl = function () {
+    let m = kl0();
+    try {
+      X.hingeChest?.(m);
+    } catch (e) {}
+    return m;
+  };
+
+  // ---------- target frame: DoT stacks as "Agony ×3" ----------
+  let uh2 = U.updateHUD2;
+  U.updateHUD2 = function (B) {
+    uh2.call(this, B);
+    let I = document.getElementById("target");
+    if (!I || I.style.display === "none") return;
+    let e = B.aimedEnemy(45) || this._tfS?.e;
+    if (!e) return;
+    let d = document.getElementById("tf-d");
+    if (!d) return;
+    let counts = {};
+    for (let q of e.dots || []) counts[q.kind] = (counts[q.kind] || 0) + 1;
+    d.innerHTML =
+      Object.entries(counts)
+        .map(([k, n]) => `<span>${k}${n > 1 ? ` <b>×${n}</b>` : ""}</span>`)
+        .join("") +
+      (e.stun > 0 ? "<span>stunned</span>" : "") +
+      (e.root > 0 ? "<span>rooted</span>" : "") +
+      (e.slow > 0 ? "<span>slowed</span>" : "");
+  };
+
+  // ---------- Steady Aim roots the archer; Vanish makes the assassin 70% see-through ----------
+  let upA = GP.updatePlayer;
+  GP.updatePlayer = function (dt) {
+    let K = this.keys,
+      held = null;
+    if (this.aiming) {
+      held = { W: K.KeyW, A: K.KeyA, S: K.KeyS, D: K.KeyD, Sp: K.Space };
+      K.KeyW = K.KeyA = K.KeyS = K.KeyD = K.Space = !1;
+    }
+    try {
+      upA.call(this, dt);
+    } finally {
+      held && ((K.KeyW = held.W), (K.KeyA = held.A), (K.KeyS = held.S), (K.KeyD = held.D), (K.Space = held.Sp));
+    }
+    // vanish: fade the weapons in hand
+    let v = !!this.buff("vanish"),
+      vm = this.viewModel;
+    if (vm && v !== !!vm.userData._vanished) {
+      vm.userData._vanished = v;
+      vm.traverse((m) => {
+        if (!m.isMesh) return;
+        if (v) {
+          m.userData._op ??= { t: m.material.transparent, o: m.material.opacity };
+          m.material = m.material.clone();
+          m.material.transparent = !0;
+          m.material.opacity = 0.3;
+          m.material.depthWrite = !1;
+        } else if (m.userData._op) {
+          m.material.transparent = m.userData._op.t;
+          m.material.opacity = m.userData._op.o;
+          m.material.depthWrite = !0;
+        }
+      });
+    }
+  };
+
+  // ---------- first person: casters get something to see, the knight's sword comes closer, swings hit harder ----------
+  let To2 = To;
+  To = function (B, A = {}, i = {}) {
+    let n = To2(B, A, i),
+      U2 = n.userData,
+      o = U2.right,
+      l = U2.left,
+      W = B.weapon,
+      E = U2.weapon,
+      d = U2.leftWeapon;
+    if (!U2.weaponsOnly) return n;
+    let focus = (col) => {
+      let g = new eA(),
+        core = v(new JA(0.045, 12, 10), mI(col, 2.6), 0, 0.04, 0.02),
+        ring = v(new ji(0.07, 0.006, 6, 20), mI(col, 1.4), 0, 0.04, 0.02);
+      ((ring.rotation.x = 1.2), g.add(core, ring));
+      let gl = Zw(col, 0.5, 0.5);
+      ((gl.position.y = 0.04), g.add(gl));
+      g.userData.focus = { ring, core };
+      return g;
+    };
+    let wand = () => {
+      let m = mB("w_wand", 0.42, "y");
+      if (!m) return null;
+      m.traverse((c) => c.isMesh && (c.castShadow = !1));
+      return m;
+    };
+    switch (W) {
+      case "swordshield":
+        o.position.z += 0.09;
+        o.position.x -= 0.02;
+        E && E.scale.multiplyScalar(1.08);
+        break;
+      case "staff":
+      case "totem": {
+        // staff leans in across the right edge, fully in view; a casting focus in the free left hand
+        E && (E.position.set(0.0, -0.1, 0.0), E.rotation.set(-0.3, 0.1, -0.16));
+        o.position.set(0.3, -0.36, -0.42);
+        let f = focus(B.color || 0xffd070);
+        f.position.set(0, 0, 0);
+        l.add(f);
+        l.position.set(-0.24, -0.28, -0.42);
+        U2.focusL = f;
+        break;
+      }
+      case "grimoire":
+      case "tide":
+      case "orb": {
+        // book / tide / orb stays in the left hand, a wand appears in the right
+        if (E === d || !E || !E.children?.length) {
+          let w = wand();
+          if (w) {
+            ((w.position.set(0.0, 0.03, 0.0)), (w.rotation.set(-1.15, 0.1, 0.2)), o.add(w), (U2.weapon = w), (U2.rightWand = w));
+          }
+        }
+        o.position.set(0.27, -0.3, -0.4);
+        d && W === "grimoire" && (d.scale.setScalar(0.62), d.position.set(0.02, 0.04, -0.02));
+        l.position.set(-0.3, -0.34, -0.42);
+        if (W === "orb" && E && !E.children?.some((c) => c.isMesh && c.visible)) {
+          let f = focus(B.color || 0xff8ad0);
+          ((f.position.set(0, 0.02, 0)), o.add(f), (U2.focusR = f));
+        }
+        break;
+      }
+    }
+    U2.base && ((U2.base.r = o.position.clone()), (U2.base.l = l.position.clone()));
+    return n;
+  };
+  X.To = (...a) => To(...a);
+  // focus orbs spin; swings get extra travel and a camera kick
+  let av0 = GP.animateViewModel;
+  GP.animateViewModel = function (B) {
+    av0.call(this, B);
+    let vm = this.viewModel,
+      U2 = vm?.userData;
+    if (!U2) return;
+    for (let f of [U2.focusL, U2.focusR]) f && ((f.userData.focus.ring.rotation.y = this.t * 2.2), (f.userData.focus.core.scale.setScalar(1 + Math.sin(this.t * 5) * 0.08)));
+    let s = this.swingState;
+    if (s && U2.weaponsOnly && ["slash", "cleave", "overhead", "stabR", "stabL"].includes(s.kind)) {
+      let a = Math.min(1, s.t),
+        hit = Math.sin(Math.min(1, Math.max(0, (a - 0.25) / 0.45)) * Math.PI),
+        M = U2.right,
+        dir = s.dir || 1;
+      if (s.kind === "slash" || s.kind === "cleave") {
+        // wider arc across the screen, blade dips through the centre
+        M.position.x += -0.18 * hit * dir;
+        M.position.y += -0.06 * hit;
+        M.rotation.z += -0.5 * hit * dir;
+        M.rotation.y += -0.35 * hit * dir;
+      } else if (s.kind === "overhead") {
+        M.position.y += -0.1 * hit;
+        M.rotation.x += -0.4 * hit;
+      } else {
+        M.position.z += -0.06 * hit;
+      }
+      // a little camera roll with the swing
+      this.camera.rotation.z += hit * 0.012 * dir;
+    }
+  };
+
+  // ---------- salvage: in-game confirmation instead of the browser box ----------
+  let bi0 = U.bindInv;
+  U.bindInv = function (...a) {
+    let r = bi0.apply(this, a),
+      b = document.getElementById("salvall"),
+      ui = this;
+    if (b) {
+      let g = this.app.game,
+        i = this.app.profile;
+      b.onclick = () => {
+        let list = i.inventory.filter((w) => w.slot && !w.lock);
+        if (!list.length) return ui.toast("Nothing to salvage (locked items are kept)", "#c0c0c0");
+        let sh = list.reduce((acc, w) => acc + (10 + w.level * 5) * (ui0.findIndex((q) => q.id === w.rarity) + 1) ** 2, 0);
+        X.social.ask(`Salvage all ${list.length} items in your bag?`, `You get ${sh} Soul Shards · equipped and locked items are kept · [Y] yes · [N] no`, () => {
+          list.forEach((w) => g.salvage(w));
+          ui.toast(`Salvaged ${list.length} items for ${sh} ✦`, "#9ad0ff");
+          ui.panel("inv");
+        });
+      };
+    }
+    return r;
+  };
+  let ui0 = ui;
+
+  // ---------- companions are cosmetic: a third of your size, no fighting, no levels, a random spot ~5 m away ----------
+  X.PET_H = 0.62; // metres tall
+  let cm2 = X.companionModel;
+  X.companionModel = function (id) {
+    let m = cm2(id);
+    if (!m) return m;
+    // normalise to PET_H using the model's own height
+    m.updateMatrixWorld(!0);
+    let bb = new lI().setFromObject(m),
+      h = Math.max(0.2, bb.max.y - bb.min.y);
+    m.scale.multiplyScalar(X.PET_H / h);
+    m.userData.cosmetic = !0;
+    return m;
+  };
+  X.petAbility = () => {};
+  X.petGain = () => {};
+  GP.updateCompanion = function (dt) {
+    let C = this.companion;
+    if (!C) return;
+    let A = this.player;
+    if (A.dead || A.downed) {
+      C.model.visible = C.tag.visible = !1;
+      return;
+    }
+    C.model.visible = C.tag.visible = !0;
+    // a fixed spot in the world ~5 m from you; re-rolled when you get far from it (never when you only turn)
+    let far = Math.hypot(A.pos.x - C.pos.x, A.pos.z - C.pos.z);
+    if (!C.spot || far > 9 || Math.hypot(A.pos.x - C.spot.x, A.pos.z - C.spot.z) > 7) {
+      let a = Math.random() * Math.PI * 2,
+        r = 4.2 + Math.random() * 1.6,
+        x = A.pos.x + Math.cos(a) * r,
+        z = A.pos.z + Math.sin(a) * r;
+      for (let k = 0; k < 6 && (this.world.pointBlocked(x, this.world.heightAt(x, z) + 0.5, z) || this.world.isWater?.(x, z)); k++) ((a += 1.1), (x = A.pos.x + Math.cos(a) * r), (z = A.pos.z + Math.sin(a) * r));
+      C.spot = new N(x, 0, z);
+    }
+    let q = new N(C.spot.x - C.pos.x, 0, C.spot.z - C.pos.z),
+      s = q.length(),
+      moving = s > 0.6,
+      spd = Math.min(s, (far > 12 ? 14 : 7) * dt);
+    moving && (C.pos.addScaledVector(q.normalize(), spd), (C.yaw = Math.atan2(q.x, q.z)));
+    C.pos.y = this.world.groundAt(C.pos.x, C.pos.z) + (C.model.userData.wisp ? 0.3 + Math.sin(this.t * 2) * 0.15 : 0);
+    // teleport if left far behind (fast travel, mounts)
+    far > 40 && (C.pos.set(A.pos.x + 2, A.pos.y, A.pos.z + 2), (C.spot = null));
+    C.model.position.copy(C.pos);
+    C.model.rotation.y = C.yaw;
+    C.anim += dt * (moving ? 9 : 2);
+    let parts = C.model.userData.parts;
+    parts && Xw(parts, { t: this.t, ph: C.anim, mv: moving ? 1 : 0, atk: 0, fol: 0 });
+    C.tag.position.set(C.pos.x, C.pos.y + X.PET_H + 0.25, C.pos.z);
+    C.model.userData.wisp && Math.random() < dt * 10 && this.particles.emit(C.pos.x, C.pos.y + 0.4, C.pos.z, { color: new _(C.def.col), vel: [0, 0.5, 0], life: 0.6, size: 0.06 });
+  };
+  // kennel: just the companions, no bouts, no levels
+  X.npcExtra.kennel = function (g) {
+    let p = g.profile,
+      own = p.companions || [];
+    return `<h3>Companions <small>cosmetic — they follow you and keep you company; one at a time</small></h3><div class="shop">${Object.entries(X.COMPANIONS)
+      .map(([id, d]) => {
+        let have = own.includes(id),
+          cur = p.companion === id,
+          price = d.cost > 0 ? `${d.cost} ◆` : d.cost === 0 ? "free" : d.tokens ? `${d.tokens} tokens (Quartermaster)` : d.stat ? "reward" : d.drop ? "drop" : "reward";
+        return `<div class="shop-i ${cur ? "sold" : ""}"><div class="tip-n" style="color:#${(d.col || 0xffffff).toString(16).padStart(6, "0")}">${d.name}</div><div class="tip-r">${d.desc || ""}</div><button data-pet="${id}" ${have ? "" : d.cost > 0 && p.shards >= d.cost ? "" : "disabled"}>${cur ? "Following you" : have ? "Summon" : d.cost > 0 ? `Buy · ${price}` : price}</button></div>`;
+      })
+      .join("")}</div>${p.companion ? `<div class="row"><button data-pet="">Send ${X.COMPANIONS[p.companion]?.name || "companion"} home</button></div>` : ""}`;
+  };
+  X.npcBind.kennel = function (g, root, redo) {
+    root.querySelectorAll("[data-pet]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          let id = b.dataset.pet,
+            p = g.profile;
+          if (!id) ((p.companion = null), g.spawnCompanion(), g.save(), redo());
+          else if ((p.companions || []).includes(id)) ((p.companion = id), g.spawnCompanion(), g.save(), g.toast(`${X.COMPANIONS[id].name} follows you`, "#9ad0ff"), redo());
+          else {
+            let d = X.COMPANIONS[id];
+            if (d.cost > 0 && p.shards >= d.cost) {
+              p.shards -= d.cost;
+              X.unlockCompanion(g, id);
+              p.companion = id;
+              g.spawnCompanion();
+              g.audio.play("coinspend", null, 0.8);
+              redo();
+            }
+          }
+        }),
+    );
+  };
+  // ---------- stone golem: a proper body (blocks, glowing eyes, cracks) ----------
+  X.creature.golem = function (col, opt = {}) {
+    let g = new eA(),
+      stone = ZA("stone", col || 0x8a8a90, { rough: 0.95 }),
+      dark = ZA("stone", new _(col || 0x8a8a90).multiplyScalar(0.6).getHex(), { rough: 1 }),
+      glow = mI(opt.eye || 0xffd040, 3),
+      torso = v(new iA(1.1, 1.0, 0.7), stone, 0, 1.45, 0),
+      hips = v(new iA(0.8, 0.5, 0.55), dark, 0, 0.85, 0),
+      head = v(new iA(0.55, 0.45, 0.5), stone, 0, 2.2, 0.05);
+    g.add(torso, hips, head);
+    for (let e of [-1, 1]) {
+      head.add(v(new iA(0.12, 0.08, 0.04), glow, e * 0.14, 0.03, 0.26));
+      let sh = v(new iA(0.42, 0.42, 0.5), stone, e * 0.78, 1.85, 0);
+      g.add(sh);
+      let arm = new eA();
+      arm.position.set(e * 0.78, 1.7, 0);
+      arm.add(v(new iA(0.34, 0.8, 0.36), dark, 0, -0.45, 0));
+      arm.add(v(new iA(0.4, 0.4, 0.42), stone, 0, -1.0, 0.02));
+      g.add(arm);
+      e < 0 ? (g.userData.armL = arm) : (g.userData.armR = arm);
+      let leg = new eA();
+      leg.position.set(e * 0.3, 0.65, 0);
+      leg.add(v(new iA(0.36, 0.6, 0.4), dark, 0, -0.32, 0));
+      leg.add(v(new iA(0.42, 0.14, 0.5), stone, 0, -0.62, 0.04));
+      g.add(leg);
+      e < 0 ? (g.userData.legL = leg) : (g.userData.legR = leg);
+    }
+    // cracks: thin glowing slabs on the torso
+    for (let i = 0; i < 4; i++) {
+      let c = v(new iA(0.02, 0.3, 0.02), glow, (i - 1.5) * 0.22, 1.45 + (i % 2) * 0.15, 0.36);
+      ((c.rotation.z = (i % 2 ? 1 : -1) * 0.4), g.add(c));
+    }
+    opt.gear && g.add(v(new ji(0.3, 0.05, 6, 10), ZA("metal", 0xd0a040), 0, 1.5, -0.4).rotateX(Math.PI / 2));
+    g.traverse((m) => m.isMesh && (m.castShadow = !0));
+    g.userData.parts = { rig: "golem", armL: g.userData.armL, armR: g.userData.armR, legL: g.userData.legL, legR: g.userData.legR, body: torso, head, seed: Math.random() * 10 };
+    return g;
+  };
+  Object.assign(X.COMPANIONS.golem, { body: ["golem", { eye: 0xffd040 }], bs: 1 });
+  X.COMPANIONS.clockgolem && Object.assign(X.COMPANIONS.clockgolem, { body: ["golem", { eye: 0xa070ff, gear: !0 }], bs: 1 });
+  let XwG = Xw;
+  Xw = function (B, A) {
+    if (B?.rig === "golem") {
+      let ph = A.ph || 0,
+        mv = A.mv || 0,
+        t = (A.t || 0) + B.seed,
+        s = Math.sin(ph * 0.8);
+      ((B.legL.rotation.x = -s * 0.5 * mv), (B.legR.rotation.x = s * 0.5 * mv), (B.armL.rotation.x = s * 0.35 * mv + Math.sin(t * 1.1) * 0.04), (B.armR.rotation.x = -s * 0.35 * mv - Math.sin(t * 1.1) * 0.04));
+      B.body.rotation.z = s * 0.06 * mv;
+      B.body.position.y = 1.45 + Math.abs(s) * 0.05 * mv + Math.sin(t * 1.3) * 0.01;
+      B.head.rotation.y = Math.sin(t * 0.5) * 0.2 * (1 - mv);
+      return;
+    }
+    return XwG(B, A);
+  };
+  X.Xw = (...a) => Xw(...a);
+
+  // ---------- third person while mounted ----------
+  X.TP = { dist: 4.6, up: 1.6, side: 0.35 };
+  let riderModel = (g) => {
+    let m = Rs(g.hero, { ...g.profile.cos, regalia: g.profile.regalia?.[g.hero.id] }, yC(g.hsave.gear));
+    m.traverse((c) => c.isMesh && (c.castShadow = !0));
+    m.userData.parts && (m.userData.parts.riding = !0);
+    return m;
+  };
+  let tm2 = GP.toggleMount;
+  GP.toggleMount = function (...a) {
+    let r = tm2.apply(this, a);
+    let M = this.mounted;
+    if (M) {
+      M.fp && (M.fp.visible = !1);
+      M.rider = riderModel(this);
+      this.scene.add(M.rider);
+      this._tpBanner || ((this._tpBanner = !0), this.toast("Third person while riding — press Z to dismount", "#c0d0ff"));
+    } else this._rider && (this.scene.remove(this._rider), (this._rider = null));
+    M && (this._rider = M.rider);
+    return r;
+  };
+  let dm2 = GP.dismount;
+  GP.dismount = function (...a) {
+    this._rider && (this.scene.remove(this._rider), (this._rider = null));
+    this.camera.fov = this.settings.fov;
+    return dm2.apply(this, a);
+  };
+  let uc2 = GP.updateCamera;
+  GP.updateCamera = function (dt) {
+    uc2.call(this, dt);
+    let M = this.mounted;
+    if (!M || !M.rider) return;
+    let A = this.player,
+      cam = this.camera,
+      fwd = this.fwd(),
+      P = M.model.userData.parts,
+      seat = P?.seat || { y: 0.44, z: -0.05 },
+      bodyY = P?.body ? P.body.position.y : P?.bodyY || 1.15,
+      seatY = bodyY + seat.y;
+    // rider on the saddle
+    let yaw = A.yaw + Math.PI;
+    M.rider.position.set(A.pos.x + Math.sin(yaw) * (seat.z + 0.02), A.pos.y + seatY - 0.34, A.pos.z + Math.cos(yaw) * (seat.z + 0.02));
+    M.rider.rotation.y = yaw;
+    M.rider.userData.parts && Xw(M.rider.userData.parts, { t: this.t, ph: M.anim || 0, mv: Math.min(1, Math.hypot(A.vel.x, A.vel.z) / 8), ride: !0 });
+    // camera behind and above, looking the same way
+    let eye = new N(A.pos.x, A.pos.y + X.TP.up + seatY * 0.5, A.pos.z),
+      right = new N(-fwd.z, 0, fwd.x),
+      pos = eye.clone().addScaledVector(fwd, -X.TP.dist).addScaledVector(right, X.TP.side);
+    pos.y += Math.max(0, -A.pitch) * 1.2;
+    let gy = this.world.groundAt(pos.x, pos.z) + 0.5;
+    pos.y < gy && (pos.y = gy);
+    cam.position.copy(pos);
+    this.viewModel && (this.viewModel.visible = !1);
+  };
+  // the view model comes back after dismounting
+  let av2 = GP.animateViewModel;
+  GP.animateViewModel = function (B) {
+    av2.call(this, B);
+    this.mounted?.rider && this.viewModel && (this.viewModel.visible = !1);
+  };
+
+}
+
+/* ---- EM_perf.js ---- */
+// ===== 1.16.1: performance — ambient occlusion computed at 60% resolution, the vignette folded into the colour grade (one full-screen pass less), shadow maps refreshed every other frame =====
+{
+  // vignette moves into the grade shader; the old grain/vignette pass is switched off
+  SO.fragmentShader = SO.fragmentShader.replace("gl_FragColor = vec4(col, 1.0);\n    }", "{ float vg = smoothstep(1.25, 0.35, length(vUv-0.5)*1.4); col *= mix(0.55, 1.0, vg); }\n      gl_FragColor = vec4(col, 1.0);\n    }");
+  let AP = bE.prototype,
+    ap0 = AP.applySettings;
+  AP.applySettings = function (...a) {
+    let r = ap0.apply(this, a);
+    this.grain && (this.grain.enabled = !1);
+    let ao = this.aoPass;
+    if (ao && !ao._scaled) {
+      ao._scaled = !0;
+      let ss = ao.setSize.bind(ao),
+        k = 0.6;
+      ao.setSize = (w, h) => ss(Math.max(64, Math.round(w * k)), Math.max(64, Math.round(h * k)));
+      let pr = this.renderer.getPixelRatio();
+      ao.setSize(innerWidth * pr, innerHeight * pr);
+    }
+    // shadows: every other frame
+    let sm = this.renderer.shadowMap;
+    sm.autoUpdate = !1;
+    this._shadowEvery = 2;
+    return r;
+  };
+  let lp0 = AP.loop;
+  AP.loop = function (A) {
+    let sm = this.renderer?.shadowMap;
+    if (sm && !sm.autoUpdate) {
+      this._shF = (this._shF || 0) + 1;
+      sm.needsUpdate = this._shF % (this._shadowEvery || 2) === 0;
+    }
+    return lp0.call(this, A);
+  };
+}
+
+/* ---- EN_perf2.js ---- */
+// ===== 1.16.1 performance 2: far fewer draw calls, identical picture =====
+// Profiling a village view gave ~3,800 draw calls per frame (main pass alone 3,200), most of them tiny:
+//   • 720 gathering-node instanced meshes with 1 instance each (every herb/ore had its own material objects, so
+//     the 1.11 node instancing could never merge them)      → materials with identical properties are shared first
+//   • 550 glow sprites (nodes, torches, lamps, chests, lore) → one instanced billboard mesh per blend mode and cell
+//   • 250 flame cones (3 per torch, each its own draw)        → one instanced mesh per flame colour and cell
+//   • 350 fence posts / rails / planks with unique materials  → shared materials, so the static batcher merges them
+// Everything keeps its material properties, flicker, colour, visibility toggles and shadows; only the draw count changes.
+{
+  const GPp = SC.prototype,
+    APp = bE.prototype;
+  // ---------- material de-duplication ----------
+  let matKey = (m) =>
+    [
+      "S",
+      m.color.getHex(),
+      m.emissive.getHex(),
+      m.emissiveIntensity,
+      m.roughness,
+      m.metalness,
+      m.map?.uuid,
+      m.normalMap?.uuid,
+      m.roughnessMap?.uuid,
+      m.metalnessMap?.uuid,
+      m.emissiveMap?.uuid,
+      m.aoMap?.uuid,
+      m.alphaMap?.uuid,
+      m.side,
+      m.flatShading ? 1 : 0,
+      m.vertexColors ? 1 : 0,
+      m.depthWrite ? 1 : 0,
+      m.depthTest ? 1 : 0,
+      m.alphaTest,
+      m.normalScale?.x,
+      m.normalScale?.y,
+      m.envMapIntensity,
+      m.opacity,
+      m.transparent ? 1 : 0,
+      m.polygonOffset ? 1 : 0,
+      m.shadowSide,
+      m.blending,
+      m.dithering ? 1 : 0,
+      m.toneMapped ? 1 : 0,
+      m.wireframe ? 1 : 0,
+    ].join("|");
+  let plainMat = (m) => m && !Array.isArray(m) && m.isMeshStandardMaterial && !m.transparent && !(m.userData && Object.keys(m.userData).length) && !(m.onBeforeCompile && m.onBeforeCompile.toString().length > 40);
+  // meshes: array of meshes whose materials may be shared. emissive: also share glowing materials (only for
+  // objects nothing ever recolours, like gathering nodes).
+  X.dedupeMaterials = function (meshes, emissive = !1) {
+    let canon = new Map(),
+      n = 0;
+    for (let o of meshes) {
+      let m = o.material;
+      if (!plainMat(m)) continue;
+      if (!emissive && (m.emissive.getHex() !== 0 || m.emissiveMap)) continue;
+      let k = matKey(m),
+        c = canon.get(k);
+      if (!c) canon.set(k, m);
+      else if (c !== m) ((o.material = c), n++);
+    }
+    return n;
+  };
+  // gathering nodes: share materials before the 1.11 instancing buckets them
+  let in0 = X.instanceNodes;
+  X.instanceNodes = function (world) {
+    try {
+      let ms = [];
+      for (let n of X.nodes || []) n.mesh && !n.mesh.userData.instanced && n.mesh.children.forEach((c) => c.isMesh && ms.push(c));
+      let d = X.dedupeMaterials(ms, !0);
+      console.log(`perf: node materials shared ${d}`);
+    } catch (e) {
+      console.warn("node material dedupe", e);
+    }
+    return in0.call(this, world);
+  };
+  // static props: share materials before the batcher groups by material
+  let bs0 = X.batchStatic;
+  X.batchStatic = function (world) {
+    try {
+      let scene = world.scene,
+        skip = new Set(),
+        mark = (o) => o && o.traverse?.((c) => skip.add(c));
+      for (let b of world.breakables || []) mark(b.ref || b.mesh || b);
+      for (let s of world.shrineObjs || []) mark(s.group);
+      for (let l of world.loreObjs || []) mark(l.group);
+      for (let n of X.nodes || []) mark(n.mesh);
+      for (let P of X.portals || []) mark(P.obj);
+      mark(world.water), mark(world.sky), mark(world.terrain), mark(world.terrainChunks);
+      for (let d of world.domes || []) mark(d.mesh || d);
+      let cam = window.__app?.camera,
+        ms = [];
+      scene.traverse((o) => {
+        if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || o.isSprite || skip.has(o) || o.userData.noMerge || o.userData.chunkOf) return;
+        let p = o.parent,
+          depth = 0;
+        while (p && p !== scene) {
+          if (p.isBone || p.isSkinnedMesh || p === cam || p.userData.noMerge) return;
+          p = p.parent;
+          depth++;
+        }
+        p && depth <= 4 && ms.push(o);
+      });
+      let d = X.dedupeMaterials(ms, !1);
+      console.log(`perf: prop materials shared ${d} of ${ms.length}`);
+    } catch (e) {
+      console.warn("prop material dedupe", e);
+    }
+    return bs0.call(this, world);
+  };
+
+  // second batching pass for the KayKit props that are placed at start() (settlements, dungeon pockets, outposts), which the
+  // world-build batcher never saw. Only plain scenery clones qualify: nothing hinged, nothing that opens, no breakables,
+  // not the player's house (it is rebuilt on upgrade), nothing under a rig.
+  X.batchProps = function (world) {
+    let scene = world.scene,
+      cands = new Set(),
+      skipRoot = new Set([world.houseObj, world.homeBuilt?.group].filter(Boolean));
+    scene.traverse((o) => {
+      if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || o.isSprite || o.name === "batch") return;
+      if (/door|chest|lid|torch|lantern|flag|banner_|sign/i.test(o.name)) return;
+      let p = o.parent,
+        src = null;
+      while (p && p !== scene) {
+        if (skipRoot.has(p) || p.userData.flame || p.userData.lid || p.userData.hinged || p.userData.noMerge || p.isBone) return;
+        p.userData.src && (src = p);
+        p = p.parent;
+      }
+      if (!p || !src || src.parent !== scene) return; // only clones sitting directly in the world
+      for (let k in src.userData) if (k !== "src" && k !== "size") return;
+      cands.add(o);
+    });
+    // KayKit geometry stores quantized (normalized integer) attributes, which the merger can't copy raw: unpack to floats once per geometry
+    let seen = new Set();
+    for (let o of cands) {
+      let g = o.geometry;
+      if (seen.has(g)) continue;
+      seen.add(g);
+      for (let n in g.attributes) {
+        let a = g.attributes[n];
+        if (!a.normalized) continue;
+        let k = a.itemSize,
+          f = new Float32Array(a.count * k);
+        for (let i = 0; i < a.count; i++) for (let c = 0; c < k; c++) f[i * k + c] = a.getComponent(i, c);
+        g.setAttribute(n, new Yi(f, k));
+      }
+    }
+    let flagged = [];
+    scene.traverse((o) => {
+      if (o.isMesh && !cands.has(o) && !o.userData.noMerge) ((o.userData.noMerge = !0), flagged.push(o));
+    });
+    let r;
+    try {
+      r = bs0.call(this, world);
+    } finally {
+      for (let o of flagged) delete o.userData.noMerge;
+    }
+    return r;
+  };
+
+  // ---------- shared helpers ----------
+  const CELL = 320,
+    LAYER = 31; // objects moved to this layer stay in the scene (visibility, matrices, code references) but the camera skips them
+  let tmpM = new _A(),
+    zeroM = new _A().makeScale(0, 0, 0),
+    tmpV = new N();
+  let effVisible = (o, scene) => {
+    for (; o; o = o.parent) {
+      if (!o.visible) return !1;
+      if (o === scene) return !0;
+    }
+    return !1; // detached from the scene
+  };
+  let underRig = (o, cam) => {
+    for (let p = o.parent; p; p = p.parent) if (p === cam || p.isBone || p.isSkinnedMesh || p.userData.noMerge || p.userData.parts) return !0;
+    return !1;
+  };
+  let cellOf = (o) => {
+    tmpV.setFromMatrixPosition(o.matrixWorld);
+    return `${Math.floor(tmpV.x / CELL)},${Math.floor(tmpV.z / CELL)}`;
+  };
+
+  // ---------- flames: 3 cones per torch → instanced per colour/cell, flicker copied every frame ----------
+  let unitCone = null;
+  X.instanceFlames = function (game) {
+    let scene = game.scene,
+      cam = window.__app?.camera,
+      buckets = new Map(),
+      made = 0;
+    unitCone ||= new Ai(1, 1, 6);
+    scene.traverse((f) => {
+      if (!f.userData.flame || f.userData._fi || underRig(f, cam)) return;
+      let cones = f.children.filter((c) => c.isMesh && c.geometry?.type === "ConeGeometry" && c.material?.isMeshBasicMaterial);
+      if (cones.length !== 3) return;
+      let m = cones[0].material,
+        key = `${m.opacity}|${m.blending}|${m.depthWrite ? 1 : 0}|${cones[0].renderOrder}|${cellOf(f)}`,
+        B = buckets.get(key);
+      B || buckets.set(key, (B = { mat: m, items: [] }));
+      for (let c of cones) {
+        let P = c.geometry.parameters,
+          gs = new _A().makeScale(P.radius, P.height, P.radius);
+        B.items.push({ f, c, gs });
+      }
+      f.userData._fi = !0;
+    });
+    for (let [, B] of buckets) {
+      let n = B.items.length,
+        mat = B.mat.clone();
+      mat.color.set(16777215);
+      let im = new WI(unitCone, mat, n);
+      im.instanceColor = new ZB(new Float32Array(n * 3), 3);
+      ((im.frustumCulled = !1), (im.castShadow = !1), (im.receiveShadow = !1), (im.renderOrder = B.items[0].c.renderOrder), (im.userData.noMerge = !0), (im.userData.flames = B.items), (im.name = "flames"));
+      for (let it of B.items) it.c.layers.set(LAYER);
+      scene.add(im);
+      (X._flameIM ||= []).push(im);
+      made++;
+    }
+    return made;
+  };
+  X.syncFlames = function (scene) {
+    for (let im of X._flameIM || []) {
+      let items = im.userData.flames,
+        col = im.instanceColor.array,
+        mi = im.instanceMatrix.array;
+      for (let i = 0; i < items.length; i++) {
+        let { f, c, gs } = items[i];
+        if (!effVisible(f, scene)) {
+          zeroM.toArray(mi, i * 16);
+          continue;
+        }
+        c.updateMatrix();
+        tmpM.multiplyMatrices(f.matrixWorld, c.matrix).multiply(gs).toArray(mi, i * 16);
+        let k = c.material.color;
+        ((col[i * 3] = k.r), (col[i * 3 + 1] = k.g), (col[i * 3 + 2] = k.b));
+      }
+      ((im.instanceMatrix.needsUpdate = !0), (im.instanceColor.needsUpdate = !0));
+    }
+  };
+
+  // ---------- glow sprites → instanced billboards (position, scale, colour, opacity and visibility copied every frame) ----------
+  let billboardMat = (map, blending, depthWrite, depthTest, fog) =>
+    new ci({
+      uniforms: { map: { value: map }, fogColor: { value: new _(0) }, fogDensity: { value: 0 }, fogNear: { value: 1 }, fogFar: { value: 1000 } },
+      vertexShader: `
+        attribute float iOp; varying vec2 vUv; varying vec4 vC;
+        #include <fog_pars_vertex>
+        void main(){ vUv = uv; vC = vec4(instanceColor, iOp);
+          vec4 c = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+          vec2 s = vec2(length(instanceMatrix[0].xyz), length(instanceMatrix[1].xyz));
+          vec4 mvPosition = vec4(c.xyz + vec3(position.xy * s, 0.0), 1.0);
+          gl_Position = projectionMatrix * mvPosition;
+          #include <fog_vertex>
+        }`,
+      fragmentShader: `
+        uniform sampler2D map; varying vec2 vUv; varying vec4 vC;
+        #include <fog_pars_fragment>
+        void main(){ vec4 t = texture2D(map, vUv); vec4 diffuseColor = vC * t; if (diffuseColor.a < 0.002) discard;
+          gl_FragColor = diffuseColor;
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+          #include <fog_fragment>
+        }`,
+      fog: fog,
+      transparent: !0,
+      blending,
+      depthWrite,
+      depthTest,
+      side: KA,
+    });
+  X.batchSprites = function (game, still) {
+    let scene = game.scene,
+      cam = window.__app?.camera,
+      glow = kB(),
+      buckets = new Map(),
+      made = 0;
+    scene.traverse((s) => {
+      if (!s.isSprite || s.userData._sb || underRig(s, cam)) return;
+      let m = s.material;
+      if (!m || !m.map || m.rotation !== 0 || m.sizeAttenuation === !1 || s.center.x !== 0.5 || s.center.y !== 0.5 || m.alphaMap || m.alphaTest) return;
+      if (still && !still(s)) return; // moved during the sample window: keep it a real sprite
+      let key = `${m.map.uuid}|${m.blending}|${m.depthWrite ? 1 : 0}|${m.depthTest ? 1 : 0}|${m.fog ? 1 : 0}|${s.renderOrder}|${cellOf(s)}`,
+        B = buckets.get(key);
+      B || buckets.set(key, (B = { m, items: [] }));
+      B.items.push(s);
+      s.userData._sb = !0;
+    });
+    for (let [, B] of buckets) {
+      let n = B.items.length;
+      if (n < 2) {
+        for (let s of B.items) delete s.userData._sb;
+        continue;
+      }
+      let geo = new vi(1, 1);
+      geo.setAttribute("iOp", new ZB(new Float32Array(n), 1));
+      let im = new WI(geo, billboardMat(B.m.map, B.m.blending, B.m.depthWrite, B.m.depthTest, !!B.m.fog), n);
+      im.instanceColor = new ZB(new Float32Array(n * 3), 3);
+      ((im.frustumCulled = !1), (im.castShadow = !1), (im.receiveShadow = !1), (im.renderOrder = B.items[0].renderOrder), (im.userData.noMerge = !0), (im.userData.sprites = B.items), (im.name = "glows"));
+      for (let s of B.items) s.layers.set(LAYER);
+      scene.add(im);
+      (X._spriteIM ||= []).push(im);
+      made++;
+    }
+    return made;
+  };
+  X.syncSprites = function (scene) {
+    for (let im of X._spriteIM || []) {
+      let items = im.userData.sprites,
+        col = im.instanceColor.array,
+        op = im.geometry.attributes.iOp.array,
+        mi = im.instanceMatrix.array;
+      for (let i = 0; i < items.length; i++) {
+        let s = items[i];
+        if (!effVisible(s, scene)) {
+          zeroM.toArray(mi, i * 16);
+          continue;
+        }
+        s.matrixWorld.toArray(mi, i * 16);
+        let m = s.material,
+          k = m.color;
+        ((col[i * 3] = k.r), (col[i * 3 + 1] = k.g), (col[i * 3 + 2] = k.b), (op[i] = m.opacity));
+      }
+      ((im.instanceMatrix.needsUpdate = !0), (im.instanceColor.needsUpdate = !0), (im.geometry.attributes.iOp.needsUpdate = !0));
+    }
+  };
+  X.unbatchGlows = function (scene) {
+    for (let im of [...(X._flameIM || []), ...(X._spriteIM || [])]) {
+      for (let it of im.userData.flames || []) (it.c.layers.set(0), delete it.f.userData._fi);
+      for (let s of im.userData.sprites || []) (s.layers.set(0), delete s.userData._sb);
+      im.parent && im.parent.remove(im);
+      im.geometry !== unitCone && im.geometry.dispose();
+      im.material.dispose();
+    }
+    X._flameIM = [];
+    X._spriteIM = [];
+  };
+
+  // ---------- scheduling: rebuild a moment after each start, so the world and every start() addition is in place ----------
+  let st0 = GPp.start;
+  GPp.start = function (...a) {
+    let r = st0.apply(this, a);
+    try {
+      X.unbatchGlows(this.scene);
+    } catch (e) {
+      console.warn("unbatch", e);
+    }
+    this._pb = { f: 0, snap: null };
+    return r;
+  };
+  let snapKey = (s) => s.matrixWorld.elements.map((v) => Math.round(v * 1000)).join(",");
+  let lp0 = APp.loop;
+  APp.loop = function (A) {
+    let g = this.game;
+    if (g && g.running && g._pb) {
+      let P = g._pb;
+      P.f++;
+      if (P.f === 20) {
+        P.snap = new Map();
+        g.scene.traverse((s) => s.isSprite && P.snap.set(s, snapKey(s)));
+      } else if (P.f === 80) {
+        let t0 = performance.now(),
+          snap = P.snap;
+        g._pb = null;
+        try {
+          let pr = X.batchProps(g.world),
+            fl = X.instanceFlames(g),
+            sp = X.batchSprites(g, (s) => snap.get(s) === snapKey(s));
+          console.log(`perf: props ${pr.removed} → ${pr.made} batches, flames → ${fl} instanced meshes, glow sprites → ${sp} instanced meshes in ${(performance.now() - t0).toFixed(0)} ms`);
+        } catch (e) {
+          console.error("glow batching", e);
+        }
+      }
+    }
+    if (g && (X._flameIM?.length || X._spriteIM?.length)) {
+      X.syncFlames(g.scene);
+      X.syncSprites(g.scene);
+    }
+    return lp0.call(this, A);
+  };
 }
 
   window.__app = new bE();
