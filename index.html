@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.18.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.18.1</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33623,8 +33623,11 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.18.0";
+  X.VERSION = "1.18.1";
   X.CHANGELOG = {
+    "1.18.1": [
+      "Phones: the tutorial card no longer stretches over the whole screen; it is smaller, sits between the HUD and the buttons, its steps are worded for touch controls (stick, swipe, ⚔/🛡 buttons) and you tap it to skip. Hint cards, tooltips and achievement pop-ups had the same positioning slip.",
+    ],
     "1.18.0": [
       "Interface overhaul: a unified ornate look across the title screen, HUD, every panel, NPC dialogs and the pause menu — Cinzel headings with EB Garamond body text, gilded corner-bracket frames with engraved dark panels, custom-drawn buttons, dropdowns, checkboxes and sliders, framed minimap, health and skill bar, gradient gold banners, styled scrollbars and tooltips.",
     ],
@@ -45597,7 +45600,8 @@ html,body{font-family:var(--fb);color:var(--ink);font-size:16px}
   background:var(--oc-tl) left top/52px 52px no-repeat,var(--oc-tr) right top/52px 52px no-repeat}
 .modal-in::after{content:'';position:sticky;bottom:0;display:block;height:52px;margin-top:-52px;z-index:6;pointer-events:none;
   background:var(--oc-bl) left bottom/52px 52px no-repeat,var(--oc-br) right bottom/52px 52px no-repeat}
-.pause-in,.menu-col,.hero-select,#tut,#hintcard,.ach-pop,.tip,.lore,.victory,.ctxmenu{position:relative;background:var(--noise),radial-gradient(600px 300px at 50% -10%,rgba(140,96,40,.2),transparent 60%),var(--pnl);border:1px solid var(--brd);
+.pause-in,.menu-col,.hero-select,.lore,.victory,.ctxmenu{position:relative}
+.pause-in,.menu-col,.hero-select,#tut,#hintcard,.ach-pop,.tip,.lore,.victory,.ctxmenu{background:var(--noise),radial-gradient(600px 300px at 50% -10%,rgba(140,96,40,.2),transparent 60%),var(--pnl);border:1px solid var(--brd);
   box-shadow:0 0 0 1px #0a0705,0 0 0 3px rgba(201,169,106,.26),0 0 0 4px #0a0705,0 20px 60px rgba(0,0,0,.8);border-radius:3px}
 .pause-in::before,.menu-col::before,.hero-select::before,#tut::before,.ach-pop::before,.lore::before,.victory::before{content:'';position:absolute;left:0;right:0;top:0;height:52px;pointer-events:none;
   background:var(--oc-tl) left top/40px 40px no-repeat,var(--oc-tr) right top/40px 40px no-repeat}
@@ -45780,8 +45784,12 @@ input[type=range]::-moz-range-track{height:8px;background:transparent;border:non
 #prompt{font-family:var(--fb);font-size:17px;color:#fff3d6;padding:9px 22px;border:1px solid #8a6a3a;border-radius:3px;background:linear-gradient(rgba(28,20,9,.94),rgba(13,9,6,.94));box-shadow:0 0 0 1px #000,0 0 0 2px rgba(201,169,106,.25),0 8px 24px rgba(0,0,0,.8)}
 .loot-t{font-family:var(--fb);border-left:3px solid var(--gold);background:linear-gradient(90deg,rgba(201,169,106,.14),rgba(12,8,5,.8) 40%);border-radius:0 2px 2px 0;padding:5px 14px}
 #chatlog div{background:rgba(8,6,4,.5);border-left:2px solid rgba(201,169,106,.35);border-radius:0 2px 2px 0}
-#tut{padding:14px 44px 14px 46px;border-color:var(--brd)}
-.tut-h{font-size:11px;color:var(--gold)}
+#tut{padding:14px 44px 14px 46px;border-color:var(--brd);cursor:pointer}
+.tut-h > span:not(.ico){font-family:var(--fb);letter-spacing:0;text-transform:none;font-size:12px}
+@media (pointer:coarse){#tut{top:84px;width:min(560px,47vw);padding:8px 26px}.tut-t{font-size:14px}#hintcard{top:60px}}
+.tut-h{font-size:11px;color:var(--gold);display:flex;align-items:center;gap:8px}
+.tut-h .ico{float:none}
+.tut-h > span:not(.ico){margin-left:auto;float:none}
 .tut-t{font-family:var(--fb);font-size:17px}
 #hintcard{border-radius:3px;padding:12px 40px}
 .ach-pop{padding:14px 44px}
@@ -45864,6 +45872,34 @@ button small,button .small,button .sd{font-family:var(--fb);letter-spacing:0;tex
   st.textContent = css;
   document.head.appendChild(st);
   X.guiTheme = st;
+  // touch: tutorial steps worded for the phone, tap the card to skip
+  const TOUCH_TUT = [
+    "Drag the <b>left stick</b> to move and swipe the <b>right side</b> of the screen to look around.",
+    "Tap <b>⚡</b> to sprint, <b>⬆</b> to jump and <b>↻</b> to dodge-roll — you cannot be hit while rolling.",
+    "Walk to the great bonfire and tap <b>F</b> to light it. Shrines refill your oil and potions and are where you return when you die (they do not heal — rest out of combat or see a healer).",
+    "Townsfolk with a gold <b>!</b> have work for you. Walk up to <b>Father Oswin</b>, tap <b>F</b> and accept his quest.",
+    "Tap <b>⚔</b> to attack. Your other skills are <b>🛡, Q, E</b> and <b>R</b> (ultimate). The <b>☰ menu → Skills</b> explains each one.",
+    "Head out through the gap in the fence and kill something. Enemies grow stronger the farther you go — the map button shows each area's level.",
+    "The <b>🎒</b> button opens your inventory: tap loot to equip it and it shows on your character. Talents are in the <b>☰ menu</b> — you earn a point every level.",
+    "Keep your lantern lit (<b>☰ menu</b>) and watch your <b>Sanity</b>: the dark drives you mad. Brannoc and Old Marta in the Hamlet will trade with you. Good hunting.",
+  ];
+  let UP0 = XC.prototype,
+    tut0 = UP0.tutorial;
+  UP0.tutorial = function (B, A, i) {
+    if (B && X.isTouch && TOUCH_TUT[A]) B = TOUCH_TUT[A];
+    tut0.call(this, B, A, i);
+    const t = document.getElementById("tut"),
+      sp = t && t.querySelector(".tut-h > span:not(.ico)");
+    if (sp) sp.textContent = X.isTouch ? "Tap to skip" : "Backspace to skip";
+    if (t && !t._skipBound) {
+      t._skipBound = true;
+      t.addEventListener("click", () => {
+        const g = this.app && this.app.game;
+        if (g && g.tut && g.endTutorial) g.endTutorial();
+      });
+      t.style.pointerEvents = "auto";
+    }
+  };
   // gilded default banners (coloured banners — boss red etc. — keep their colour)
   let UP = XC.prototype,
     ban0 = UP.banner;
