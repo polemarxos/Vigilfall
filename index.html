@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.18.1</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.18.2</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33623,8 +33623,11 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.18.1";
+  X.VERSION = "1.18.2";
   X.CHANGELOG = {
+    "1.18.2": [
+      "Phones: the pause menu is compact and the touch buttons no longer sit on top of it; panel tabs stay on one row you can swipe sideways; the inventory fits the screen (no sideways scrolling, smaller portrait, filter buttons wrap); the tutorial card is narrower so it clears the minimap and attack button; the last tutorial step no longer points to a lantern button that phones do not have.",
+    ],
     "1.18.1": [
       "Phones: the tutorial card no longer stretches over the whole screen; it is smaller, sits between the HUD and the buttons, its steps are worded for touch controls (stick, swipe, ⚔/🛡 buttons) and you tap it to skip. Hint cards, tooltips and achievement pop-ups had the same positioning slip.",
     ],
@@ -45178,7 +45181,7 @@ Object.assign(X.COMPANIONS, {
     let g = this.app.game,
       M = document.getElementById("modal"),
       h2 = M?.querySelector("h2");
-    if (!g || !h2) return;
+    if (!g || !g.hsave || !h2) return;
     let cur = g.hsave.title || "",
       sec = document.createElement("div");
     sec.className = "titles";
@@ -45786,7 +45789,7 @@ input[type=range]::-moz-range-track{height:8px;background:transparent;border:non
 #chatlog div{background:rgba(8,6,4,.5);border-left:2px solid rgba(201,169,106,.35);border-radius:0 2px 2px 0}
 #tut{padding:14px 44px 14px 46px;border-color:var(--brd);cursor:pointer}
 .tut-h > span:not(.ico){font-family:var(--fb);letter-spacing:0;text-transform:none;font-size:12px}
-@media (pointer:coarse){#tut{top:84px;width:min(560px,47vw);padding:8px 26px}.tut-t{font-size:14px}#hintcard{top:60px}}
+@media (pointer:coarse){#tut{top:90px;width:min(500px,44vw);padding:8px 24px}.tut-t{font-size:14px}#hintcard{top:60px}}
 .tut-h{font-size:11px;color:var(--gold);display:flex;align-items:center;gap:8px}
 .tut-h .ico{float:none}
 .tut-h > span:not(.ico){margin-left:auto;float:none}
@@ -45865,7 +45868,26 @@ button small,button .small,button .sd{font-family:var(--fb);letter-spacing:0;tex
 @media (pointer:coarse){.slot{width:60px;height:60px}.bars{width:min(560px,70vw)}
 .npc-h{padding:10px 0 8px}.npc-n{font-size:20px}.npc-t{font-size:10px}.npc-g{font-size:16px;padding:8px 14px;margin:10px 0}.quest{padding:10px 12px;margin-bottom:6px}.q-t{font-size:14px}.q-act{margin:2px 0 8px}.npc h3,.panel-body h3{margin:10px 0 6px}
 .panel-body h2{font-size:17px;margin-bottom:8px}.panel-body{padding:12px 20px 16px}.tab,.tab:hover{padding:11px 8px 9px;font-size:10px}.tabs{padding:0 8px}
-.modal-in::before,.modal-in::after{background-size:30px 30px}}
+.modal-in::before,.modal-in::after{background-size:30px 30px}
+#modal .tabs{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+#modal .tabs::-webkit-scrollbar{display:none}
+#modal .tab,#modal .tab:hover{font-size:11px;min-height:40px;padding:10px 11px 8px;flex:0 0 auto}
+#modal .tab.x,#modal .tab.close{position:sticky;right:0;background:linear-gradient(90deg,rgba(15,10,6,0),#0f0a06 30%);padding-left:18px}
+.inv{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.inv .char{grid-template-columns:118px minmax(0,1fr);gap:8px}
+#portrait canvas{width:118px;height:170px}
+.gslot{padding:5px 8px;gap:8px}.gslot .gs-l{min-width:0;font-size:9px}.gs-n{font-size:13px}
+.bag h3{flex-wrap:wrap;gap:6px}
+.invbar{display:flex;flex-wrap:wrap;gap:5px}.invbar .small{display:none}
+#modal .mini-b{font-size:11px;min-height:36px;padding:4px 9px;margin-left:0}
+.grid{grid-template-columns:repeat(auto-fill,minmax(54px,1fr))}
+.statlist{font-size:13px;gap:0 12px}
+.pause-in{width:min(600px,94vw);max-height:92vh;padding:14px 18px 14px;gap:6px 8px}
+.pause-in>.title.small-t{font-size:26px;margin-bottom:2px;letter-spacing:.24em}
+.pause-in>.room{padding:4px;font-size:13px;margin-bottom:0}
+.pause-in button,#pause button{min-height:40px;padding:6px 10px;font-size:12px}
+.pause-in button.big{min-height:44px;font-size:14px;padding:8px 16px}
+body.pause-open #touch-ui,body.pause-open #tleft,body.pause-open #tdeco{display:none!important}}
 `;
   const st = document.createElement("style");
   st.id = "gui-ornate";
@@ -45881,7 +45903,7 @@ button small,button .small,button .sd{font-family:var(--fb);letter-spacing:0;tex
     "Tap <b>⚔</b> to attack. Your other skills are <b>🛡, Q, E</b> and <b>R</b> (ultimate). The <b>☰ menu → Skills</b> explains each one.",
     "Head out through the gap in the fence and kill something. Enemies grow stronger the farther you go — the map button shows each area's level.",
     "The <b>🎒</b> button opens your inventory: tap loot to equip it and it shows on your character. Talents are in the <b>☰ menu</b> — you earn a point every level.",
-    "Keep your lantern lit (<b>☰ menu</b>) and watch your <b>Sanity</b>: the dark drives you mad. Brannoc and Old Marta in the Hamlet will trade with you. Good hunting.",
+    "Your lantern burns <b>Oil</b> (bottom-left) — keep it fed and watch your <b>Sanity</b>: the dark drives you mad. Brannoc and Old Marta in the Hamlet will trade with you. Good hunting.",
   ];
   let UP0 = XC.prototype,
     tut0 = UP0.tutorial;
@@ -45899,6 +45921,13 @@ button small,button .small,button .sd{font-family:var(--fb);letter-spacing:0;tex
       });
       t.style.pointerEvents = "auto";
     }
+  };
+  // pause menu: hide touch controls behind it like other dialogs
+  let pz0 = UP0.pause;
+  UP0.pause = function (A) {
+    const r = pz0.apply(this, arguments);
+    document.body.classList.toggle("pause-open", !!A && !!document.querySelector("#pause.on"));
+    return r;
   };
   // gilded default banners (coloured banners — boss red etc. — keep their colour)
   let UP = XC.prototype,
