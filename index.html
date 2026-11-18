@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.18.5</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.18.6</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33724,8 +33724,14 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.18.5";
+  X.VERSION = "1.18.6";
   X.CHANGELOG = {
+    "1.18.6": [
+      "Skill balance pass — every skill of every hero was measured in the same test fight at level 20. Damage dealers now clearly out-damage tanks and healers with their basic attacks (witch, ranger, warlock and assassin up; cleric, druid and apothecary attacks down).",
+      "Reworked weak skills: Aegis of Last Dawn now shields every ally for 40% of the templar's health and turns nearby enemies on the templar; Inferno Requiem's fireballs now land on enemies instead of random ground (more than twice the damage); Panacea heals 40% of each ally's health; Smoke of Oblivion now makes enemies miss half their attacks; Soul Siphon drains twice as much and heals three times as much; Elixir Toss heals 60% more; Wildgrowth heals 70% more; Doom, Plague of Rot and Curse of Agony hit harder.",
+      "Toned down: Death Lotus (it out-damaged every other ultimate by a third), Twin Fangs no longer sweeps whole packs (narrower thrust, harder hits), Vile Vial's splash.",
+      "Skill tooltips show the new numbers.",
+    ],
     "1.18.5": [
       "Dungeon Finder companions play like real players: they walk around walls, rocks and pillars instead of through them, step out of fire, poison and telegraphed blasts, and rejoin you if they get stuck or left far behind.",
       "Companions use their hero's skills by role — tanks stun casters (cancelling wind-ups), taunt packs with a blast and brace when low; healers keep heal-over-time on the tank, group-heal and save the party in emergencies; damage dealers kick casters, cleave packs and burst bosses and elites.",
@@ -46753,6 +46759,165 @@ body.pause-open #touch-ui,body.pause-open #tleft,body.pause-open #tdeco{display:
     }
     return r;
   };
+}
+
+/* ---- FA_balance.js ---- */
+/* 1.18.6 — skill balance pass. Every skill was cast headless at level 20 against identical dummies (test/skillsim.py,
+   test/skillspam.py); numbers below come from those measurements.
+   Goals: damage dealers clearly out-damage tanks and healers; healers' attacks stop out-damaging DPS; every ultimate is
+   worth its cooldown; skills that did almost nothing now do what they say. */
+{
+  const GP = SC.prototype;
+
+  // ---- per-skill damage multipliers (direct hits, projectiles, zones, delayed blasts and the DoTs they apply) ----
+  X.SKILL_DMG = {
+    // DPS basics were barely above tanks/healers (witch 133, ranger 105, warlock 73+39 single-target DPS)
+    wi_bolt: 1.2,
+    rg_shot: 1.25, // aimed shots also land more headshots; 1.35 pushed aimed DPS to 262
+    wl_bolt: 1.6,
+    wl_agony: 1.5,
+    wl_rot: 1.4, // 688 vs the witch's Falling Star 1131 on a similar cooldown
+    wl_siphon: 2.0, // 199 dmg on a 9 s cooldown — now ~400 and heals for most of it
+    wl_doom: 1.3, // weakest DPS ultimate
+    as_stab: 1.25, // single target up; the cone is narrowed below so it stops hitting whole packs
+    // healers' basics out-damaged real damage dealers (apothecary 329 AoE, druid 105 single)
+    ap_vial: 0.65,
+    dr_thorn: 0.75,
+    cr_bolt: 0.85,
+  };
+  // ---- per-skill healing / shield multipliers ----
+  X.SKILL_HEAL = {
+    ap_elixir: 1.6, // 55 per toss was the weakest healer spell by far
+    wl_siphon: 3, // 50 → 150 over 4 s
+    dr_grove: 1.7, // 35 HP/s → ~60 HP/s; an ultimate that healed less than a basic heal-over-time spam
+  };
+  const mulOf = (t, g) => (g._sk && t[g._sk]) || 1;
+
+  const he0 = GP.hitEnemy;
+  GP.hitEnemy = function (A, i, I = {}) {
+    const m = mulOf(X.SKILL_DMG, this);
+    if (m !== 1 && !I._bal) {
+      I = { ...I, _bal: !0 };
+      i *= m;
+      if (I.dot) I.dot = { ...I.dot, dps: I.dot.dps * m };
+    }
+    return he0.call(this, A, i, I);
+  };
+  const sp0 = GP.spawnProj;
+  GP.spawnProj = function (A) {
+    const m = mulOf(X.SKILL_DMG, this);
+    if (m !== 1 && A && A.dmg > 0) A = { ...A, dmg: A.dmg * m };
+    return sp0.call(this, A);
+  };
+  const aa0 = GP.aidAlly;
+  GP.aidAlly = function (A, i) {
+    const m = mulOf(X.SKILL_HEAL, this);
+    if (m !== 1 && i) {
+      i = { ...i };
+      for (const k of ["heal", "hot", "shield"]) i[k] && (i[k] *= m);
+    }
+    return aa0.call(this, A, i);
+  };
+
+  // ---- reworked skills ----
+  // Aegis of Last Dawn: a flat 150 shield on a 60 s ultimate (≈22% of a level-20 templar's health). Now 40% of the
+  // templar's max health to every ally in 20 m, and every enemy in 20 m turns on the templar for 4 s.
+  HC.tp_aegis = (B) => {
+    B.audio.play("shield");
+    B.fx("nova", B.player.pos, { color: 16769162, r: 20 });
+    const sh = Math.round(B.player.maxHp * 0.4);
+    for (const A of B.alliesInRadius(B.player.pos, 20)) B.aidAlly(A, { shield: sh, shieldDur: 8 });
+    for (const e of B.enemiesInRadius(B.player.pos, 20)) B.taunt?.(e, "self");
+  };
+  // Inferno Requiem: 22-damage blasts at random spots in a 14 m circle mostly hit nothing — it did less than the
+  // witch's own 10-second Falling Star. Now every blast lands on an enemy inside the circle (random spots only when
+  // none are there), 4 blasts a second for 6 s.
+  HC.wi_inferno = (B) => {
+    B.audio.play("fire", null, 1.5);
+    B.addBuff("inferno", 6, {}, null, (dt, st) => {
+      for (st.acc = (st.acc || 0) + dt; st.acc > 0.25; ) {
+        st.acc -= 0.25;
+        const foes = B.enemiesInRadius(B.player.pos, 14);
+        let g;
+        if (foes.length) {
+          const f = foes[(Math.random() * foes.length) | 0];
+          g = f.pos.clone().add(new N((Math.random() - 0.5) * 1.5, 0, (Math.random() - 0.5) * 1.5));
+        } else {
+          const a = Math.random() * 6.28,
+            w = Math.random() * 14;
+          g = B.player.pos.clone().add(new N(Math.cos(a) * w, 0, Math.sin(a) * w));
+        }
+        g.y = B.world.heightAt(g.x, g.z);
+        B.fx("explosion", g, { color: 16738842, r: 2.5, small: !0 });
+        for (const C of B.enemiesInRadius(g, 3.5)) B.hitEnemy(C, 15, { school: "fire", noCrit: !0 });
+        Math.random() < 0.3 && B.audio.play("explosion", g, 0.3);
+      }
+    });
+  };
+  // Panacea: a flat 120 heal on a 70 s ultimate. Now 40% of each ally's max health, cleanse and +30% damage for 8 s.
+  HC.ap_panacea = (B) => {
+    B.audio.play("levelup");
+    B.fx("nova", B.player.pos, { color: 11206506, r: 25 });
+    for (const A of B.alliesInRadius(B.player.pos, 25)) B.aidAlly(A, { heal: Math.round((A.maxHp || B.player.maxHp) * 0.4), buff: ["panacea", 8, { dmg: 0.3 }], cleanse: !0 });
+  };
+  // Twin Fangs: rapid stabs swept a 70° cone and hit whole packs (509 DPS on four targets — more than any AoE skill).
+  // Now a 35° thrust: one or two enemies, harder hits.
+  HC.as_stab = (B) => {
+    B.swing(Math.random() < 0.5 ? "stabL" : "stabR");
+    B.audio.play("swing", null, 0.6);
+    B.after(0.07, () => B.meleeArc(2.6, 35, 20, { backstab: !0, bleed: !0, sound: "hit" }));
+  };
+
+  // Death Lotus: 3,662 on four targets, far above every other ultimate; its ticks run in a buff callback, so the
+  // damage is set here (60 → 45 per tick) instead of through the multiplier table.
+  HC.as_lotus = (B) => {
+    B.audio.play("swing");
+    B.addBuff("lotus", 2, {}, null, (dt, st) => {
+      for (st.acc = (st.acc || 0) + dt; st.acc > 0.25; ) {
+        st.acc -= 0.25;
+        B.audio.play("swing", null, 0.5);
+        for (const I of B.enemiesInRadius(B.player.pos, 7)) B.hitEnemy(I, 45, { bleed: !0 });
+        B.fx("ring", B.player.pos.clone().setY(B.player.pos.y + 1), { color: 12624127, r: 7, flat: !0 });
+      }
+    });
+  };
+
+  // ---- Smoke of Oblivion: "blinded" only shortened detection range, so enemies already fighting you ignored it.
+  // Blinded enemies now miss half their attacks.
+  const dp0 = GP.damagePlayer;
+  GP.damagePlayer = function (id, amt, o = {}) {
+    const e = (o.enemy && o.enemy.def ? o.enemy : null) || this._actE;
+    if (e && e.blind > 0 && amt > 0 && !o.pure && Math.random() < 0.5) {
+      const t = id === "self" ? this.player : this.remotes.get(id);
+      t && this.floatText(t.pos.clone().setY(t.pos.y + 2), "MISS", "#c0c0c0");
+      return;
+    }
+    return dp0.call(this, id, amt, o);
+  };
+  // keep blinded enemies blind while they stand in the smoke (the zone re-applies every 0.25 s)
+
+  // ---- tooltips follow the new numbers ----
+  const D = (id, t) => {
+    for (const h of FI) for (const s of h.skills) if (s.id === id) s.desc = t;
+  };
+  D("tp_aegis", "Ultimate. All allies within 20m gain a shield worth 40% of your max HP for 8s; enemies within 20m turn on you.");
+  D("wi_inferno", "Ultimate. For 6s, 4 fireballs a second crash onto enemies within 14m (15 dmg in 3.5m each).");
+  D("ap_panacea", "Ultimate. Heal all allies for 40% of their max HP, cleanse them and grant +30% damage for 8s.");
+  D("as_stab", "Rapid dagger thrusts. 25 dmg to the enemy in front, +60% from behind.");
+  D("ap_smoke", "Smoke cloud: enemies inside are slowed 50% and miss half their attacks.");
+  D("ap_elixir", "Lob a healing flask. 88 heal in a 5m splash.");
+  D("wl_siphon", "Drain the aimed enemy: 200 dmg over 4s, healing you for 150.");
+  D("wl_doom", "Ultimate. Mark every enemy within 12m of your aim. After 4s each takes 340 damage.");
+  D("wl_agony", "Curse the aimed enemy: 240 damage over 8s. Refreshes if reapplied.");
+  D("wl_rot", "Rotting ground where you aim (7m, 6s): enemies inside rot for 17 dmg/s.");
+  D("wl_bolt", "Shadow bolt, 26 dmg + Wither: 11 dmg/s for 6s (stacks 3 times).");
+  D("dr_grove", "Ultimate. Huge grove: allies heal 60 HP/s for 8s and are rooted-immune.");
+  D("as_lotus", "Ultimate. Whirl of blades: 45 dmg every 0.25s for 2s in 7m.");
+  D("rg_shot", "Physics arrow. 42 dmg, headshots x2. Hold RMB to aim: +50% dmg, flat flight.");
+  D("wi_bolt", "Fast firebolt. 36 dmg, may ignite.");
+  D("ap_vial", "Lob a flask (physics arc). 17 dmg splash + poison.");
+  D("dr_thorn", "Three thorns in a spread. 9 dmg each, poison.");
+  D("cr_bolt", "Bolt of light. 20 dmg (x2 vs undead bosses' minions).");
 }
 
   window.__app = new bE();
