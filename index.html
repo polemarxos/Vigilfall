@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.18.2</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.18.3</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -23611,7 +23611,7 @@ a=extmap-allow-mixed`) !== -1
           this._tfE !== i.id + ":" + i.level &&
             ((this._tfE = i.id + ":" + i.level),
             (BI("#tf-n").innerHTML =
-              `<span style="color:${C}">Lv ${i.level}</span> ${i.def.name}${i.rare ? ' <small style="color:#d8a0ff">Rare</small>' : i.def.elite ? ' <small style="color:#ffa020">Elite</small>' : ""}`)),
+              `<span style="color:${C}">Lv ${i.level}${i.level - B.hsave.level >= 5 && !i.def.boss ? " \u2620" : ""}</span> ${i.def.name}${i.rare ? ' <small style="color:#d8a0ff">Rare</small>' : i.def.elite ? ' <small style="color:#ffa020">Elite</small>' : ""}`)),
           (BI("#tf-f").style.width = `${Math.max(0, (i.hp / i.maxHp) * 100)}%`),
           (BI("#tf-d").innerHTML =
             [...new Set(i.dots.map((Q) => Q.kind))].map((Q) => `<span>${Q}</span>`).join("") +
@@ -33623,8 +33623,14 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.18.2";
+  X.VERSION = "1.18.3";
   X.CHANGELOG = {
+    "1.18.3": [
+      "Every townsperson now looks like their own person: each NPC gets a unique skin tone, hair colour and outfit colours (repainted on the original character pack, no new models) and a slightly different head size — no two NPCs built on the same body share the same face colouring.",
+      "Enemies no longer wear the townsfolk/hero bodies: cultists, archers, stalkers, brutes and the bosses that used them (Malgareth, the Generals, Hrimgar, Varek, the Thornmother and others) are now undead built on the skeleton set, with their own weapons, colours and glows.",
+      "Enemy level matters: an enemy above your level hits harder and takes less damage from you — slightly at +1/+2, very dangerous at +4, hopeless from +6 (a level-2 hero cannot beat a level-8 enemy). Enemies 5+ levels above you show a ☠ next to their level.",
+      "Chests: the lid now swings open on the box's back edge instead of flipping off onto the ground.",
+    ],
     "1.18.2": [
       "Phones: the pause menu is compact and the touch buttons no longer sit on top of it; panel tabs stay on one row you can swipe sideways; the inventory fits the screen (no sideways scrolling, smaller portrait, filter buttons wrap); the tutorial card is narrower so it clears the minimap and attack button; the last tutorial step no longer points to a lantern button that phones do not have.",
     ],
@@ -41975,7 +41981,7 @@ Object.assign(X.COMPANIONS, {
         this._tfE = e.id + ":" + e.level;
         let g = e.level - B.hsave.level,
           C = e.def.boss ? "#ff4a3a" : g >= 3 ? "#ff5a4a" : g >= 1 ? "#ffb040" : g >= -2 ? "#ffe08a" : "#9a9a9a";
-        n.innerHTML = `<span style="color:${C}">Lv ${e.level}</span> ${e.def.name}`;
+        n.innerHTML = `<span style="color:${C}">Lv ${e.level}${g >= 5 && !e.def.boss ? " \u2620" : ""}</span> ${e.def.name}`;
       }
       document.getElementById("tf-f").style.width = `${Math.max(0, (e.hp / e.maxHp) * 100)}%`;
     } else this._tfS = null;
@@ -45936,6 +45942,393 @@ body.pause-open #touch-ui,body.pause-open #tleft,body.pause-open #tdeco{display:
     ban0.call(this, A, i, I);
     const t = document.querySelector("#banner .b-t");
     if (t && (!I || I === "#e8d4a0")) t.classList.add("gild");
+  };
+}
+
+/* ---- F8_looks.js ---- */
+/* 1.19.0 — (1) enemies never wear the human (NPC/hero) KayKit models: they are rebuilt on the skeleton set;
+   (2) every NPC gets its own look: skin tone, hair colour and clothing palette are repainted on a per-NPC copy of
+   the KayKit palette atlas (no new models), plus a small head-size variation;
+   (3) level-gap combat: an enemy above your level hits harder and takes less damage from you. */
+{
+  X.D.ZM = ZM;
+  X.D._i = _i;
+  X.D.DO = DO;
+  X.D.Oo = Oo;
+  X.D.kl = () => kl();
+  X.D.mB = mB;
+
+  // ---------------------------------------------------------------- (1) enemies off human models
+  const HUMAN = { knight: "skel_warrior", barbarian: "skel_warrior", mage: "skel_mage", rogue: "skel_rogue", rogue_hooded: "skel_rogue" };
+  const WEAP = {
+    "1H_Sword": ["R", "w_skeleton_blade"],
+    "2H_Sword": ["R", "w_skeleton_blade"],
+    "1H_Axe": ["R", "w_skeleton_axe"],
+    "2H_Axe": ["R", "w_skeleton_axe"],
+    "2H_Staff": ["R", "w_skeleton_staff"],
+    "1H_Wand": ["R", "w_skeleton_staff"],
+    "2H_Crossbow": ["R", "w_crossbow_2handed"],
+    Knife: ["R", "w_dagger"],
+    Knife_Offhand: ["L", "w_dagger"],
+    Throwable: ["R", "w_dagger"],
+    Badge_Shield: ["L", "w_skeleton_shield_large_a"],
+    Barbarian_Round_Shield: ["L", "w_skeleton_shield_small_a"],
+  };
+  const DEF_WEAP = {
+    knight: { R: "w_skeleton_blade", L: "w_skeleton_shield_large_a" },
+    barbarian: { R: "w_skeleton_axe" },
+    mage: { R: "w_skeleton_staff" },
+    rogue: { R: "w_dagger" },
+    rogue_hooded: { R: "w_dagger", L: "w_dagger" },
+  };
+  const SKEL_ANIMS = new Set(DO("skel").map((a) => a.name));
+  const ATK = (a) =>
+    !a || SKEL_ANIMS.has(a)
+      ? a
+      : /Ranged|Shoot|Spell|Throw/.test(a)
+        ? "Spellcast_Shoot"
+        : /2H/.test(a)
+          ? "2H_Melee_Attack_Chop"
+          : /Slice|Dualwield/.test(a)
+            ? "1H_Melee_Attack_Slice_Diagonal"
+            : "1H_Melee_Attack_Chop";
+  X.reskinEnemies = function () {
+    const done = [];
+    for (const [k, t] of Object.entries(Tl)) {
+      if (!t || t._reskinned) continue;
+      const base = HUMAN[t.m] ? t.m : HUMAN[t.body] ? t.body : HUMAN[t.legs] ? t.legs : null;
+      if (!base) continue;
+      const R = {};
+      for (const s of t.show || []) if (WEAP[s]) R[WEAP[s][0]] = WEAP[s][1];
+      if (!R.R && !t.R) Object.assign(R, DEF_WEAP[base] || {});
+      const n = { ...t, m: HUMAN[t.m] || (t.m && t.m.startsWith("skel") ? t.m : HUMAN[base]) };
+      for (const f of ["show", "hat", "hatTint", "cape", "capeTint", "body", "bodyTint", "legs", "legsTint", "hood", "set"]) delete n[f];
+      if (n.anims === "adv") delete n.anims;
+      if (!t.R && R.R) n.R = R.R;
+      if (!t.L && R.L) n.L = R.L;
+      n.atk = ATK(t.atk);
+      if (n.idle && !SKEL_ANIMS.has(n.idle)) n.idle = "Idle_Combat";
+      // casters / big bodies keep their identity through a glow and a slightly bigger frame
+      if (!n.glow && base === "mage") n.glow = 0x7a40ff;
+      n._reskinned = base;
+      Tl[k] = n;
+      done.push(k);
+    }
+    return done;
+  };
+  X.reskinEnemies();
+
+  // ---------------------------------------------------------------- (2) unique NPC looks
+  const SKIN = [0xf6c09c, 0xfad6be, 0xe0a87e, 0xc68a5f, 0x9a6440, 0x6e4528, 0xd9b08c, 0xb27a52];
+  const HAIR = [0x1b191b, 0x3b2617, 0x6b4426, 0x8e3b1c, 0xc06a2c, 0xd8b06a, 0x8c8a86, 0xe8e2d6, 0x4a3a2c, 0x2a2a3a];
+  const rgb = (c) => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
+  const toHsl = (r, g, b) => {
+    r /= 255;
+    g /= 255;
+    b /= 255;
+    const mx = Math.max(r, g, b),
+      mn = Math.min(r, g, b),
+      l = (mx + mn) / 2;
+    if (mx === mn) return [0, 0, l];
+    const d = mx - mn,
+      s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [h * 60, s, l];
+  };
+  const fromHsl = (h, s, l) => {
+    h = (((h % 360) + 360) % 360) / 360;
+    if (!s) return [l * 255, l * 255, l * 255];
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s,
+      p = 2 * l - q,
+      f = (t) => {
+        t < 0 && (t += 1);
+        t > 1 && (t -= 1);
+        return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p;
+      };
+    return [f(h + 1 / 3) * 255, f(h) * 255, f(h - 1 / 3) * 255];
+  };
+  const SZ = 256,
+    CW = SZ / 8,
+    CH = SZ / 4;
+  const texCache = new Map();
+  // repaint one KayKit palette atlas for a look {skin, hair, hue, lit}
+  const repaint = (src, look, tint) => {
+    const key = src.uuid + "|" + look.key + "|" + (tint ?? "");
+    const tc = tint == null ? null : [((tint >> 16) & 255) / 255, ((tint >> 8) & 255) / 255, (tint & 255) / 255];
+    if (texCache.has(key)) return texCache.get(key);
+    const img = src.image;
+    if (!img || img.width !== 1024 || img.height !== 1024) return null;
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = SZ;
+    const cx = cv.getContext("2d", { willReadFrequently: true });
+    cx.drawImage(img, 0, 0, SZ, SZ);
+    const id = cx.getImageData(0, 0, SZ, SZ),
+      d = id.data;
+    const mean = (c, r) => {
+      let R = 0,
+        G = 0,
+        B = 0,
+        n = 0;
+      for (let y = r * CH + 4; y < (r + 1) * CH - 4; y++)
+        for (let x = c * CW + 2; x < c * CW + CW * 0.75; x++) {
+          const i = (y * SZ + x) * 4;
+          R += d[i];
+          G += d[i + 1];
+          B += d[i + 2];
+          n++;
+        }
+      return [R / n, G / n, B / n];
+    };
+    const skinRef = mean(0, 0),
+      tS = rgb(look.skin),
+      tH = rgb(look.hair),
+      hairRef = mean(1, 0);
+    // dominant clothing hue of this atlas = hue of the most saturated non-skin cell
+    const roles = [];
+    let domHue = null,
+      domS = 0;
+    for (let r = 0; r < 4; r++)
+      for (let c = 0; c < 8; c++) {
+        const m = mean(c, r),
+          [h, s, l] = toHsl(...m),
+          skinD = Math.hypot(m[0] - skinRef[0], m[1] - skinRef[1], m[2] - skinRef[2]);
+        let role;
+        if ((c === 0 && r === 0) || skinD < 28) role = "skin";
+        else if (c === 1 && r === 0) role = "hair";
+        else if (c === 2 && r === 0) role = "keep";
+        else if (s < 0.16 || l < 0.08) role = "keep";
+        else if (h >= 8 && h <= 42 && s < 0.6 && l < 0.55) role = "leather";
+        else role = "cloth";
+        roles.push({ c, r, role, m, h });
+        if (role === "cloth" && s * (1 - Math.abs(l - 0.5)) > domS) {
+          domS = s * (1 - Math.abs(l - 0.5));
+          domHue = h;
+        }
+      }
+    const dHue = domHue === null ? 0 : look.hue - domHue;
+    for (const q of roles) {
+      if (q.role === "keep") continue;
+      for (let y = q.r * CH; y < (q.r + 1) * CH; y++)
+        for (let x = q.c * CW; x < (q.c + 1) * CW; x++) {
+          const i = (y * SZ + x) * 4;
+          let R = d[i],
+            G = d[i + 1],
+            B = d[i + 2];
+          if (q.role === "skin" || q.role === "hair") {
+            const ref = q.role === "skin" ? skinRef : hairRef,
+              t = q.role === "skin" ? tS : tH;
+            // keep the painted shading: scale the target colour by this pixel's brightness relative to the cell
+            const k = (R + G + B + 6) / (ref[0] + ref[1] + ref[2] + 6),
+              kk = q.role === "hair" ? Math.min(1.6, k) : k;
+            R = t[0] * kk;
+            G = t[1] * kk;
+            B = t[2] * kk;
+          } else {
+            let [h, s, l] = toHsl(R, G, B);
+            if (q.role === "cloth") {
+              h += dHue;
+              s = Math.min(1, s * look.sat);
+              l = Math.min(0.95, l * look.lit);
+            } else l = Math.min(0.95, l * (0.85 + (look.lit - 0.85) * 0.6));
+            [R, G, B] = fromHsl(h, s, l);
+            if (tc) {
+              R *= tc[0];
+              G *= tc[1];
+              B *= tc[2];
+            }
+          }
+          d[i] = Math.max(0, Math.min(255, R));
+          d[i + 1] = Math.max(0, Math.min(255, G));
+          d[i + 2] = Math.max(0, Math.min(255, B));
+        }
+    }
+    cx.putImageData(id, 0, 0);
+    const t = new bB(cv);
+    for (const f of ["colorSpace", "flipY", "wrapS", "wrapT", "magFilter", "minFilter", "anisotropy", "generateMipmaps"]) if (src[f] !== void 0) t[f] = src[f];
+    t.needsUpdate = !0;
+    texCache.set(key, t);
+    return t;
+  };
+  const hash = (s) => {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+    return h >>> 0;
+  };
+  const baseKey = (z) => [z.m, z.body || "", z.legs || ""].join("/");
+  let LOOKS = null;
+  // one look per NPC id, spread so NPCs built on the same model never share skin+hair and get distinct clothing hues
+  X.npcLooks = function () {
+    if (LOOKS) return LOOKS;
+    LOOKS = {};
+    const groups = {};
+    for (const [id, z] of Object.entries(ZM)) (groups[baseKey(z)] ||= []).push(id);
+    const used = new Set();
+    for (const [bk, ids] of Object.entries(groups)) {
+      ids.sort();
+      const h0 = hash(bk),
+        n = ids.length;
+      ids.forEach((id, k) => {
+        let si = (h0 + k * 3) % SKIN.length,
+          hi = (h0 + k * 7 + 1) % HAIR.length;
+        // never the same skin+hair pair on the same model
+        for (let g = 0; g < 80 && used.has(bk + si + ":" + hi); g++) {
+          hi = (hi + 1) % HAIR.length;
+          if (g % HAIR.length === HAIR.length - 1) si = (si + 1) % SKIN.length;
+        }
+        used.add(bk + si + ":" + hi);
+        const hue = ((h0 % 360) + (k * 360) / Math.max(1, n) + (k % 2) * 17) % 360,
+          hv = hash(id);
+        LOOKS[id] = {
+          skin: SKIN[si],
+          hair: HAIR[hi],
+          hue,
+          sat: 0.85 + ((hv >>> 3) % 30) / 100,
+          lit: 0.8 + ((hv >>> 9) % 40) / 100,
+          head: 0.93 + ((hv >>> 15) % 15) / 100,
+          key: [si, hi, Math.round(hue), (hv >>> 3) % 30, (hv >>> 9) % 40].join(","),
+        };
+      });
+    }
+    return LOOKS;
+  };
+  X.applyNpcLook = function (root, id) {
+    if (!root || !ZM[id]) return;
+    const look = X.npcLooks()[id];
+    if (!look) return;
+    root.traverse((o) => {
+      if (!o.isMesh || !o.material || Array.isArray(o.material)) return;
+      const map = o.material.map;
+      if (!map || !map.image || map.image.width !== 1024) return;
+      // a whole-body tint from the NPC's design is moved onto the clothes only, so faces and hair stay natural
+      const c = o.material.color,
+        tint = c && (c.r < 0.995 || c.g < 0.995 || c.b < 0.995) ? c.getHex() : null;
+      const t = repaint(map, look, tint);
+      if (!t) return;
+      o.material = o.material.clone();
+      o.material.map = t;
+      if (tint != null) o.material.color.setRGB(1, 1, 1);
+      o.material.needsUpdate = !0;
+    });
+    let head = null;
+    root.traverse((o) => {
+      if (!head && o.isBone && o.name === "head") head = o;
+    });
+    if (head) head.scale.multiplyScalar(look.head);
+    root.userData.npcLook = look.key;
+  };
+  {
+    const vl0 = vl;
+    vl = function (B, A) {
+      const r = vl0(B, A);
+      try {
+        X.applyNpcLook(r, A);
+      } catch (e) {
+        console.warn("npcLook", A, e);
+      }
+      return r;
+    };
+  }
+
+  // ---------------------------------------------------------------- (3) level-gap combat
+  // d = enemy level − your level (only when the enemy is higher): gentle at +1/+2, steep from +4.
+  // d=1 ×1.22 / ×0.86 · d=2 ×1.68 / ×0.68 · d=4 ×3.32 / ×0.40 · d=6 ×5.92 / ×0.26 (a level-2 hero loses to a level-8 enemy)
+  X.levelGap = {
+    out: (d) => (d > 0 ? 1 + 0.1 * Math.min(d, 12) + 0.12 * Math.min(d, 12) ** 2 : 1),
+    in: (d) => (d > 0 ? 1 / (1 + 0.08 * Math.min(d, 12) + 0.08 * Math.min(d, 12) ** 2) : 1),
+  };
+  const GP = SC.prototype;
+  // remember which enemy is acting while its attacks resolve
+  for (const fn of ["enemyStrike", "bossAI", "enemyAbility", "lobStrike", "poisonPool"]) {
+    const f0 = GP[fn];
+    if (typeof f0 !== "function") continue;
+    GP[fn] = function (A, ...rest) {
+      const prev = this._actE;
+      if (A && A.def && typeof A.level === "number") this._actE = A;
+      try {
+        return f0.call(this, A, ...rest);
+      } finally {
+        this._actE = prev;
+      }
+    };
+  }
+  const nearestEnemy = (g, p) => {
+    if (!p) return null;
+    let best = null,
+      bd = 40;
+    for (const e of g.enemies.values()) {
+      if (!e.alive) continue;
+      const dd = Math.hypot(e.pos.x - p.x, e.pos.z - p.z);
+      if (dd < bd) {
+        bd = dd;
+        best = e;
+      }
+    }
+    return best;
+  };
+  const dp0 = GP.damagePlayer;
+  GP.damagePlayer = function (id, amt, o = {}) {
+    if (amt > 0 && !o.pvp) {
+      const vic = id === "self" ? this.player : this.remotes.get(id),
+        vl = id === "self" ? this.hsave.level : vic?.level,
+        e = (o.enemy && o.enemy.def ? o.enemy : null) || this._actE || nearestEnemy(this, o.src || vic?.pos);
+      if (e && typeof vl === "number") amt *= X.levelGap.out(e.level - vl);
+    }
+    return dp0.call(this, id, amt, o);
+  };
+  const he0 = GP.hitEnemy;
+  GP.hitEnemy = function (A, i, I = {}) {
+    if (A && i > 0 && typeof A.level === "number" && !I._lg) {
+      const k = X.levelGap.in(A.level - this.hsave.level);
+      if (k < 1) {
+        i *= k;
+        I = { ...I, _lg: !0 };
+        if (I.dot) I.dot = { ...I.dot, dps: I.dot.dps * k };
+      }
+    }
+    return he0.call(this, A, i, I);
+  };
+  X.HELP?.systems?.push(["Enemy level", "An enemy above your level hits harder and takes less damage from you — noticeably at +2, very dangerous at +4, hopeless from +6. Its level colour in the target frame warns you; ☠ means 5 or more levels above you."]);
+}
+
+// ---------------------------------------------------------------- chest lids: hinge on the seam, not the rim
+// The KayKit chest lid's rim hangs below the top of the box; hinging at its lowest back point (1.15.2) flipped the
+// opened lid behind the chest onto the ground. The hinge now sits on the box's top back edge in the chest's own frame.
+{
+  const back = X.CHEST_BACK || -1; // -1: hinge on the −z side (front faces +z)
+  X.hingeChest = function (m) {
+    let lid = m.userData?.lid;
+    if (!lid || lid.userData.hinged || !lid.isMesh) return;
+    const P = lid.parent;
+    let base = null;
+    for (const c of P.children) if (c !== lid && c.isMesh) base = c;
+    lid.updateMatrix();
+    lid.geometry.computeBoundingBox();
+    const lb = lid.geometry.boundingBox.clone().applyMatrix4(lid.matrix); // lid box in parent space
+    let topY = lb.min.y,
+      bb = null;
+    if (base) {
+      base.updateMatrix();
+      base.geometry.computeBoundingBox();
+      bb = base.geometry.boundingBox.clone().applyMatrix4(base.matrix);
+      topY = bb.max.y;
+    }
+    // hinge on the box's own back edge (the lid rim overhangs it slightly)
+    const hz = bb ? (back < 0 ? bb.min.z : bb.max.z) : back < 0 ? lb.min.z : lb.max.z,
+      pivot = new eA();
+    pivot.position.set((lb.min.x + lb.max.x) / 2, topY, hz);
+    if (back > 0) pivot.rotation.y = Math.PI; // keep "rotation.x negative = open" on either side
+    pivot.rotation.order = "YXZ";
+    lid.position.sub(pivot.position);
+    if (back > 0) {
+      lid.position.x = -lid.position.x;
+      lid.position.z = -lid.position.z;
+      lid.rotation.y += Math.PI;
+    }
+    P.remove(lid);
+    pivot.add(lid);
+    P.add(pivot);
+    pivot.userData.hinged = !0;
+    m.userData.lid = pivot;
   };
 }
 
