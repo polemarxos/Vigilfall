@@ -27160,8 +27160,9 @@ X.SKIN = {
         killed && worldBoss && (b.repeat = !0);
       }
     }
-    let I = [...this.enemies.values()].some((l) => l.def.boss),
-      w = Math.round((12 + 4 * (A.length - 1)) * (this.env.day < 0.3 ? 1.2 : 0.9) * (this.env.bloodActive ? 1.7 : 1) * (I ? 0.4 : 1));
+    // 1.17.1: a boss only thins the world around itself (a world boss 800 m away used to empty the map for everyone)
+    let I = [...this.enemies.values()].some((l) => l.def.boss && l.alive && A.some((x) => Math.hypot(x.x - l.pos.x, x.z - l.pos.z) < 120)),
+      w = Math.round((16 + 4 * (A.length - 1)) * (this.env.day < 0.3 ? 1.2 : 0.9) * (this.env.bloodActive ? 1.7 : 1) * (I ? 0.4 : 1));
     if (this.enemies.size >= w) return;
     let g = A[(Math.random() * A.length) | 0];
     if (Vi(g.x, g.z) === "hamlet" && Math.hypot(g.x, g.z - 300) < 60 && !this.env.bloodActive) return;
@@ -33628,7 +33629,9 @@ Object.assign(rw.unbound, { hp: 240000 });
       "Riding: the rider's arms no longer windmill (the seated pose was being re-applied every frame on bones the idle animation does not reset) — this was the hero \"doing circles\" on every mount.",
       "The 1.17 NPCs (Wren, Finn, Old Maud, Aldo, Sister Petra, Corvin and the eight Drake Wayfarers) now use the character pack models; Aldo and the Mire Wayfarer moved out of the chapel ruin.",
       "Houses on slopes get step tiers around their plinth instead of a door hanging in the air.",
-      "Mobile: the touch controls hide while any dialog or panel is open (you could not reach Accept), bigger buttons in dialogs.",
+      "Mobile: the touch controls hide while any dialog or panel is open (you could not reach Accept), bigger buttons in dialogs, bigger HUD/name/prompt text, the PC skill bar no longer overlaps the touch buttons.",
+      "Empty world fixed: while a world boss was alive the spawn director thinned enemies across the whole map; now it only does so within 120 m of the boss. Open-world density around you is also higher (solo cap 12 → 16).",
+      "Kennel master moved off the house plot; a glowing lantern and a map pin mark your house door after you buy a deed, and the door prompt reaches further.",
     ],
     "1.17.0": [
       "Performance: draw calls per frame roughly halved with no change to the picture — herb/ore nodes, torch flames and glow sprites are instanced, settlement props are batched, static scene nodes stop recomposing matrices, HUD text only touches the DOM when it changes. The FPS counter now reads \"cpu x ms / y ms\": if the cpu number is far below the frame time, your GPU (resolution scale, SSAO, shadows) is the limit.",
@@ -45504,6 +45507,8 @@ Object.assign(X.COMPANIONS, {
     };
     let css = document.createElement("style");
     css.textContent = `body.modal-open #touch-ui,body.modal-open #tleft,body.modal-open #tdeco{display:none!important}
+    body.modal-open #tut,body.modal-open #prompt,body.modal-open #hintcard{display:none!important}
+    @media (pointer:coarse){#skillbar{display:none}#hptext{font-size:14px}.tag{font-size:14px}#prompt{font-size:16px;padding:8px 14px}#banner .b-t{font-size:28px}#topleft{transform:scale(.85)}}
     @media (pointer:coarse){#modal{font-size:14px}#modal button,#modal .tab{min-height:44px;font-size:14px}#modal .q-act button.big,#modal .q-choices button{min-height:48px;padding:10px 18px;font-size:16px}#modal .npc{max-height:84vh;overflow:auto}#modal .shop-i button{min-height:40px}}`;
     document.head.appendChild(css);
   }
