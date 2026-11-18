@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.16.1</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.17.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -28572,7 +28572,7 @@ X.npcBind.kennel = function (g, root, redo) {
     let div = document.createElement("div");
     div.innerHTML = ex(g, B);
     C.appendChild(div);
-    X.npcBind[B.shop]?.(g, div, () => this.npcDialog(B));
+    X.npcBind[B.shop]?.(g, div, () => this.npcDialog(B), B);
   };
 }
 
@@ -28629,6 +28629,12 @@ X.onWorld((world) => {
       dz = z + Math.cos(X.HOUSE.yaw) * (def.size * 0.5);
     w.houseDoor = [dx, dz];
     w.houseLamp || (w.houseLamp = w.addEmitter(dx, w.heightAt(dx, dz) + 2.4, dz, 0xffb060, 2.5, 14, 0.3));
+    if (!w.houseGlow) {
+      w.houseGlow = Zw(0xffb060, 2.2, 0.35);
+      w.houseGlow.position.set(dx, w.heightAt(dx, dz) + 2.4, dz);
+      w.scene.add(w.houseGlow);
+    }
+    mM.some((q) => q.id === "home") || mM.push({ id: "home", name: "Your home", pos: [x, z], r: 8, lv: "Home", desc: "Press F at the lit door to go inside: bed, stash, workbench." });
   };
   let st0 = P.start;
   P.start = function (h, n) {
@@ -28649,7 +28655,7 @@ X.onWorld((world) => {
     if (t >= 3) return !1;
     let c = this.houseCost(t + 1);
     if (p.shards < c) return (this.audio.play("error"), this.toast("Not enough Soul Shards", "#ff6a5a"), !1);
-    ((p.shards -= c), (p.house ||= {}), (p.house.tier = t + 1), (p.stash ||= []), this.setStat("house", t + 1), this.audio.play("anvil"), this.ui.banner(X.HOUSE.tiers[t + 1].name.toUpperCase(), t ? "Your home grows" : "Welcome home", "#ffd070"), this.buildHouse(), this.save());
+    ((p.shards -= c), (p.house ||= {}), (p.house.tier = t + 1), (p.stash ||= []), this.setStat("house", t + 1), this.audio.play("anvil"), this.ui.banner(X.HOUSE.tiers[t + 1].name.toUpperCase(), t ? "Your home grows" : "Welcome home \u2014 east of the square, by the stable: press F at the lit door", "#ffd070"), this.buildHouse(), t || this.toast("Your house stands east of the square (the plot by the stable). Walk to its door and press F; it is marked on the map.", "#ffe08a"), this.save());
     return !0;
   };
   // ---- interior ----
@@ -28795,7 +28801,7 @@ X.onWorld((world) => {
     if (r) return r;
     if (this.world.houseDoor && X.houseTier(this.profile) > 0) {
       let [dx, dz] = this.world.houseDoor;
-      if (Math.hypot(A.pos.x - dx, A.pos.z - dz) < 3.2) return { text: "[F] Enter your home", near: { kind: "home_enter" } };
+      if (Math.hypot(A.pos.x - dx, A.pos.z - dz) < 4.5) return { text: "[F] Enter your home", near: { kind: "home_enter" } };
     }
     return null;
   };
@@ -30913,8 +30919,17 @@ Object.assign(rw.unbound, { hp: 240000 });
       r.combatT <= 0 && (r.hp = Math.min(r.maxHp, r.hp + r.maxHp * 0.06 * dt));
       // potion
       r.hp < r.maxHp * 0.3 && !(r.cd.pot > 0) && ((r.cd.pot = 28), (r.hp = Math.min(r.maxHp, r.hp + r.maxHp * 0.35)), this.floatText(r.pos.clone().setY(r.pos.y + 2), "DRAUGHT", "#ff8aa0"));
+      // raid mechanics (EQ_raid): a bot sent somewhere goes there first
+      if (r.mechGoal && this.t < r.mechGoal.until) {
+        r.combatT = 6;
+        moveBot(this, r, r.mechGoal.pos, dt, 0.4);
+        r.target.copy(r.pos);
+        X.bots.packet(r);
+        continue;
+      }
       let near = enemies.filter((e) => e.pos.distanceTo(r.pos) < 32 || allies.some((a) => e.target === a.id)),
         tgt = null;
+      X.botNear && (near = X.botNear(this, r, near));
       // ---- choose what to do by role ----
       if (r.role === "Tank") {
         // enemies on non-tank allies first (closest), else nearest
@@ -33607,8 +33622,22 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.16.1";
+  X.VERSION = "1.17.0";
   X.CHANGELOG = {
+    "1.17.0": [
+      "Performance: draw calls per frame roughly halved with no change to the picture — herb/ore nodes, torch flames and glow sprites are instanced, settlement props are batched, static scene nodes stop recomposing matrices, HUD text only touches the DOM when it changes. The FPS counter now reads \"cpu x ms / y ms\": if the cpu number is far below the frame time, your GPU (resolution scale, SSAO, shadows) is the limit.",
+      "Housing: furnish your home. The workbench inside sells 30+ pieces — tables, chairs, beds, rugs, lights, banners, weapon displays, garden plants, a fountain — plus free trophies of every boss you have killed. Pieces follow where you look; LMB/F places, Q/E or the wheel rotates, R stores, F on a placed piece moves it. Saved per account.",
+      "Raids: real mechanics for The Reckoning and the Throne of Storms — Sunder/Doom tank stacks (swap tanks at ×3), interruptible casts (stun it or burn 6% of its health, bar under the boss frame), blue soak circles, purple spread marks, tremors you must jump, green safe zones, shield phases with guards, pack calls, and a hard enrage. Banners and marks reach every player; companions know the mechanics too.",
+      "Enemies: four new kinds — Bone Archers kite, Hooded Stalkers circle to your back (backstabs hurt 50% more), Grave Shamans heal their pack, Ashen Brutes cleave and charge; wolves surround you; casters keep their distance; a third of open-world packs patrol routes.",
+      "Stories: six new named NPCs with quest chains (Wren, Finn, Old Maud, Aldo the Ferryman, Sister Petra, Corvin the Deserter) — 22 quests with new objective kinds (go somewhere, talk to someone, gather) and three decisions that change greetings, later quests and two titles.",
+      "Fast travel: Drake Wayfarers in the Hamlet, the four ports and the three inner shrines fly you (third person, on a drake) to any Wayfarer you have met; cost by distance. Shrines still teleport with G.",
+      "Titles & meta-achievements: 21 titles from deeds, worn under your name for everyone to see (Achievements, K); achievements for collecting achievements.",
+      "Photo mode (F8 or the pause menu): free camera, hidden interface, your hero in the shot, six filters, PNG capture.",
+      "Weather & seasons: snow over Frostpeak (and the inner lands in winter), falling leaves in Thornwood (and in autumn), blowing sand in the Wastes, longer storms over Stormcrown, petals in spring. The real calendar sets the season.",
+      "First-time hints: a short card the first time you meet each system (gathering, fishing, shrines, chests, the Dungeon Finder, raids, home, mounts, companions, guilds, auction, events, PvP, furnishing); Settings can show them again.",
+      "Mobile: button size slider, left-handed layout, aim assist, auto-run and sprint lock, cooldowns on the skill buttons, furnishing buttons, vibration on hits.",
+      "Levelling is about 5× slower: levels 1–5 keep their pace, the brake eases in up to level 20 (all experience sources). Ilse's kennel moved off the house plot; the house door has a lamp, a bigger prompt radius and a map pin.",
+    ],
     "1.16.1": [
       "Riding is third person: the camera sits behind and above your mount and you see your own hero in the saddle; it returns to first person when you dismount (Z).",
       "Companions are cosmetic now: a third of your size, they follow you and wait at a random spot about 5 m away (no circling when you turn), never fight and are ignored by enemies. Pet bouts, levels and abilities are gone; the kennel just lists companions. The Stone Golem has a proper body.",
@@ -41202,7 +41231,7 @@ Object.assign(X.COMPANIONS, {
 
   // ---------- stable + kennel pens in Dawnmere, mount/pet NPCs beside them ----------
   let STABLE = [hamlet[0] + 32, hamlet[1] + 26], // east side of the square, behind the quartermaster
-    KENNEL = [hamlet[0] + 44, hamlet[1] + 20];
+    KENNEL = [hamlet[0] + 44, hamlet[1] + 3]; // 1.17: north of the house plot (the plot at hamlet+(52,18) grows to 13 m)
   let gellert = qI.find((n) => n.id === "gellert"),
     ilse = qI.find((n) => n.id === "ilse");
   gellert && (gellert.pos = [STABLE[0] - 7.5, STABLE[1] + 1]);
@@ -42474,6 +42503,7 @@ Object.assign(X.COMPANIONS, {
     m.userData.parts && (m.userData.parts.riding = !0);
     return m;
   };
+  X.riderModel = riderModel;
   let tm2 = GP.toggleMount;
   GP.toggleMount = function (...a) {
     let r = tm2.apply(this, a);
@@ -42943,6 +42973,2465 @@ Object.assign(X.COMPANIONS, {
     }
     return lp0.call(this, A);
   };
+}
+
+/* ---- EO_perf3.js ---- */
+// ===== 1.17 performance 3: CPU side — static scene nodes stop recomposing matrices, HUD text only touches the DOM when it changes,
+// minimap quest markers are cached, and the FPS counter shows where the frame time goes (CPU vs waiting for the GPU) =====
+{
+  const GPp = SC.prototype,
+    APp = bE.prototype,
+    Up = XC.prototype;
+
+  // ---------- freeze local matrices of things that never move (parents still propagate, so a moved parent still moves them) ----------
+  X.freezeStatic = function (game) {
+    let scene = game.scene,
+      cam = window.__app?.camera,
+      skipRoot = new Set([game.world.houseObj, game.world.homeBuilt?.group].filter(Boolean)),
+      n = 0,
+      freeze = (o) => {
+        if (o.matrixAutoUpdate) {
+          o.updateMatrix();
+          o.matrixAutoUpdate = !1;
+          n++;
+        }
+      };
+    for (let o of scene.children) {
+      if (o.isInstancedMesh || o.name === "batch" || o.name === "terrain-chunks") {
+        freeze(o);
+        o.name === "terrain-chunks" && o.children.forEach(freeze);
+        continue;
+      }
+      if (o.isSprite && o.userData._sb) {
+        freeze(o);
+        continue;
+      }
+      // plain KayKit scenery clones placed in the world: the root and its "Scene" child never move
+      if (o.userData.src && !skipRoot.has(o)) {
+        let ok = !0;
+        for (let k in o.userData) k !== "src" && k !== "size" && (ok = !1);
+        if (ok) {
+          freeze(o);
+          for (let c of o.children) c.isGroup && !c.userData.lid && !c.userData.hinged && freeze(c);
+        }
+      }
+    }
+    // gathering node groups (position fixed; only their visibility toggles) and their batched glow sprites
+    for (let nd of X.nodes || []) {
+      let g = nd.mesh;
+      if (!g || g.parent !== scene) continue;
+      freeze(g);
+      for (let c of g.children) (c.isSprite && c.userData._sb) || (c.isMesh && !c.visible) ? freeze(c) : 0;
+    }
+    // flame cones moved to the hidden layer: syncFlames calls updateMatrix() itself
+    for (let im of X._flameIM || []) for (let it of im.userData.flames) freeze(it.c);
+    return n;
+  };
+  let bp0 = X.batchProps;
+  X.batchProps = function (world) {
+    let r = bp0.call(this, world);
+    world._freezeDue = !0;
+    return r;
+  };
+  let lp0 = APp.loop;
+  APp.loop = function (A) {
+    let g = this.game,
+      t0 = performance.now();
+    if (g && g.world?._freezeDue && X._spriteIM?.length) {
+      g.world._freezeDue = !1;
+      try {
+        console.log(`perf: ${X.freezeStatic(g)} static nodes frozen`);
+      } catch (e) {
+        console.warn("freeze", e);
+      }
+    }
+    let r = lp0.call(this, A);
+    // frame profile: JS time of this frame vs the whole frame interval (the rest is the GPU, vsync or the browser)
+    let cpu = performance.now() - t0;
+    this._cpuMs = (this._cpuMs || cpu) * 0.95 + cpu * 0.05;
+    return r;
+  };
+  // the FPS counter reads "72 FPS · cpu 3.1 ms / 13.9 ms": if the cpu number is far below the frame time, the GPU is the limit
+  let fpsEl = null,
+    fpsObs = null;
+  APp.applySettings &&
+    (function () {
+      let ap0 = APp.applySettings;
+      APp.applySettings = function (...a) {
+        let r = ap0.apply(this, a);
+        if (!fpsObs && (fpsEl = document.getElementById("fps"))) {
+          let app = this;
+          fpsObs = new MutationObserver(() => {
+            let t = fpsEl.textContent;
+            if (/cpu/.test(t) || !/FPS/.test(t)) return;
+            let fps = parseFloat(t) || 0,
+              ms = fps ? 1000 / fps : 0;
+            fpsEl.textContent = `${t} \xB7 cpu ${(app._cpuMs || 0).toFixed(1)} ms / ${ms.toFixed(1)} ms`;
+          });
+          fpsObs.observe(fpsEl, { childList: !0, characterData: !0, subtree: !0 });
+        }
+        return r;
+      };
+    })();
+
+  // ---------- HUD: textContent / innerHTML writes that don't change the text are skipped (a DOM text replace every frame forces layout work) ----------
+  let guard = (el) => {
+    if (!el || el._guarded) return;
+    el._guarded = !0;
+    for (let prop of ["textContent", "innerHTML"]) {
+      let d = Object.getOwnPropertyDescriptor(Node.prototype, prop) || Object.getOwnPropertyDescriptor(Element.prototype, prop);
+      if (!d || !d.set) continue;
+      let last = { v: null };
+      Object.defineProperty(el, prop, {
+        configurable: !0,
+        get() {
+          return d.get.call(this);
+        },
+        set(v) {
+          if (last.v === v) return;
+          last.v = v;
+          d.set.call(this, v);
+        },
+      });
+    }
+  };
+  let guardHUD = () => {
+    for (let id of ["hptext", "restext", "potions", "wallet", "region", "lvl", "buffs", "bossname", "tracker", "party", "fps", "prompt", "tf-h", "tf-n"]) guard(document.getElementById(id));
+    document.querySelectorAll("#skillbar .slot .cdt").forEach(guard);
+  };
+  let st0 = GPp.start;
+  GPp.start = function (...a) {
+    let r = st0.apply(this, a);
+    try {
+      guardHUD();
+    } catch (e) {
+      console.warn("hud guard", e);
+    }
+    return r;
+  };
+
+  // ---------- quest markers over NPCs: the quest-state scan ran for every NPC every frame (minimap + world markers); cache it for a quarter second ----------
+  let nm0 = GPp.npcMarker;
+  GPp.npcMarker = function (B) {
+    let c = (this._nmc ||= new Map()),
+      e = c.get(B.id);
+    if (e && this.t - e.t < 0.25) return e.v;
+    let v = nm0.call(this, B);
+    c.set(B.id, { t: this.t, v });
+    return v;
+  };
+  // anything that changes quest state clears the cache so "!" / "?" appear immediately
+  for (let fn of ["acceptQuest", "turnInQuest", "questOnKill"]) {
+    if (typeof GPp[fn] !== "function") continue;
+    let f0 = GPp[fn];
+    GPp[fn] = function (...a) {
+      this._nmc && this._nmc.clear();
+      return f0.apply(this, a);
+    };
+  }
+}
+
+/* ---- EP_decor.js ---- */
+// ===== 1.17 housing decorating: buy furnishings at the workbench in your home, place / rotate / move / store them; saved per account =====
+{
+  const GP = SC.prototype,
+    U = XC.prototype,
+    G3 = 3;
+  // ---- catalogue ----
+  // piece: packed KayKit asset; build: procedural; w/h: size; r: walk collider radius (0 = walk through); light: [colour, intensity, dist]
+  X.DECO = [
+    { id: "table", name: "Oak table", cat: "Furniture", cost: 300, piece: "k_table_medium", w: 2, r: 0.9 },
+    { id: "table_long", name: "Feast table", cat: "Furniture", cost: 650, piece: "k_table_medium", w: 3.2, r: 1.4 },
+    { id: "chair", name: "Chair", cat: "Furniture", cost: 120, piece: "k_chair", w: 0.8, r: 0.35 },
+    { id: "stool", name: "Stool", cat: "Furniture", cost: 80, piece: "k_stool", w: 0.6, r: 0.3 },
+    { id: "shelves", name: "Shelves", cat: "Furniture", cost: 350, piece: "k_shelves", w: 2, r: 0.7 },
+    { id: "bed2", name: "Guest bed", cat: "Furniture", cost: 600, piece: "k_bed_decorated", w: 2.4, r: 1 },
+    { id: "trunk", name: "Travel trunk", cat: "Furniture", cost: 250, piece: "k_trunk_large_A", w: 1.6, r: 0.7 },
+    { id: "chest_g", name: "Gilded chest", cat: "Furniture", cost: 900, piece: "k_chest_gold", w: 1.6, r: 0.7 },
+    { id: "keg", name: "Keg", cat: "Furniture", cost: 150, piece: "k_keg", w: 1, r: 0.5 },
+    { id: "barrel", name: "Barrel", cat: "Furniture", cost: 100, piece: "d_barrel_large", w: 1, r: 0.5 },
+    { id: "crate", name: "Crate", cat: "Furniture", cost: 70, piece: "d_box_large", w: 1, r: 0.5 },
+    { id: "crates", name: "Crate stack", cat: "Furniture", cost: 200, piece: "d_crates_stacked", w: 1.6, r: 0.8 },
+    { id: "rug", name: "Woven rug", cat: "Furniture", cost: 180, build: "rug", w: 3, r: 0, y: 0.115 },
+    { id: "rug_red", name: "Crimson rug", cat: "Furniture", cost: 260, build: "rug", tint: 0x8a2a2a, w: 3.6, r: 0, y: 0.115 },
+    { id: "candles", name: "Candles", cat: "Lights", cost: 60, piece: "k_candle_triple", w: 0.4, y: 0, r: 0, light: [0xffd080, 1.2, 8] },
+    { id: "brazier", name: "Brazier", cat: "Lights", cost: 420, build: "brazier", w: 1, r: 0.5, light: [0xffa040, 3, 14], flame: 0.7 },
+    { id: "lamp", name: "Standing lamp", cat: "Lights", cost: 300, build: "lamp", w: 0.5, r: 0.25, light: [0xffe0a0, 2.2, 11] },
+    { id: "banner_r", name: "Red banner", cat: "Walls", cost: 200, piece: "k_banner_red", h: 2.6, y: 1.2, r: 0 },
+    { id: "banner_b", name: "Blue banner", cat: "Walls", cost: 200, piece: "k_banner_blue", h: 2.6, y: 1.2, r: 0 },
+    { id: "banner_s", name: "Heraldic banner", cat: "Walls", cost: 350, piece: "k_banner_shield_blue", h: 2.6, y: 1.2, r: 0 },
+    { id: "arms", name: "Crossed arms", cat: "Walls", cost: 1200, piece: "k_sword_shield_gold", h: 1.4, y: 1.3, r: 0 },
+    { id: "column", name: "Stone column", cat: "Walls", cost: 400, piece: "k_pillar_decorated", h: 4.2, r: 0.5 },
+    { id: "sword_d", name: "Greatsword display", cat: "Walls", cost: 700, build: "weapon", asset: "w_sword_2handed", r: 0 },
+    { id: "axe_d", name: "Greataxe display", cat: "Walls", cost: 700, build: "weapon", asset: "w_axe_2handed", r: 0 },
+    { id: "staff_d", name: "Staff display", cat: "Walls", cost: 700, build: "weapon", asset: "w_staff", r: 0 },
+    { id: "tree_pot", name: "Potted tree", cat: "Garden", cost: 320, piece: "b_tree_single_A", h: 2.6, r: 0.4 },
+    { id: "tree_pot2", name: "Potted pine", cat: "Garden", cost: 320, piece: "b_tree_single_B", h: 2.8, r: 0.4 },
+    { id: "planter", name: "Planter box", cat: "Garden", cost: 220, build: "planter", w: 1.6, r: 0.6 },
+    { id: "flowers", name: "Flower pot", cat: "Garden", cost: 90, build: "flowers", w: 0.5, r: 0 },
+    { id: "hedge", name: "Hedge", cat: "Garden", cost: 260, build: "hedge", w: 2.4, r: 0.9 },
+    { id: "stone", name: "Garden stone", cat: "Garden", cost: 110, piece: "b_rock_single_A", w: 1.2, r: 0.5 },
+    { id: "fountain", name: "Small fountain", cat: "Garden", cost: 1500, build: "fountain", w: 2, r: 0.9 },
+  ];
+  // boss trophies: free once the boss is dead on this account
+  X.decoTrophies = (p) =>
+    (p.campaign?.bosses || [])
+      .filter((b) => rw[b])
+      .map((b) => ({ id: "tr_" + b, name: `Trophy: ${rw[b].name}`, cat: "Trophies", cost: 0, build: "trophy", boss: b, h: 1.4, y: 1.3, r: 0, req: !0 }));
+  X.decoList = (p) => [...X.DECO, ...X.decoTrophies(p)];
+  X.decoDef = (p, id) => X.decoList(p).find((d) => d.id === id);
+
+  // ---- builders ----
+  let mat = (w, k, c, o) => w.mat(k, c, o);
+  X.decoBuild = function (g, d) {
+    let w = g.world,
+      root = new eA();
+    if (d.piece) {
+      let m = X.piece(d.piece, { w: d.w, h: d.h, center: !0, tint: d.tint || 0xd8c8a8 });
+      if (!m) return null;
+      root.add(m);
+    } else if (d.build === "rug") {
+      let m = new p(new QA(d.w / 2, d.w / 2, 0.03, 24), new xA({ color: d.tint || 0x6a4a3a, roughness: 1 }));
+      ((m.position.y = 0.015), m.scale.set(1, 1, 0.65), (m.receiveShadow = !0), root.add(m));
+      let ring = new p(new ji(d.w / 2 - 0.1, 0.02, 6, 32), new xA({ color: 0xd8c060, roughness: 1 }));
+      ((ring.rotation.x = Math.PI / 2), (ring.position.y = 0.035), ring.scale.set(1, 0.65, 1), root.add(ring));
+    } else if (d.build === "brazier") {
+      let b = v(new QA(0.45, 0.3, 0.5, 10), mat(w, "metal", 0x3a3a40), 0, 0.5, 0);
+      root.add(b, v(new QA(0.1, 0.14, 0.3, 8), mat(w, "metal", 0x3a3a40), 0, 0.15, 0));
+      let fl = w.flameMesh(d.flame || 0.7);
+      ((fl.position.y = 0.7), root.add(fl));
+    } else if (d.build === "lamp") {
+      root.add(v(new QA(0.22, 0.26, 0.06, 10), mat(w, "metal", 0x2a2a30), 0, 0.03, 0), v(new QA(0.03, 0.03, 1.7, 6), mat(w, "metal", 0x2a2a30), 0, 0.9, 0));
+      let sh = v(new Ai(0.3, 0.4, 8, 1, !0), new xA({ color: 0xe8d0a0, emissive: 0xffc070, emissiveIntensity: 0.6, side: KA }), 0, 1.9, 0);
+      root.add(sh);
+      let gl = Zw(0xffe0a0, 1.6, 0.35);
+      ((gl.position.y = 1.75), root.add(gl));
+    } else if (d.build === "weapon") {
+      let m = mB(d.asset, 1.6, "y");
+      if (m) ((m.rotation.z = Math.PI / 4), (m.position.y = 1.5), root.add(m));
+      let plaque = v(new iA(0.7, 1.1, 0.05), mat(w, "wood", 0x4a3020), 0, 1.5, -0.08);
+      root.add(plaque);
+    } else if (d.build === "planter") {
+      root.add(v(new iA(1.6, 0.4, 0.6), mat(w, "wood", 0x5a3e28), 0, 0.2, 0), v(new iA(1.5, 0.1, 0.5), mat(w, "stone", 0x2a2016), 0, 0.42, 0));
+      for (let i = 0; i < 5; i++) {
+        let f = v(new JA(0.09, 6, 5), new xA({ color: [0xff5a6a, 0xffd060, 0xa070ff, 0xff9a40, 0xffffff][i], roughness: 0.8 }), -0.6 + i * 0.3, 0.6, (i % 2) * 0.2 - 0.1);
+        root.add(f, v(new QA(0.015, 0.015, 0.25, 4), mat(w, "cloth", 0x3a6a2a), -0.6 + i * 0.3, 0.52, (i % 2) * 0.2 - 0.1));
+      }
+    } else if (d.build === "flowers") {
+      root.add(v(new QA(0.16, 0.12, 0.26, 10), mat(w, "stone", 0x9a5a3a), 0, 0.13, 0));
+      for (let i = 0; i < 3; i++) root.add(v(new JA(0.08, 6, 5), new xA({ color: [0xff5a6a, 0xffd060, 0xa070ff][i], roughness: 0.8 }), (i - 1) * 0.1, 0.42, 0), v(new QA(0.012, 0.012, 0.2, 4), mat(w, "cloth", 0x3a6a2a), (i - 1) * 0.1, 0.33, 0));
+    } else if (d.build === "hedge") {
+      root.add(v(new iA(2.4, 1, 0.7), new xA({ color: 0x3a6a2a, roughness: 1 }), 0, 0.5, 0));
+      for (let i = 0; i < 6; i++) root.add(v(new JA(0.3, 6, 5), new xA({ color: 0x4a7a32, roughness: 1 }), -1 + i * 0.4, 0.95, (i % 2) * 0.3 - 0.15));
+    } else if (d.build === "fountain") {
+      root.add(v(new QA(1, 1.05, 0.4, 16), mat(w, "stone", 0x8a8478), 0, 0.2, 0), v(new QA(0.85, 0.85, 0.12, 16), new xA({ color: 0x2a6a8a, roughness: 0.1, metalness: 0.2, transparent: !0, opacity: 0.8 }), 0, 0.4, 0));
+      root.add(v(new QA(0.12, 0.16, 0.9, 8), mat(w, "stone", 0x8a8478), 0, 0.8, 0), v(new QA(0.4, 0.3, 0.12, 12), mat(w, "stone", 0x8a8478), 0, 1.25, 0));
+      let gl = Zw(0x8ad0ff, 1.2, 0.18);
+      ((gl.position.y = 1.4), root.add(gl));
+    } else if (d.build === "trophy") {
+      let m = X.piece("k_sword_shield_gold", { h: 1.4, center: !0, tint: 0xb0a080 });
+      m && ((m.position.y = 0.6), root.add(m));
+      root.add(v(new iA(0.9, 1.3, 0.06), mat(w, "wood", 0x3a2418), 0, 1.2, -0.1));
+      let lbl = Sg(rw[d.boss]?.name || d.boss, "#ffe4a0", 26);
+      (lbl.position.set(0, 2.1, 0), lbl.scale.set(2.6, 0.5, 1), root.add(lbl));
+    }
+    root.position.y = d.y || 0.11;
+    root.traverse((c) => c.isMesh && ((c.castShadow = !0), (c.receiveShadow = !0)));
+    return root;
+  };
+
+  // ---- state helpers ----
+  let hs = (p) => ((p.house ||= {}), (p.house.deco ||= []), (p.house.decoInv ||= {}), p.house);
+  X.decoBounds = function (g) {
+    let t = X.houseTier(g.profile),
+      W = t >= 3 ? 4 : t >= 2 ? 3 : 2,
+      H = t >= 3 ? 2 : t >= 2 ? 2 : 1,
+      [px, pz] = X.HOUSE.pocket;
+    return { x0: px - W * G3 - 0.6, x1: px + W * G3 + 0.6, z0: pz - H * G3 - 0.2, z1: pz + H * G3 + 0.2, px, pz };
+  };
+  // spawn one saved decoration into the home group
+  X.decoSpawn = function (g, rec) {
+    let b = g.world.homeBuilt;
+    if (!b) return null;
+    let d = X.decoDef(g.profile, rec.id);
+    if (!d) return null;
+    let o = X.decoBuild(g, d);
+    if (!o) return null;
+    let [px, pz] = X.HOUSE.pocket,
+      fy = X.HOUSE.floorY;
+    (o.position.set(px + rec.x, fy + (d.y || 0.11), pz + rec.z), (o.rotation.y = rec.ry || 0), b.group.add(o));
+    let e = { rec, d, obj: o, col: null, emit: null };
+    d.r > 0 && (e.col = g.world.addCircle(px + rec.x, pz + rec.z, d.r, fy + 2, "prop"));
+    d.light && (e.emit = g.world.addEmitter(px + rec.x, fy + (d.y || 0) + (d.build === "lamp" ? 1.8 : d.build === "brazier" ? 1 : 0.5), pz + rec.z, d.light[0], d.light[1], d.light[2], 0.25));
+    (b.decos ||= []).push(e);
+    return e;
+  };
+  X.decoRemove = function (g, e) {
+    let b = g.world.homeBuilt;
+    e.obj.parent && e.obj.parent.remove(e.obj);
+    e.col && g.world.removeCollider(e.col);
+    if (e.emit) {
+      e.emit.on = !1;
+      let i = g.world.emitters.indexOf(e.emit);
+      i >= 0 && g.world.emitters.splice(i, 1);
+    }
+    b && b.decos && b.decos.splice(b.decos.indexOf(e), 1);
+  };
+  // the home build gets the workbench + all saved decorations
+  let bh0 = X.buildHome;
+  X.buildHome = function (g) {
+    let had = g.world.homeBuilt,
+      b = bh0(g);
+    if (b === had && b.decoDone) return b;
+    b.decoDone = !0;
+    b.decos = [];
+    try {
+      let [px, pz] = X.HOUSE.pocket,
+        fy = X.HOUSE.floorY,
+        B = X.decoBounds(g),
+        wx = B.x1 - 1.2,
+        wz = B.z1 - 1.3,
+        bench = X.piece("k_table_medium", { w: 1.6, center: !0, tint: 0x9a7a58 });
+      if (bench) {
+        (bench.position.set(wx, fy, wz), (bench.rotation.y = Math.PI / 2), b.group.add(bench));
+        let tools = v(new iA(0.5, 0.06, 0.3), g.world.mat("metal", 0x6a6a74), 0, 0.82, 0);
+        (bench.add(tools), bench.add(v(new QA(0.03, 0.03, 0.5, 6), g.world.mat("wood", 0x5a3e28), 0.2, 0.9, 0.05)));
+        g.world.addCircle(wx, wz, 0.8, fy + 2, "prop");
+      }
+      b.feats.push({ kind: "decorate", text: "Furnish your home (workbench)", pos: [wx, wz] });
+      for (let rec of hs(g.profile).deco) X.decoSpawn(g, rec);
+    } catch (e) {
+      console.error("deco build", e);
+    }
+    return b;
+  };
+
+  // ---- placing ----
+  GP.decoHold = function (id) {
+    let p = this.profile,
+      d = X.decoDef(p, id);
+    if (!d || !this.home) return !1;
+    this.decoDrop();
+    let o = X.decoBuild(this, d);
+    if (!o) return !1;
+    o.traverse((c) => {
+      if (c.isMesh && c.material) {
+        c.material = c.material.clone();
+        ((c.material.transparent = !0), (c.material.opacity = 0.55), (c.material.depthWrite = !1));
+      }
+    });
+    this.scene.add(o);
+    this.deco = { id, d, ghost: o, ry: 0, ok: !0 };
+    this.toast(`Placing ${d.name}: LMB / F place · Q E rotate · R put away`, "#ffe08a");
+    return !0;
+  };
+  GP.decoDrop = function () {
+    if (!this.deco) return;
+    this.scene.remove(this.deco.ghost);
+    let h = hs(this.profile);
+    h.decoInv[this.deco.id] = (h.decoInv[this.deco.id] || 0) + 1;
+    this.deco = null;
+    this.save();
+  };
+  GP.decoPlace = function () {
+    let D = this.deco;
+    if (!D || !D.ok) return;
+    let [px, pz] = X.HOUSE.pocket,
+      g = D.ghost,
+      rec = { id: D.id, x: +(g.position.x - px).toFixed(2), z: +(g.position.z - pz).toFixed(2), ry: +D.ry.toFixed(3) };
+    hs(this.profile).deco.push(rec);
+    X.decoSpawn(this, rec);
+    this.scene.remove(g);
+    this.deco = null;
+    this.audio.play("equipmetal", null, 0.5);
+    this.track("deco_placed");
+    this.save();
+  };
+  GP.decoPickup = function (e) {
+    let h = hs(this.profile),
+      i = h.deco.indexOf(e.rec);
+    i >= 0 && h.deco.splice(i, 1);
+    X.decoRemove(this, e);
+    this.decoHold(e.rec.id);
+    this.deco && (this.deco.ry = e.rec.ry || 0);
+  };
+  GP.decoNear = function () {
+    let b = this.world.homeBuilt,
+      A = this.player;
+    if (!this.home || !b?.decos?.length) return null;
+    let best = null,
+      bd = 2.4,
+      f = this.fwd ? this.fwd() : null;
+    for (let e of b.decos) {
+      let dx = e.obj.position.x - A.pos.x,
+        dz = e.obj.position.z - A.pos.z,
+        d = Math.hypot(dx, dz) - (e.d.r || 0.3);
+      if (d < bd && (!f || dx * f.x + dz * f.z > 0)) ((bd = d), (best = e));
+    }
+    return best;
+  };
+  // ghost follows where you look, snapped to the floor and kept inside the walls
+  let up0 = GP.updatePlayer;
+  GP.updatePlayer = function (A) {
+    up0.call(this, A);
+    let D = this.deco;
+    if (!D) return;
+    if (!this.home) return this.decoDrop();
+    let cam = window.__app.camera,
+      dir = new N(0, 0, -1).applyQuaternion(cam.quaternion),
+      fy = X.HOUSE.floorY,
+      t = dir.y < -0.05 ? (fy - cam.position.y) / dir.y : 4.5;
+    t = Math.min(6, Math.max(1.2, t));
+    let x = cam.position.x + dir.x * t,
+      z = cam.position.z + dir.z * t,
+      B = X.decoBounds(this),
+      m = D.d.r || 0.3;
+    x = Math.min(B.x1 - m, Math.max(B.x0 + m, x));
+    z = Math.min(B.z1 - m, Math.max(B.z0 + m, z));
+    D.ghost.position.set(x, fy + (D.d.y || 0.11), z);
+    D.ghost.rotation.y = D.ry;
+    D.ok = !0;
+  };
+  let ok0 = GP.onKey;
+  GP.onKey = function (A, i) {
+    if (this.deco && i) {
+      if (A === "KeyQ") return void (this.deco.ry -= Math.PI / 8);
+      if (A === "KeyE") return void (this.deco.ry += Math.PI / 8);
+      if (A === "KeyR" || A === "Escape") return void this.decoDrop();
+      if (A === "KeyF") return void this.decoPlace();
+    }
+    return ok0.call(this, A, i);
+  };
+  let om0 = GP.onMouse;
+  GP.onMouse = function (b, down) {
+    if (this.deco) {
+      down && b === 0 && this.decoPlace();
+      down && b === 2 && (this.deco.ry += Math.PI / 8);
+      return;
+    }
+    return om0.call(this, b, down);
+  };
+  addEventListener("wheel", (e) => {
+    let g = window.__app?.game;
+    g?.deco && (g.deco.ry += (e.deltaY > 0 ? 1 : -1) * Math.PI / 16);
+  });
+  // prompts
+  let sp0 = GP.sysPrompt;
+  GP.sysPrompt = function () {
+    if (this.deco) return { text: "[F] Place \xB7 Q E rotate \xB7 R put away", near: { kind: "deco_place" } };
+    if (this.home) {
+      let e = this.decoNear();
+      if (e) return { text: `[F] Move ${e.d.name}`, near: { kind: "deco_pick", e } };
+    }
+    return sp0.call(this);
+  };
+  let si0 = GP.sysInteract;
+  GP.sysInteract = function (n) {
+    if (n.kind === "deco_place") return this.decoPlace(), !0;
+    if (n.kind === "deco_pick") return this.decoPickup(n.e), !0;
+    if (n.kind === "home_decorate") return this.ui.panel("deco"), !0;
+    return si0.call(this, n);
+  };
+  // leaving the home while holding something puts it away
+  let eh0 = GP.exitHome;
+  GP.exitHome = function () {
+    this.decoDrop();
+    return eh0.call(this);
+  };
+
+  // ---- the workbench panel ----
+  let ep0 = U.extraPanel;
+  U.extraPanel = function (B, A) {
+    if (B === "deco") return this.decoHTML(A);
+    return ep0.call(this, B, A);
+  };
+  U.decoHTML = function (g) {
+    let p = this.app.profile,
+      h = hs(p),
+      list = X.decoList(p),
+      cats = [...new Set(list.map((d) => d.cat))],
+      placed = {};
+    for (let r of h.deco) placed[r.id] = (placed[r.id] || 0) + 1;
+    let card = (d) => {
+      let own = h.decoInv[d.id] || 0,
+        pl = placed[d.id] || 0,
+        can = p.shards >= d.cost;
+      return `<div class="shop-i deco-i"><div class="tip-n">${d.name}</div><div class="tip-r">${d.cost ? `◆ ${d.cost}` : "Trophy — free"}${pl ? ` \xB7 placed ${pl}` : ""}${own ? ` \xB7 stored ${own}` : ""}</div><div class="row">${
+        own ? `<button class="btn sm" data-deco-place="${d.id}">Place</button>` : ""
+      }<button class="btn sm ${can ? "" : "dis"}" data-deco-buy="${d.id}">${d.cost ? "Buy" : "Claim"}</button></div></div>`;
+    };
+    return `<h2>Furnishings <small>◆ ${p.shards.toLocaleString()} \xB7 ${h.deco.length} placed</small></h2><p class="small">Buy a piece, then <b>Place</b> it: it follows where you look; <b>LMB / F</b> sets it down, <b>Q E</b> or the wheel turn it, <b>R</b> puts it back in storage. Walk up to a placed piece and press <b>F</b> to move it. ${
+      h.deco.length ? '<button class="btn sm" id="deco-storeall">Store everything</button>' : ""
+    }</p>${cats.map((c) => `<h3>${c}</h3><div class="shop">${list.filter((d) => d.cat === c).map(card).join("")}</div>`).join("")}`;
+  };
+  let be0 = U.bindExtra;
+  U.bindExtra = function (B, A, i) {
+    be0.call(this, B, A, i);
+    if (B !== "deco") return;
+    let p = this.app.profile,
+      h = hs(p),
+      g = this.app.game,
+      M = document.getElementById("modal");
+    M.querySelectorAll("[data-deco-buy]").forEach((b) => {
+      b.onclick = () => {
+        let d = X.decoDef(p, b.dataset.decoBuy);
+        if (!d) return;
+        if (p.shards < d.cost) return this.app.audio.play("error");
+        p.shards -= d.cost;
+        h.decoInv[d.id] = (h.decoInv[d.id] || 0) + 1;
+        (this.app.audio.play("coinspend", null, 0.6), g.track("deco_bought"), this.app.saveProfile(), this.panel("deco", i));
+      };
+    });
+    M.querySelectorAll("[data-deco-place]").forEach((b) => {
+      b.onclick = () => {
+        let id = b.dataset.decoPlace;
+        if (!(h.decoInv[id] > 0)) return;
+        h.decoInv[id]--;
+        h.decoInv[id] <= 0 && delete h.decoInv[id];
+        this.closeModal();
+        g.decoHold(id) || (h.decoInv[id] = (h.decoInv[id] || 0) + 1);
+      };
+    });
+    let sa = M.querySelector("#deco-storeall");
+    sa &&
+      (sa.onclick = () => {
+        let b = g.world.homeBuilt;
+        for (let e of [...(b?.decos || [])]) X.decoRemove(g, e);
+        for (let r of h.deco) h.decoInv[r.id] = (h.decoInv[r.id] || 0) + 1;
+        h.deco = [];
+        (this.app.saveProfile(), this.panel("deco", i));
+      });
+  };
+  // CSS
+  let css = document.createElement("style");
+  css.textContent = `.deco-i .row{display:flex;gap:6px;margin-top:6px}.btn.sm{padding:4px 10px;font-size:12px}.btn.dis{opacity:.45}`;
+  document.head.appendChild(css);
+  // achievements
+  WB.push(
+    { id: "deco_first", name: "Homemaker", desc: "Place a furnishing in your home", stat: "deco_placed", goal: 1, reward: 25 },
+    { id: "deco_ten", name: "Interior decorator", desc: "Place 10 furnishings", stat: "deco_placed", goal: 10, reward: 25 },
+    { id: "deco_trophy", name: "Hall of trophies", desc: "Buy or claim 15 furnishings", stat: "deco_bought", goal: 15, reward: 25 },
+  );
+  // help
+  X.HELP && X.HELP.systems.push(["Furnishing", "Inside your home, press F at the workbench to buy furniture, lights, banners, garden pieces and boss trophies; place them where you look (Q/E rotate, R put away), press F at a placed piece to move it."]);
+  // broker mentions it
+  let he0 = X.npcExtra.house;
+  X.npcExtra.house = function (g) {
+    return he0(g) + (X.houseTier(g.profile) ? `<p class="small">Furnish it at the workbench inside — tables, lights, banners, a garden corner and trophies of the beasts you have slain.</p>` : "");
+  };
+}
+
+/* ---- EQ_raid.js ---- */
+// ===== 1.17 raid boss mechanics: tank-swap stacks, interruptible casts, soak circles, spread marks, jump waves, safe zones,
+// shield phases with priority adds, hard enrage — for The Reckoning (generals) and The Throne of Storms (Volk, Azrakul, the Unbound).
+// Everything runs on the host; banners, cast bars and marks are relayed to guests. =====
+{
+  const GP = SC.prototype,
+    U = XC.prototype;
+  // ---- banners from boss scripts reach every player ----
+  let bn0 = U.banner;
+  U.banner = function (A, i, I) {
+    let g = this.app.game;
+    g?._inBossAI && g.isHost && g.net && g.net.broadcast({ t: "rb", k: "banner", a: A, b: i, c: I });
+    return bn0.call(this, A, i, I);
+  };
+  let bai0 = GP.bossAI;
+  GP.bossAI = function (A, i, I) {
+    this._inBossAI = !0;
+    try {
+      return bai0.call(this, A, i, I);
+    } finally {
+      this._inBossAI = !1;
+    }
+  };
+  let on0 = GP.onNet;
+  GP.onNet = function (from, m) {
+    if (m.t === "rb") {
+      if (m.k === "banner") this.ui.banner(m.a, m.b, m.c);
+      else if (m.k === "cast") {
+        let e = this.enemies.get(m.id);
+        e && (e.cast = { name: m.name, t: 0, dur: m.dur });
+      } else if (m.k === "castend") {
+        let e = this.enemies.get(m.id);
+        e && (e.cast = null);
+        m.name && this.toast(m.name, "#9ad0ff");
+      } else if (m.k === "mark") this._marks = { ids: m.ids, until: this.t + m.dur, r: m.r };
+      else if (m.k === "toast") this.toast(m.a, m.c);
+      return;
+    }
+    return on0.call(this, from, m);
+  };
+  let rsend = (g, m) => g.isHost && g.net && g.net.broadcast({ t: "rb", ...m });
+  let rtoast = (g, a, c) => (g.toast(a, c), rsend(g, { k: "toast", a, c }));
+
+  // ---- mechanic helpers ----
+  X.mech = {};
+  // timers on the boss's own ability table (abT counts down every frame)
+  X.mech.timer = (A, n, o, first) => {
+    let g = A.abT;
+    if (g[n] === void 0) return ((g[n] = first ?? o * 0.5), !1);
+    if (g[n] <= 0) return ((g[n] = o), !0);
+    return !1;
+  };
+  // stacking tank debuff: the boss's melee hurts its current target 25% more per stack; swap tanks to let it fall off
+  X.mech.sunder = function (g, A, name = "Sunder", per = 0.25, max = 6, dur = 18) {
+    let id = A.target;
+    if (!id) return;
+    let S = (A.stacks ||= {}),
+      s = (S[id] ||= { n: 0, t: 0 });
+    ((s.n = Math.min(max, s.n + 1)), (s.t = g.t + dur));
+    let txt = `${name} \xD7${s.n}`;
+    id === "self" ? g.addBuff("sunder", dur, { label: txt, debuff: !0 }) : g.sendTo(id, { t: "aid", buff: ["sunder", dur, { label: txt, debuff: !0 }] });
+    g.fx("ring", g.targetPos(id) || A.pos, { color: 0xff8a4a, r: 2.5 });
+    s.n >= 3 && rtoast(g, `${txt} — TANK SWAP (taunt it off)`, "#ff8a4a");
+  };
+  let es0 = GP.enemyStrike;
+  GP.enemyStrike = function (A, i) {
+    let s = A.stacks && A.target && A.stacks[A.target];
+    if (!s || s.t < this.t || !s.n) return es0.call(this, A, i);
+    let m0 = A.dmgMul;
+    A.dmgMul = m0 * (1 + 0.25 * s.n);
+    try {
+      return es0.call(this, A, i);
+    } finally {
+      A.dmgMul = m0;
+    }
+  };
+  // interruptible cast: the boss stands still; a stun/CC hit or 6% of its health lost during the cast breaks it
+  X.mech.cast = function (g, A, name, dur, onDone, color = "#d070ff") {
+    A.cast = { name, t: 0, dur, hp0: A.hp, onDone };
+    g.ui.banner(name.toUpperCase(), "Interrupt it — stun it or burn 6% of its health", color);
+    rsend(g, { k: "cast", id: A.id, name, dur });
+    g.audio.play("cast", A.pos, 1);
+  };
+  X.mech.castTick = function (g, A, I) {
+    let c = A.cast;
+    if (!c) return !1;
+    c.t += I;
+    if (A.hp < c.hp0 - A.maxHp * 0.06 || c.broken) return (X.mech.interrupt(g, A), !1);
+    if (c.t >= c.dur) {
+      A.cast = null;
+      rsend(g, { k: "castend", id: A.id });
+      c.onDone();
+      return !1;
+    }
+    return !0;
+  };
+  X.mech.interrupt = function (g, A) {
+    let c = A.cast;
+    if (!c) return;
+    A.cast = null;
+    rsend(g, { k: "castend", id: A.id, name: `${c.name} interrupted!` });
+    g.toast(`${c.name} interrupted!`, "#9ad0ff");
+    g.audio.play("glass", A.pos, 1);
+    A.windup = 0;
+    A.dazed = g.t + 2.5; // no mechanics for a moment
+  };
+  let he0 = GP.hitEnemy;
+  GP.hitEnemy = function (A, i, I = {}) {
+    if (A.cast && I.stun && this.isHost) X.mech.interrupt(this, A);
+    if (A.immune > 0 && A.alive) {
+      this.floatText(A.pos.clone().setY(A.pos.y + A.def.height * A.scale + 0.5), "IMMUNE", "#9ad0ff");
+      return;
+    }
+    return he0.call(this, A, i, I);
+  };
+  // soak circle: at least `need` players must stand inside when it bursts, or everyone takes `fail` damage
+  X.mech.soak = function (g, A, pos, r, need, delay, fail, color = 0x40a0ff) {
+    need = Math.min(need, g.playerTargets().length);
+    g.ui.banner("SOAK", `${need} player${need > 1 ? "s" : ""} must stand in the blue circle`, "#40a0ff");
+    g.telegraphEnemy(pos, r, delay, color, (p) => {
+      let inside = g.playerTargets().filter((o) => o.pos.distanceTo(p) < r);
+      if (inside.length >= need) {
+        for (let o of inside) g.damagePlayer(o.id, fail * 0.25, { pure: !0, src: p });
+        g.fx("ring", p, { color, r });
+        rtoast(g, "Soaked!", "#40a0ff");
+      } else {
+        for (let o of g.playerTargets()) g.damagePlayer(o.id, fail, { pure: !0 });
+        g.fx("explosion", p, { color, r: r * 2 });
+        g.shake(0.8);
+        rtoast(g, "Nobody soaked it — the whole raid is hit", "#ff6a4a");
+      }
+      g.audio.play("explosion", p, 0.9);
+    });
+  };
+  // spread marks: marked players explode after `delay`, hurting everyone else within r
+  X.mech.spread = function (g, A, r, delay, dmg) {
+    let ids = g.playerTargets().map((o) => o.id);
+    g._marks = { ids, until: g.t + delay, r };
+    rsend(g, { k: "mark", ids, dur: delay, r });
+    g.ui.banner("SPREAD OUT", `Stay ${r} m apart`, "#d070ff");
+    g.after(delay, () => {
+      let T = g.playerTargets();
+      for (let o of T) {
+        let hit = T.filter((q) => q.id !== o.id && q.pos.distanceTo(o.pos) < r);
+        for (let q of hit) g.damagePlayer(q.id, dmg, { pure: !0, src: o.pos });
+        g.fx("explosion", o.pos, { color: 0xd070ff, r, small: !0 });
+      }
+    });
+  };
+  // marks are drawn each frame as rings under the marked players (host and guests)
+  let upd0 = GP.update;
+  GP.update = function (dt) {
+    upd0.call(this, dt);
+    let M = this._marks;
+    if (M) {
+      if (this.t > M.until) this._marks = null;
+      else if ((this._markT = (this._markT || 0) + dt) > 0.3) {
+        this._markT = 0;
+        for (let id of M.ids) {
+          let p = this.targetPos(id);
+          p && this.fx("ring", p, { color: 0xd070ff, r: M.r / 2 });
+        }
+      }
+    }
+    // cast timers tick on guests too (for the bar)
+    if (!this.isHost) for (let e of this.enemies.values()) e.cast && ((e.cast.t += dt), e.cast.t > e.cast.dur + 0.5 && (e.cast = null));
+  };
+  // jump wave: a ring that only hurts players touching the ground when it hits
+  X.mech.jumpWave = function (g, A, r, delay, dmg, color = 0xc0a060) {
+    g.ui.banner("TREMOR", "JUMP when the ring hits!", "#e0c080");
+    g.telegraphEnemy(A.pos.clone(), r, delay, color, (p) => {
+      g.fx("ring", p, { color, r });
+      g.shake(0.7);
+      g.audio.play("explosion", p, 1);
+      for (let o of g.playerTargets()) {
+        if (o.pos.distanceTo(p) > r) continue;
+        let air = o.id === "self" ? !g.player.onGround && g.player.vel.y > -2 : X.mech.botAir(g, o.id) || o.pos.y - (g.world.groundAt(o.pos.x, o.pos.z) ?? o.pos.y) > 0.45;
+        air ? o.id === "self" && g.toast("Jumped it!", "#e0c080") : g.damagePlayer(o.id, dmg, { pure: !0, src: p });
+      }
+    });
+  };
+  // safe zone: everything outside the green circle is hit
+  X.mech.safeZone = function (g, A, pos, r, delay, dmg, label = "EYE OF THE STORM") {
+    g.ui.banner(label, "Get inside the green circle", "#60ff90");
+    g.telegraphEnemy(pos, r, delay, 0x40ff80, (p) => {
+      for (let o of g.playerTargets()) o.pos.distanceTo(p) > r && g.damagePlayer(o.id, dmg, { pure: !0 });
+      g.fx("nova", p, { color: 0x60ff90, r: r * 3 });
+      g.shake(0.9);
+      g.audio.play("thunder", null, 1);
+    });
+  };
+  // shield phase: boss immune while its guards live (or for `max` seconds)
+  X.mech.shieldPhase = function (g, A, addType, n, max, label = "SHIELD WALL") {
+    A.immune = max;
+    A.guards = [];
+    for (let k = 0; k < n; k++) {
+      let e = g.spawnEnemy(addType, A.pos.x + (Math.random() - 0.5) * 12, A.pos.z + (Math.random() - 0.5) * 12, A.level - 1);
+      e && ((e.guardOf = A), A.guards.push(e));
+    }
+    g.ui.banner(label, `${A.def.name} is immune while the guards live`, "#9ad0ff");
+    g.fx("nova", A.pos, { color: 0x9ad0ff, r: 6 });
+  };
+  X.mech.shieldTick = function (g, A, I) {
+    if (!(A.immune > 0)) return;
+    A.immune -= I;
+    A.guards = (A.guards || []).filter((e) => e.alive);
+    if (!A.guards.length || A.immune <= 0) {
+      A.immune = 0;
+      g.fx("explosion", A.pos, { color: 0x9ad0ff, r: 5 });
+      rtoast(g, `${A.def.name}'s shield breaks`, "#9ad0ff");
+    } else if (((A._shT = (A._shT || 0) + I) > 0.6)) {
+      A._shT = 0;
+      g.fx("ring", A.pos, { color: 0x9ad0ff, r: 3 });
+    }
+  };
+  // hard enrage
+  X.mech.enrage = function (g, A, I, limit) {
+    A.pullT = (A.pullT || 0) + I;
+    let left = limit - A.pullT;
+    if (left < 60 && !A._en60) ((A._en60 = !0), g.ui.banner("ONE MINUTE", `${A.def.name} enrages soon`, "#ff4a3a"));
+    if (left <= 0 && !A.enraged) {
+      A.enraged = !0;
+      A.dmgMul *= 2.5;
+      g.ui.banner("ENRAGE", `${A.def.name} will not be denied`, "#ff2a2a");
+      g.audio.play("bossroar", A.pos, 1.4);
+    }
+  };
+  // common prologue for a mechanic layer: only on the host, with a target, not mid-swing, not dazed
+  let layer = (A, i, I, g) => {
+    if (!g.isHost || !i || !A.alive) return !1;
+    if (A.dazed > g.t) return !1;
+    X.mech.shieldTick(g, A, I);
+    if (X.mech.castTick(g, A, I)) return "casting";
+    return !0;
+  };
+  let wrap = (type, limit, fn) => {
+    let f0 = X.bossAI[type];
+    if (!f0) return;
+    X.bossAI[type] = function (A, i, I) {
+      let r = f0.call(this, A, i, I);
+      try {
+        if (this.isHost && i && A.alive) X.mech.enrage(this, A, I, limit);
+        let L = layer(A, i, I, this);
+        if (L === "casting") return null;
+        L && !(A.windup > 0) && fn.call(this, A, i, I, r);
+        if (A.cast) return null;
+      } catch (e) {
+        console.error("raid mech", type, e);
+      }
+      return r;
+    };
+  };
+  let T = X.mech.timer,
+    pick = (g, not) => {
+      let T0 = g.playerTargets().filter((o) => o.id !== not);
+      return T0.length ? T0[(Math.random() * T0.length) | 0] : null;
+    };
+
+  // ---- The Reckoning ----
+  wrap("general1", 420, function (A, i, I) {
+    let D = A.phase || 0;
+    T(A, "m_sunder", 7, 4) && X.mech.sunder(this, A, "Sunder");
+    A._shD ??= D;
+    if (D !== A._shD) {
+      A._shD = D;
+      X.mech.shieldPhase(this, A, "cultist", 2 + D, 25, "SHIELD WALL");
+    }
+  });
+  wrap("general2", 420, function (A, i, I) {
+    let D = A.phase || 0;
+    if (T(A, "m_cast", 16, 9))
+      X.mech.cast(this, A, "Void Bolt", 3.2 - D * 0.4, () => {
+        let o = pick(this);
+        o && (this.damagePlayer(o.id, 140 * A.dmgMul, { pure: !0 }), this.fx("beam", A.pos.clone().setY(A.pos.y + 4), { to: o.pos.clone().setY(o.pos.y + 1), color: 0xd070ff }));
+        for (let q of this.playerTargets()) this.damagePlayer(q.id, 45 * A.dmgMul, { pure: !0 });
+        this.audio.play("dark", A.pos, 1.2);
+      });
+    if (T(A, "m_soak", 20, 14)) {
+      let o = pick(this);
+      o && X.mech.soak(this, A, this.groundPoint(o.pos.clone().add(ii((Math.random() - 0.5) * 8, 0, (Math.random() - 0.5) * 8))), 4, 2 + D, 4, 110 * A.dmgMul);
+    }
+  });
+  wrap("general3", 420, function (A, i, I) {
+    let D = A.phase || 0;
+    T(A, "m_tremor", 13, 8) && X.mech.jumpWave(this, A, 16, 2.2, 80 * A.dmgMul);
+    if (T(A, "m_spears", 9, 5)) {
+      let q = ii(i.x - A.pos.x, 0, i.z - A.pos.z).normalize();
+      for (let n = 1; n <= 6; n++) {
+        let o = A.pos.clone().addScaledVector(q, n * 3.5);
+        o.y = this.world.heightAt(o.x, o.z);
+        this.after(n * 0.12, () => X.aoe(this, A, o, 2.6, 0.9, 0xa0f0ff, (55 + D * 10) * A.dmgMul, { fx: "pillar", snd: "stone" }));
+      }
+    }
+  });
+
+  // ---- The Throne of Storms ----
+  wrap("volk", 360, function (A, i, I) {
+    let D = A.phase || 0;
+    T(A, "m_spread", 15, 10) && X.mech.spread(this, A, 6, 4, 70 * A.dmgMul);
+    if (T(A, "m_pack", 28, 20)) {
+      this.ui.banner("PACK CALL", "Kill the hounds first — each one alive makes Volk hit harder", "#a0a0ff");
+      A.pack = [];
+      for (let n = 0; n < 2 + D; n++) {
+        let e = this.spawnEnemy("hound", A.pos.x + (Math.random() - 0.5) * 12, A.pos.z + (Math.random() - 0.5) * 12, A.level - 3);
+        e && A.pack.push(e);
+      }
+      this.audio.play("howl", A.pos, 1.5);
+    }
+    if (A.pack) {
+      A.pack = A.pack.filter((e) => e.alive);
+      let want = 1 + A.pack.length * 0.2;
+      if (A._packMul !== want) {
+        A.dmgMul = (A.dmgMul / (A._packMul || 1)) * want;
+        A._packMul = want;
+      }
+    }
+  });
+  wrap("azrakul", 360, function (A, i, I) {
+    let D = A.phase || 0;
+    if (T(A, "m_eye", 24, 16)) {
+      let o = pick(this);
+      o && X.mech.safeZone(this, A, this.groundPoint(o.pos.clone().add(ii((Math.random() - 0.5) * 10, 0, (Math.random() - 0.5) * 10))), 5 - D * 0.5, 4, 150 * A.dmgMul, "EYE OF THE STORM");
+    }
+    if (T(A, "m_cast", 18, 12))
+      X.mech.cast(this, A, "Thunderhead", 3.5 - D * 0.5, () => {
+        for (let q of this.playerTargets()) (this.damagePlayer(q.id, 95 * A.dmgMul, { pure: !0 }), this.fx("beam", A.pos.clone().setY(A.pos.y + 5), { to: q.pos.clone().setY(q.pos.y + 1), color: 0xc0b0ff }));
+        this.audio.play("thunder", null, 1);
+        this.shake(0.8);
+      });
+  });
+  wrap("unbound", 360, function (A, i, I) {
+    let D = A.phase || 0;
+    T(A, "m_doom", 8, 5) && X.mech.sunder(this, A, "Doom", 0.25, 6, 20);
+    if (T(A, "m_soak", 22, 15)) {
+      let o = pick(this);
+      o && X.mech.soak(this, A, this.groundPoint(o.pos.clone().add(ii((Math.random() - 0.5) * 8, 0, (Math.random() - 0.5) * 8))), 4.5, 3 + D, 4, 130 * A.dmgMul, 0xff2a6a);
+    }
+    if (D >= 1 && T(A, "m_cast", 20, 12))
+      X.mech.cast(this, A, "Unmaking", 4, () => {
+        for (let q of this.playerTargets()) this.damagePlayer(q.id, 160 * A.dmgMul, { pure: !0 });
+        this.fx("nova", A.pos, { color: 0xff2a6a, r: 30 });
+        this.shake(1);
+      }, "#ff2a6a");
+  });
+
+  // ---- bots know the mechanics ----
+  let botsOf = (g) => (X.bots?.list ? X.bots.list(g).filter((r) => !r.downed) : []),
+    send = (r, pos, dur, g) => (r.mechGoal = { pos: pos.clone(), until: g.t + dur });
+  X.botNear = function (g, r, near) {
+    // while a boss is immune its guards come first
+    let guards = near.filter((e) => e.guardOf && e.guardOf.immune > 0);
+    return guards.length ? guards : near.filter((e) => !(e.immune > 0)).length ? near.filter((e) => !(e.immune > 0)) : near;
+  };
+  let soak0 = X.mech.soak;
+  X.mech.soak = function (g, A, pos, r, need, delay, fail, color) {
+    let bots = botsOf(g).filter((b) => b.role !== "Tank");
+    for (let b of bots.slice(0, Math.min(need, g.playerTargets().length))) send(b, pos, delay + 0.5, g);
+    return soak0.call(this, g, A, pos, r, need, delay, fail, color);
+  };
+  let spread0 = X.mech.spread;
+  X.mech.spread = function (g, A, r, delay, dmg) {
+    let T = g.playerTargets();
+    for (let b of botsOf(g)) {
+      let away = new N();
+      for (let o of T) if (o.id !== b.id && o.pos.distanceTo(b.pos) < r + 1) away.add(b.pos.clone().sub(o.pos).setY(0).normalize());
+      away.lengthSq() < 0.01 && away.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+      send(b, b.pos.clone().addScaledVector(away.normalize(), r + 1), delay, g);
+    }
+    return spread0.call(this, g, A, r, delay, dmg);
+  };
+  let safe0 = X.mech.safeZone;
+  X.mech.safeZone = function (g, A, pos, r, delay, dmg, label) {
+    for (let b of botsOf(g)) send(b, pos.clone().add(ii((Math.random() - 0.5) * r, 0, (Math.random() - 0.5) * r)), delay + 0.5, g);
+    return safe0.call(this, g, A, pos, r, delay, dmg, label);
+  };
+  // bots jump tremors most of the time, and a DPS bot in range kicks a cast after a moment
+  X.mech.botAir = (g, id) => botsOf(g).some((b) => b.id === id) && Math.random() < 0.75;
+  let castTick0 = X.mech.castTick;
+  X.mech.castTick = function (g, A, I) {
+    let c = A.cast;
+    if (c && c.t > 1.2 && !c.botKick) {
+      let k = botsOf(g).find((b) => b.role === "DPS" && b.pos.distanceTo(A.pos) < 12);
+      if (k && Math.random() < I * 0.7) {
+        c.botKick = !0;
+        g.floatText(A.pos.clone().setY(A.pos.y + 2.5), `${k.name} interrupts`, "#9ad0ff");
+        c.broken = !0;
+      }
+    }
+    return castTick0.call(this, g, A, I);
+  };
+  // a bot tank taunts when the human tank carries 3+ stacks
+  let sunder0 = X.mech.sunder;
+  X.mech.sunder = function (g, A, name, per, max, dur) {
+    sunder0.call(this, g, A, name, per, max, dur);
+    let s = A.stacks?.[A.target];
+    if (s && s.n >= 3) {
+      let tank = botsOf(g).find((b) => b.role === "Tank" && b.id !== A.target && b.pos.distanceTo(A.pos) < 20);
+      tank && g.taunt && (g.taunt(A, tank.id), g.floatText(A.pos.clone().setY(A.pos.y + 2.2), `${tank.name} taunts`, "#ffd070"));
+    }
+  };
+
+  // ---- stacks expire; guards that lose their boss stop being guards ----
+  let ue0 = GP.updateEnemies;
+  GP.updateEnemies = function (A) {
+    ue0.call(this, A);
+    if (!this.isHost) return;
+    for (let e of this.enemies.values()) {
+      if (!e.stacks) continue;
+      for (let id in e.stacks) e.stacks[id].t < this.t && e.stacks[id].n && (e.stacks[id].n = 0);
+    }
+  };
+  // ---- cast bar under the boss frame ----
+  let uh0 = U.updateHUD;
+  U.updateHUD = function (A, i) {
+    uh0.call(this, A, i);
+    let el = document.getElementById("bosscast");
+    if (!el) {
+      let b = document.getElementById("boss");
+      if (!b) return;
+      el = document.createElement("div");
+      el.id = "bosscast";
+      el.innerHTML = '<div id="bosscast-n"></div><div class="bar"><div id="bosscast-f"></div></div>';
+      b.appendChild(el);
+    }
+    let s = [...A.enemies.values()].find((D) => D.def.boss && D.alive && D.cast && D.pos.distanceTo(A.player.pos) < 90);
+    el.style.display = s ? "block" : "none";
+    if (s) {
+      let f = Math.min(1, s.cast.t / s.cast.dur);
+      document.getElementById("bosscast-n").textContent = `${s.cast.name} — interrupt!`;
+      document.getElementById("bosscast-f").style.width = `${f * 100}%`;
+    }
+  };
+  let css = document.createElement("style");
+  css.textContent = `#bosscast{margin-top:4px;font-size:12px;color:#d8c0ff;text-shadow:0 1px 2px #000}#bosscast .bar{height:6px;background:#1a1020;border:1px solid #6a4a9a;border-radius:3px;overflow:hidden;margin-top:2px}#bosscast-f{height:100%;background:linear-gradient(90deg,#8a50e0,#d0a0ff);width:0}`;
+  document.head.appendChild(css);
+  // buff label for the sunder debuff (EK buff bar shows name; label overrides)
+  X.BUFFLABEL = Object.assign(X.BUFFLABEL || {}, { sunder: (b) => b.data?.label || "Sunder" });
+  // help
+  X.HELP && X.HELP.systems.push(["Raid mechanics", "Raid bosses use real mechanics: stacking tank debuffs (swap tanks with Taunt at ×3), casts you must interrupt (stun or 6% damage), blue soak circles, purple spread marks, tremors to jump over, green safe zones, shield phases with guards to kill, and a hard enrage."]);
+}
+
+/* ---- ER_ai.js ---- */
+// ===== 1.17 enemy variety & AI: four new enemy kinds, flanking packs, kiting archers, healing shamans, brutes that cleave and
+// charge, and patrols that walk routes when nobody is around =====
+{
+  const GP = SC.prototype;
+  // ---- new kinds ----
+  Object.assign(rw, {
+    archer: { name: "Bone Archer", hp: 55, dmg: 11, speed: 5.6, range: 18, atkCd: 1.7, xp: 11, armor: 0, radius: 0.5, height: 1.8, color: 0xc8c0a0, ranged: !0, ai: "skirmisher" },
+    stalker: { name: "Hooded Stalker", hp: 62, dmg: 12, speed: 7.4, range: 1.8, atkCd: 1.0, xp: 12, armor: 0, radius: 0.5, height: 1.8, color: 0x3a3a4a, ai: "flanker" },
+    shaman: { name: "Grave Shaman", hp: 58, dmg: 9, speed: 5, range: 14, atkCd: 1.9, xp: 14, armor: 0, radius: 0.5, height: 1.85, color: 0x80c080, ranged: !0, ai: "caster" },
+    brute: { name: "Ashen Brute", hp: 170, dmg: 19, speed: 4.4, range: 2.4, atkCd: 2.0, xp: 24, armor: 10, radius: 0.8, height: 2.6, color: 0x8a5040, ai: "brute" },
+  });
+  Object.assign(Tl, {
+    archer: { m: "rogue", h: 1.8, tint: 0xd0c8b0, show: ["2H_Crossbow"], legs: "knight", atk: "2H_Ranged_Shoot", atkW: 0.5 },
+    stalker: { m: "rogue_hooded", h: 1.8, tint: 0x4a4a5a, show: ["Knife"], cape: "rogue", atk: "1H_Melee_Attack_Slice_Diagonal", atkW: 0.35 },
+    shaman: { m: "skel_mage", h: 1.85, tint: 0x90d090, R: "w_skeleton_staff", atk: "Spellcast_Shoot", atkW: 0.55, glow: 0x40ff80 },
+    brute: { m: "barbarian", h: 2.6, tint: 0xa06040, show: ["2H_Axe"], atk: "2H_Melee_Attack_Chop", idle: "2H_Melee_Idle", atkW: 0.6 },
+  });
+  for (let k of ["archer", "stalker", "shaman", "brute"]) Ul.includes(k) || Ul.push(k);
+  // existing kinds get a behaviour too
+  rw.hound.ai = "pack";
+  rw.cultist.ai = "caster";
+  rw.bogwitch.ai = "caster";
+  // rosters
+  let add = (z, ...t) => fn[z] && fn[z].push(...t);
+  add("hamlet", "archer");
+  add("mire", "shaman", "stalker");
+  add("ossuary", "archer", "brute");
+  add("cathedral", "shaman", "archer");
+  add("citadel", "stalker", "brute", "shaman");
+  add("frost", "archer", "brute");
+  add("waste", "brute", "archer", "stalker");
+  add("thorn", "stalker", "shaman", "shaman");
+  add("storm", "stalker", "shaman", "archer");
+  X.SKIN &&
+    Object.assign(X.SKIN.frost || {}, { archer: ["Rime Archer", 0xc0e0ff], brute: ["Frost Brute", 0x9ac0e0] }) &&
+    Object.assign(X.SKIN.waste || {}, { archer: ["Sand Archer", 0xe0c080], brute: ["Sunscorch Brute", 0xd08040], stalker: ["Dune Stalker", 0xa08050] }) &&
+    Object.assign(X.SKIN.thorn || {}, { stalker: ["Thorn Stalker", 0x3a5a2a], shaman: ["Briar Shaman", 0x60a040] }) &&
+    Object.assign(X.SKIN.storm || {}, { stalker: ["Storm Stalker", 0x5a5a8a], shaman: ["Tempest Shaman", 0x8080c0], archer: ["Storm Archer", 0x9090c0] });
+  typeof wl === "object" &&
+    Object.assign(wl, {
+      archer: "Shoots from range and backs away when you close in.",
+      stalker: "Circles to your back; strikes from behind hurt half again as much.",
+      shaman: "Keeps its distance and heals the pack — kill it first.",
+      brute: "Winds up a wide cleave and charges from afar.",
+    });
+
+  // ---- helpers ----
+  let facingOf = (g, id) => {
+    if (id === "self") return g.player.yaw;
+    let r = g.remotes.get(id);
+    return r ? r.yaw || 0 : 0;
+  };
+  let tmp = new N();
+  // ---- behaviours (run before the built-in ability table; returning a vector overrides movement this frame) ----
+  let ea0 = GP.enemyAbility;
+  GP.enemyAbility = function (B, A, i) {
+    let ai = B.def.ai;
+    if (ai && !B.leap && !(B.charge > 0) && !(B.windup > 0) && !(B.stun > 0)) {
+      let r = X.enemyAI[ai]?.call(this, B, A, i);
+      if (r !== void 0) return r;
+    }
+    return ea0.call(this, B, A, i);
+  };
+  X.enemyAI = {};
+  let timer = (B, n, o) => {
+    let I = B.abT;
+    if (I[n] === void 0) return ((I[n] = o * (0.3 + Math.random() * 0.7)), !1);
+    return I[n] <= 0 ? ((I[n] = o * (0.85 + Math.random() * 0.3)), !0) : !1;
+  };
+  // archers: keep 9–16 m, sidestep now and then, never let you close
+  X.enemyAI.skirmisher = function (B, A, i) {
+    let d = tmp.set(A.x - B.pos.x, 0, A.z - B.pos.z).normalize().clone();
+    if (i < 7) {
+      B.yaw = Math.atan2(d.x, d.z);
+      return d.multiplyScalar(-1.15).add(ii(-d.z, 0, d.x).multiplyScalar(B.id % 2 ? 0.5 : -0.5));
+    }
+    if (B.side > 0) {
+      B.side -= this._dt || 0.016;
+      return ii(-d.z, 0, d.x).multiplyScalar(B.sideDir);
+    }
+    if (i < 16 && timer(B, "side", 3.2)) {
+      B.side = 0.55;
+      B.sideDir = Math.random() < 0.5 ? 1 : -1;
+    }
+  };
+  // stalkers: run to a point behind the target, then attack; back attacks hit 50% harder
+  X.enemyAI.flanker = function (B, A, i) {
+    let yaw = facingOf(this, B.target),
+      back = ii(Math.sin(yaw), 0, Math.cos(yaw)), // the player faces -Z at yaw 0, so +Z is behind them
+      rel = ii(B.pos.x - A.x, 0, B.pos.z - A.z),
+      rad = rel.length() || 0.01,
+      behind = rel.dot(back) / rad;
+    if (behind > 0.6 || i > 9) return; // already at the back (or still far): the normal chase/attack handles it
+    // slide around the target: tangent toward the back side, plus a pull to a 2.2 m orbit
+    let t = ii(-rel.z, 0, rel.x).divideScalar(rad);
+    t.dot(back) < 0 && t.negate();
+    let v = t.multiplyScalar(1.2).add(rel.clone().divideScalar(rad).multiplyScalar((2.2 - rad) * 0.9));
+    B.yaw = Math.atan2(-rel.x, -rel.z);
+    return v.normalize().multiplyScalar(1.15);
+  };
+  // packs (wolves): each member takes a slot around the prey instead of queueing behind the first
+  X.enemyAI.pack = function (B, A, i) {
+    if (i < 2.4 || i > 6) return; // far away the built-in pounce takes over
+    let mates = [...this.enemies.values()].filter((e) => e.alive && e.def.ai === "pack" && e.target === B.target),
+      k = mates.indexOf(B),
+      a = (k / Math.max(1, mates.length)) * Math.PI * 2 + (B.target === "self" ? this.player.yaw : 0),
+      goal = ii(A.x + Math.cos(a) * 2.2, 0, A.z + Math.sin(a) * 2.2),
+      v = goal.sub(B.pos).setY(0),
+      n = v.length();
+    if (n < 1 || mates.length < 2) return;
+    B.yaw = Math.atan2(v.x, v.z);
+    return v.normalize().multiplyScalar(1.05);
+  };
+  // casters: hold 9–13 m; shamans also heal the most wounded ally nearby
+  X.enemyAI.caster = function (B, A, i) {
+    if (B.type === "shaman" && timer(B, "heal", 6)) {
+      let best = null,
+        bd = 0;
+      for (let e of this.enemies.values()) {
+        if (!e.alive || e === B || e.pos.distanceTo(B.pos) > 20) continue;
+        let miss = e.maxHp - e.hp;
+        miss > bd && ((bd = miss), (best = e));
+      }
+      if (best && bd > best.maxHp * 0.1) {
+        let amt = Math.min(bd, best.maxHp * 0.12);
+        best.hp += amt;
+        this.fx("beam", B.pos.clone().setY(B.pos.y + 1.4), { to: best.pos.clone().setY(best.pos.y + 1), color: 0x60ff90 });
+        this.fx("ring", best.pos, { color: 0x60ff90, r: 1.5 });
+        this.floatText(best.pos.clone().setY(best.pos.y + 2), "+" + Math.round(amt), "#60ff90");
+        this.audio.play("heal", B.pos, 0.5);
+        B.castAnim = 0.5;
+        return !0;
+      }
+    }
+    let d = tmp.set(A.x - B.pos.x, 0, A.z - B.pos.z).normalize().clone();
+    if (i < 6) {
+      B.yaw = Math.atan2(d.x, d.z);
+      return d.multiplyScalar(-1);
+    }
+  };
+  // brutes: a telegraphed cleave in front, and a charge when you keep your distance
+  X.enemyAI.brute = function (B, A, i) {
+    if (i < 4.5 && timer(B, "cleave", 9)) {
+      let f = ii(Math.sin(B.yaw), 0, Math.cos(B.yaw));
+      B.windup = 1.1;
+      B.atkT = B.def.atkCd;
+      X.aoe(this, B, B.pos.clone().addScaledVector(f, 2.6), 3.4, 1.1, 0xff8a4a, B.def.dmg * B.dmgMul * 2.2, { fx: "ring", snd: "heavy" });
+      this.floatText(B.pos.clone().setY(B.pos.y + 2.8), "CLEAVE", "#ff8a4a");
+      return !0;
+    }
+    if (i > 9 && i < 24 && timer(B, "charge", 11)) {
+      B.charge = 1.5;
+      this.audio.play("growl", B.pos, 0.9);
+      this.floatText(B.pos.clone().setY(B.pos.y + 2.8), "CHARGE", "#ff8a4a");
+      return !0;
+    }
+  };
+  // back attacks by stalkers
+  let es0 = GP.enemyStrike;
+  GP.enemyStrike = function (A, i) {
+    if (A.def.ai === "flanker" && A.target) {
+      let yaw = facingOf(this, A.target),
+        f = ii(Math.sin(yaw), 0, Math.cos(yaw)),
+        to = ii(A.pos.x - i.x, 0, A.pos.z - i.z).normalize();
+      if (f.dot(to) > 0.3) {
+        // the player faces -Z at yaw 0: f points behind them, so dot > 0 means the stalker is at their back
+        let m0 = A.dmgMul;
+        A.dmgMul = m0 * 1.5;
+        this.floatText(A.pos.clone().setY(A.pos.y + 2.2), "BACKSTAB", "#d070ff");
+        try {
+          return es0.call(this, A, i);
+        } finally {
+          A.dmgMul = m0;
+        }
+      }
+    }
+    if (A.type === "archer") {
+      let I = A.def,
+        g = A.pos.clone().setY(A.pos.y + I.height * A.scale * 0.75),
+        Q = i.clone().setY(i.y + 1.2).sub(g).normalize();
+      this.spawnProj({ team: "enemy", kind: "arrow", color: 0xe0d0a0, from: g, dir: Q, speed: 34, dmg: I.dmg * A.dmgMul, radius: 0.35, life: 3, owner: A });
+      this.audio.play("bow", A.pos, 0.6);
+      return;
+    }
+    return es0.call(this, A, i);
+  };
+
+  // ---- patrols: a third of open-world packs walk a route between a few points near their spawn ----
+  let sp0 = GP.spawnEnemy;
+  GP.spawnEnemy = function (type, x, z, lv, o = {}) {
+    let e = sp0.call(this, type, x, z, lv, o);
+    try {
+      if (e && this.isHost && !e.def.boss && !this.inst && !o.id && !this.pocket) {
+        let lead = this._patrolLead;
+        if (lead && lead.alive && lead.pos.distanceTo(e.pos) < 10 && this.t - lead._pt < 0.5) e.patrol = lead.patrol;
+        else if (Math.random() < 0.35) {
+          let pts = [];
+          for (let k = 0; k < 3 + ((Math.random() * 2) | 0); k++) {
+            let a = Math.random() * Math.PI * 2,
+              r = 12 + Math.random() * 22,
+              px = x + Math.cos(a) * r,
+              pz = z + Math.sin(a) * r;
+            this.world.pointBlocked(px, 1, pz) || this.world.isWater?.(px, pz) || pts.push([px, pz]);
+          }
+          pts.length >= 2 && (e.patrol = { pts, i: 0, wait: 2 + Math.random() * 3 });
+          e.patrol && ((this._patrolLead = e), (e._pt = this.t));
+        }
+      }
+    } catch (err) {
+      console.warn("patrol", err);
+    }
+    return e;
+  };
+  let ue0 = GP.updateEnemies;
+  GP.updateEnemies = function (A) {
+    if (this.isHost)
+      for (let w of this.enemies.values()) {
+        let P = w.patrol;
+        if (!P || !w.alive || w.target) continue;
+        if (P.wait > 0) {
+          P.wait -= A;
+          w.wander = null;
+          continue;
+        }
+        let [px, pz] = P.pts[P.i],
+          dx = px - w.pos.x,
+          dz = pz - w.pos.z,
+          d = Math.hypot(dx, dz);
+        if (d < 1.5) {
+          P.i = (P.i + 1) % P.pts.length;
+          P.wait = 2 + Math.random() * 4;
+          w.wander = null;
+          continue;
+        }
+        w.wander = ii(dx / d, 0, dz / d).multiplyScalar(1.6); // ×0.35 inside the base walk = a brisk patrol pace
+      }
+    return ue0.call(this, A);
+  };
+  X.HELP && X.HELP.systems.push(["Enemies", "Archers kite, stalkers circle to your back (turn to face them), shamans heal their pack — kill them first — brutes cleave and charge, wolves surround you. Patrols walk routes, so a quiet road may not stay quiet."]);
+}
+
+/* ---- ES_quests.js ---- */
+// ===== 1.17 quest & story pass: six new named NPCs with chains, new objective kinds (go somewhere, talk to someone, gather),
+// dialogue choices with consequences (flags that change later quests and greetings) =====
+{
+  const GP = SC.prototype,
+    U = XC.prototype,
+    H = yI.hamlet;
+  let flags = (p) => (p.flags ||= {});
+  X.flag = (g, k) => !!flags(g.profile)[k];
+
+  // ---- NPCs ----
+  qI.push(
+    { id: "wren", name: "Wren", title: "The Gravedigger's Daughter", pos: [H[0] + 12, H[1] - 12], look: { robe: 0x3a3a3a, trim: 0xa0a0a0, prop: "shovel", sex: "f", hair: "short", hairC: 0x2a1a10 }, greet: "Father dug the graves. Now the graves dig themselves up, and I keep the count.", loc: "Hamlet of Last Light" },
+    { id: "finn", name: "Finn", title: "Shepherd", pos: [H[0] + 24, H[1] - 4], look: { robe: 0x6a5a3a, trim: 0xe0d0a0, prop: "staff", sex: "m", hair: "short", hairC: 0xc0a060 }, greet: "Forty sheep in autumn. Eleven now. You do the sums.", loc: "Hamlet of Last Light" },
+    { id: "maud", name: "Old Maud", title: "Herb-wife", pos: [H[0] - 14, H[1] + 12], look: { robe: 0x4a5a3a, trim: 0xd0e0a0, sex: "f", hair: "bun", hairC: 0xd8d8d8 }, greet: "Silverleaf for fever, thornroot for grief. I am out of both.", loc: "Hamlet of Last Light" },
+    { id: "aldo", name: "Aldo", title: "The Ferryman", pos: [22, -206], look: { robe: 0x2a3a3a, trim: 0x8ab0b0, prop: "staff", sex: "m", hair: "bald", hairC: 0x303030, beard: !0 }, greet: "Nobody crosses the Mire for free. Not even the dead — they pay in what they remember.", loc: "Drowned Chapel Shrine, the Mire" },
+    { id: "petra", name: "Sister Petra", title: "Bone-reader", pos: [210, 37], look: { robe: 0xe0d8c0, trim: 0x8a7a5a, hood: !0, sex: "f", hair: "long", hairC: 0x8a6a40 }, greet: "Every skeleton that walks was a knight once. I read their oaths in the cracks.", loc: "Charnel Gate Shrine, the Ossuary" },
+    { id: "corvin", name: "Corvin", title: "Deserter", pos: [-208, -24], look: { robe: 0x4a2a2a, trim: 0x8a4a4a, sex: "m", hair: "long", hairC: 0x1a1008, beard: !0 }, greet: "I wore their ash. I sang in that choir. Don't look at me like that — you'd have sung too.", loc: "Cinder Steps Shrine, the Cathedral" },
+  );
+  // greetings that change with what you chose
+  X.GREETIF = {
+    wren: [["thief_spared", "The boy you let go brings me bread now. Don't tell anyone I smiled."], ["thief_hanged", "The crossroads has a new ornament. Father would have approved. I don't know if I do."]],
+    aldo: [["ring_returned", "The water is quieter since you gave it back. Quieter is not the same as kind."], ["ring_kept", "You kept it. Everyone keeps it. I'll ferry you anyway."]],
+    corvin: [["corvin_forgiven", "You could have handed me to the Elder. I won't forget which way you chose."], ["corvin_reported", "Oswin's prayers were long. His rope was short. I'm still here, so I suppose it worked."]],
+    oswin: [["corvin_reported", "The deserter confessed. Mercy and judgement — you brought me both, and I used only one."]],
+  };
+
+  // ---- quests ----
+  let Q = (o) => gB.push(o);
+  // Wren — The Lantern Road
+  Q({ id: "q_wren1", npc: "wren", name: "Count the Stones", type: "visit", at: [140, 145], r: 10, lvl: 3, text: "The old gallows at the crossroads. Someone has been digging there at night. Go and see what the lanterns show — I can't leave the graves.", obj: "Visit the Gallows Crossroads shrine", rw: { xp: 120, shards: 90 } });
+  Q({ id: "q_wren2", npc: "wren", req: "q_wren1", name: "Thieves on the Road", type: "kill", stat: "kill_archer", goal: 6, lvl: 4, text: "Not ghouls, then. Men. Bone archers picking off travellers from the hedges. Six of them, and leave the rest to think about it.", obj: "Slay 6 Bone Archers on the roads", rw: { xp: 220, shards: 160, item: "rare" } });
+  Q({
+    id: "q_wren3", npc: "wren", req: "q_wren2", name: "The Boy in the Ditch", type: "visit", at: [120, 160], r: 9, lvl: 5,
+    text: "One of them is still alive, hiding in the ditch past the crossroads. A boy, really. Find him and decide what the Hamlet does with thieves. I have dug enough graves.",
+    obj: "Find the thief past the Gallows Crossroads, then decide",
+    choices: [
+      { label: "Spare him — give him work at the graves", flag: "thief_spared", rw: { xp: 300, shards: 120, marks: 10 }, text: "He'll dig. Everyone digs, in the end." },
+      { label: "Hang him at the crossroads", flag: "thief_hanged", rw: { xp: 300, shards: 260 }, text: "The road will be safer. The Hamlet will be smaller." },
+    ],
+    rw: { xp: 300, shards: 120 },
+  });
+  Q({ id: "q_wren4", npc: "wren", req: "q_wren3", reqFlag: "thief_spared", name: "A Shovel for Two", type: "gather", mat: "ore0", goal: 6, lvl: 6, text: "The boy needs a shovel of his own. Copper for the rivets — six lumps from the ossuary hills, and Brannoc does the rest.", obj: "Gather 6 Copper Ore", rw: { xp: 260, shards: 200, item: "rare" } });
+  Q({ id: "q_wren5", npc: "wren", req: "q_wren3", reqFlag: "thief_hanged", name: "What the Crows Left", type: "kill", stat: "kill_stalker", goal: 8, lvl: 6, text: "His friends came for the body. Hooded ones, quick, circling. They won't stop at the crossroads.", obj: "Slay 8 Hooded Stalkers", rw: { xp: 320, shards: 240, item: "rare" } });
+  // Finn — Wolves at the Fold
+  Q({ id: "q_finn1", npc: "finn", name: "The Eastern Fence", type: "visit", at: [H[0] + 44, H[1] + 3], r: 9, lvl: 2, text: "Walk the east fence by the kennel and tell me if the posts still stand. My knees don't do fences anymore.", obj: "Check the eastern fence", rw: { xp: 60, shards: 40 } });
+  Q({ id: "q_finn2", npc: "finn", req: "q_finn1", name: "Wolves at the Fold", type: "kill", stat: "kill_hound", goal: 8, lvl: 3, text: "Dire wolves. They come in threes now, one from each side while you watch the first. Thin the pack.", obj: "Slay 8 Dire Wolves", rw: { xp: 170, shards: 120 } });
+  Q({ id: "q_finn3", npc: "finn", req: "q_finn2", name: "Talk to the Huntress", type: "talk", to: "tamsin", lvl: 4, text: "Tamsin knows wolves better than I know sheep. Ask her where the den is. She won't tell me — I owe her money.", obj: "Speak with Tamsin", rw: { xp: 90, shards: 60 } });
+  Q({ id: "q_finn4", npc: "finn", req: "q_finn3", name: "The Den", type: "visit", at: [-60, 250], r: 12, lvl: 5, text: "West of the Hamlet, under the ridge. Go and kill whatever is in there, and bring my sheep's bell back if you find it.", obj: "Find the wolf den west of the Hamlet", rw: { xp: 240, shards: 180, item: "rare" } });
+  // Maud — Hearth and Home
+  Q({ id: "q_maud1", npc: "maud", name: "Silverleaf", type: "gather", mat: "herb0", goal: 5, lvl: 2, text: "Silverleaf grows where the dead don't walk — which is fewer places each year. Five sprigs, and mind the glow: that's how you find it.", obj: "Gather 5 Silverleaf", rw: { xp: 90, shards: 70 } });
+  Q({ id: "q_maud2", npc: "maud", req: "q_maud1", name: "The Fever House", type: "visit", at: [H[0] - 30, H[1] + 28], r: 8, lvl: 3, text: "The family at the west end has the shakes. Take the leaf to their door. Don't go in.", obj: "Deliver the leaf to the west-end house", rw: { xp: 110, shards: 80 } });
+  Q({ id: "q_maud3", npc: "maud", req: "q_maud2", name: "Something in the Water", type: "gather", mat: "fish0", goal: 3, lvl: 4, text: "They were drinking from the stream, and the stream runs from the Mire. Catch me three mudfish so I can see what the water carries.", obj: "Catch 3 Grilled-Mudfish-grade fish (fish from any shore)", rw: { xp: 140, shards: 100, item: "rare" } });
+  // Aldo — The Drowned Toll
+  Q({ id: "q_aldo1", npc: "aldo", name: "The Croaking Choir", type: "kill", stat: "kill_shaman", goal: 6, lvl: 5, text: "Shamans on the banks, singing the drowned awake and healing what you kill. Silence six of them.", obj: "Slay 6 Grave Shamans in the Mire", rw: { xp: 260, shards: 200 } });
+  Q({ id: "q_aldo2", npc: "aldo", req: "q_aldo1", name: "The Toll", type: "gather", mat: "fish0", goal: 4, lvl: 5, text: "The ferry takes its toll in fish. Four from the Mire's water — the ones that still have eyes.", obj: "Catch 4 fish in the Mire", rw: { xp: 200, shards: 160 } });
+  Q({
+    id: "q_aldo3", npc: "aldo", req: "q_aldo2", name: "What the Water Keeps", type: "visit", at: [0, -290], r: 14, lvl: 6,
+    text: "In the middle of the lake there is a ring on a drowned hand. It belonged to the Matron's husband. Take it, and then decide whether the water gets it back.",
+    obj: "Reach the heart of the Weeping Mire",
+    choices: [
+      { label: "Return the ring to the water", flag: "ring_returned", rw: { xp: 500, shards: 150, marks: 30 }, text: "The lake takes it. For a moment the weeping stops." },
+      { label: "Keep the ring", flag: "ring_kept", rw: { xp: 500, shards: 150, item: "epic" }, text: "Gold is gold. The weeping goes on." },
+    ],
+    rw: { xp: 500, shards: 150 },
+  });
+  // Petra — Bones Remember
+  Q({ id: "q_petra1", npc: "petra", name: "Oaths in the Cracks", type: "collect", from: "boneknight", item: "Oath-marked bone", chance: 0.5, goal: 8, lvl: 7, text: "Bring me eight marked bones from the Skeleton Warriors. Each one swore something once.", obj: "Collect 8 Oath-marked bones from Skeleton Warriors", rw: { xp: 320, shards: 240 } });
+  Q({ id: "q_petra2", npc: "petra", req: "q_petra1", name: "The Scholar's Eye", type: "talk", to: "edda", lvl: 7, text: "Edda in the Hamlet reads the old script. Take the bones to her and come back with what the oaths say.", obj: "Speak with Edda", rw: { xp: 120, shards: 80 } });
+  Q({ id: "q_petra3", npc: "petra", req: "q_petra2", name: "The Brute Oath", type: "kill", stat: "kill_brute", goal: 5, lvl: 8, text: "The oaths name a captain — a brute of a man who broke them first. His kind still walk the hills. Five, and the bones may rest.", obj: "Slay 5 Ashen Brutes", rw: { xp: 420, shards: 300, item: "epic" } });
+  // Corvin — Ash and Oath
+  Q({ id: "q_corvin1", npc: "corvin", name: "Ash on My Hands", type: "kill", stat: "kill_cultist", goal: 10, lvl: 9, text: "Ten of the choir. The ones who would know my face. I'll tell you where the Bishop hides the Sigil when they're dead.", obj: "Slay 10 Ashen Cultists", rw: { xp: 400, shards: 280 } });
+  Q({ id: "q_corvin2", npc: "corvin", req: "q_corvin1", name: "The Cinder Gate", type: "visit", at: [-282, -8], r: 12, lvl: 10, text: "The gate below the Cathedral. Stand before it and you'll hear the choir. Count the voices for me — I need to know how many are left.", obj: "Stand before the Cinder Gate", rw: { xp: 260, shards: 200 } });
+  Q({
+    id: "q_corvin3", npc: "corvin", req: "q_corvin2", name: "Judgement", type: "talk", to: "oswin", lvl: 10,
+    text: "Go to the Elder. Tell him what I was — or don't. I'll abide by what you bring back.",
+    obj: "Speak with Father Oswin about Corvin",
+    choices: [
+      { label: "Forgive him — say nothing to Oswin", flag: "corvin_forgiven", rw: { xp: 600, shards: 300, item: "epic" }, text: "Corvin stays at the shrine. Some nights he sings, quietly, the other songs." },
+      { label: "Report him to the Elder", flag: "corvin_reported", rw: { xp: 600, shards: 500, marks: 40 }, text: "Oswin listens, prays, and sends him to the Vigil to serve. Corvin goes." },
+    ],
+    rw: { xp: 600, shards: 300 },
+  });
+  Q({ id: "q_corvin4", npc: "oswin", req: "q_corvin3", reqFlag: "corvin_reported", name: "The Deserter's Penance", type: "kill", stat: "kill_cathedral_any", goal: 20, lvl: 11, text: "Corvin asks to serve beside you. Take him to the Cathedral's edge in spirit: twenty of its dead, in his name.", obj: "Slay 20 enemies in the Ashen Cathedral", rw: { xp: 700, shards: 400, item: "epic" } });
+  Q({ id: "q_corvin5", npc: "corvin", req: "q_corvin3", reqFlag: "corvin_forgiven", name: "The Other Songs", type: "collect", from: "cultist", item: "Choir hymnal page", chance: 0.6, goal: 6, lvl: 11, text: "The hymnals hold the words that bind the choir. Bring me six pages and I'll teach you the counter-song — the Bishop will hate it.", obj: "Collect 6 hymnal pages from Ashen Cultists", rw: { xp: 700, shards: 400, item: "epic" } });
+
+  // ---- objective kinds: visit / talk / gather ----
+  let qg0 = GP.questGoal;
+  GP.questGoal = function (B) {
+    return B.type === "visit" || B.type === "talk" ? 1 : qg0.call(this, B);
+  };
+  let qp0 = GP.questProg;
+  GP.questProg = function (B) {
+    if (B.type === "visit" || B.type === "talk" || B.type === "gather") {
+      let i = this.profile.quests[B.id] || {};
+      return Math.min(this.questGoal(B), i.n || 0);
+    }
+    return qp0.call(this, B);
+  };
+  let qs0 = GP.questState;
+  GP.questState = function (B) {
+    let s = qs0.call(this, B);
+    if (s === "avail" && ((B.reqFlag && !X.flag(this, B.reqFlag)) || (B.notFlag && X.flag(this, B.notFlag)))) return "locked";
+    return s;
+  };
+  // visits: checked twice a second
+  let us0 = GP.updateSystems;
+  GP.updateSystems = function (B) {
+    us0.call(this, B);
+    if ((this._visT = (this._visT || 0) + B) < 0.5) return;
+    this._visT = 0;
+    let p = this.player.pos,
+      P = this.profile;
+    for (let q of gB) {
+      if (q.type !== "visit") continue;
+      let st = P.quests[q.id];
+      if (!st || st.s !== "active" || st.n) continue;
+      if (Math.hypot(p.x - q.at[0], p.z - q.at[1]) < (q.r || 10)) {
+        st.n = 1;
+        this.toast(`${q.name}: objective reached`, "#ffd02a");
+        this.audio.play("quest", null, 0.7);
+        this._nmc && this._nmc.clear();
+      }
+    }
+  };
+  // talk: opening the right NPC's dialog completes it, and that NPC says a line
+  let nd0 = U.npcDialog;
+  U.npcDialog = function (B) {
+    let g = this.app.game,
+      P = this.app.profile,
+      said = [];
+    if (g)
+      for (let q of gB) {
+        if (q.type !== "talk" || q.to !== B.id) continue;
+        let st = P.quests[q.id];
+        st && st.s === "active" && !st.n && ((st.n = 1), said.push(q), g._nmc && g._nmc.clear());
+      }
+    let gi = X.GREETIF[B.id],
+      g0 = B.greet;
+    if (gi && g) for (let [f, t] of gi) X.flag(g, f) && (B.greet = t);
+    said.length && (B.greet = X.TALKLINE[said[0].id] || B.greet);
+    try {
+      return nd0.call(this, B);
+    } finally {
+      B.greet = g0;
+      said.length && (g.toast(`${said[0].name}: done — return to ${qI.find((n) => n.id === said[0].npc)?.name}`, "#ffd02a"), g.audio.play("quest", null, 0.7));
+    }
+  };
+  X.TALKLINE = {
+    q_finn3: "Finn sent you? Tell him the den is under the west ridge, and tell him I still want my eleven shards.",
+    q_petra2: "Oath-marked… these say 'I will hold the gate'. The gate fell. They are still holding it.",
+    q_corvin3: "A deserter at the Cinder Steps. I have known for a month. What you tell me now decides what I do about it.",
+  };
+  // gather: materials count while the quest is active
+  let am0 = X.addMat;
+  X.addMat = function (g, id, n = 1) {
+    let r = am0.call(this, g, id, n);
+    try {
+      for (let q of gB) {
+        if (q.type !== "gather" || q.mat !== id) continue;
+        let st = g.profile.quests[q.id];
+        if (!st || st.s !== "active" || st.n >= q.goal) continue;
+        st.n = Math.min(q.goal, (st.n || 0) + n);
+        g.toast(`${q.name}: ${st.n} / ${q.goal}`, "#ffd02a");
+      }
+    } catch (e) {
+      console.warn("gather quest", e);
+    }
+    return r;
+  };
+  // zone kill stat for Corvin's penance
+  let ok0 = GP.onKill;
+  GP.onKill = function (type, pos, lv, mine, ent, rareId) {
+    let r = ok0.call(this, type, pos, lv, mine, ent, rareId);
+    try {
+      let p = Array.isArray(pos) ? pos : [pos.x, pos.y, pos.z];
+      mine !== !1 && Vi(p[0], p[2]) === "cathedral" && this.track("kill_cathedral_any");
+    } catch (e) {}
+    return r;
+  };
+
+  // ---- choices at turn-in ----
+  let ti0 = GP.turnInQuest;
+  GP.turnInQuest = function (B, choice) {
+    let A = gB.find((w) => w.id === B);
+    if (A?.choices && this.questState(A) === "ready") {
+      let c = A.choices[choice ?? 0];
+      if (!c) return;
+      let rw0 = A.rw;
+      A.rw = c.rw || rw0;
+      try {
+        ti0.call(this, B);
+      } finally {
+        A.rw = rw0;
+      }
+      c.flag && (flags(this.profile)[c.flag] = 1);
+      this.profile.quests[B] && (this.profile.quests[B].choice = choice ?? 0);
+      c.text && this.toast(c.text, "#e8d4a0");
+      this._nmc && this._nmc.clear();
+      this.save();
+      return;
+    }
+    return ti0.call(this, B);
+  };
+  // the dialog shows one button per choice instead of "Complete quest"
+  let nd1 = U.npcDialog;
+  U.npcDialog = function (B) {
+    let r = nd1.call(this, B),
+      g = this.app.game,
+      M = document.getElementById("modal");
+    if (!g || !M) return r;
+    M.querySelectorAll("[data-turn]").forEach((btn) => {
+      let q = gB.find((x) => x.id === btn.dataset.turn);
+      if (!q?.choices) return;
+      let wrap = document.createElement("div");
+      wrap.className = "q-choices";
+      wrap.innerHTML = `<div class="small">Decide:</div>` + q.choices.map((c, i) => `<button class="big ${i ? "" : "gold"}" data-choice="${i}">${c.label}<small>${uO(c.rw || q.rw)}</small></button>`).join("");
+      btn.replaceWith(wrap);
+      wrap.querySelectorAll("[data-choice]").forEach((b) => (b.onclick = () => (g.turnInQuest(q.id, +b.dataset.choice), this.npcDialog(B))));
+    });
+    return r;
+  };
+  let css = document.createElement("style");
+  css.textContent = `.q-choices{display:flex;flex-direction:column;gap:6px;margin-top:6px}.q-choices button{text-align:left;display:flex;justify-content:space-between;gap:10px}.q-choices button small{opacity:.8;font-weight:normal}`;
+  document.head.appendChild(css);
+  // quest log: the choice made shows next to completed quests with choices
+  let qh0 = U.questsHTML;
+  U.questsHTML = function (B) {
+    let h = qh0.call(this, B);
+    for (let q of gB) {
+      let st = B.profile.quests[q.id];
+      if (q.choices && st?.s === "done" && st.choice !== void 0) h = h.replace(`${q.name}</div>`, `${q.name} <span class="small">\u2014 ${q.choices[st.choice].label}</span></div>`);
+    }
+    return h;
+  };
+  // quest icons for the new kinds
+  X.HELP && X.HELP.systems.push(["Stories", "Some quests end in a decision — the choice is permanent for that account, changes what the NPC says afterwards and which quests follow. Visit quests complete when you reach the place, talk quests when you open the right NPC's dialog."]);
+}
+
+/* ---- ET_mobile2.js ---- */
+// ===== 1.17 mobile controls polish: button size setting, auto-run and sprint lock, aim assist, skill cooldowns on the buttons,
+// furnishing buttons, bigger safe hit areas, haptics =====
+{
+  const GP = SC.prototype,
+    U = XC.prototype,
+    AP = bE.prototype;
+  if (X.isTouch) {
+    let app = () => window.__app,
+      game = () => window.__app?.game;
+    // ---- settings ----
+    let sh0 = U.settingsHTML;
+    U.settingsHTML = function () {
+      let A = this.app.settings,
+        h = sh0.call(this);
+      return h.replace(
+        '<div class="row"><button id="s-reset">',
+        `<h3>Touch controls</h3>
+      <label>Button size <input type="range" id="s-tsc" min="0.8" max="1.5" step="0.05" value="${A.touchScale ?? 1}"><span>${A.touchScale ?? 1}</span></label>
+      <label>Aim assist (attacks pull your view toward the nearest enemy) <input type="checkbox" id="s-aim" ${A.aimAssist !== !1 ? "checked" : ""}></label>
+      <label>Left-handed layout (stick on the right) <input type="checkbox" id="s-lh" ${A.leftHand ? "checked" : ""}></label>
+      <label>Vibrate on hits <input type="checkbox" id="s-hap" ${A.haptics !== !1 ? "checked" : ""}></label>
+      <div class="row"><button id="s-reset">`,
+      );
+    };
+    let bs0 = U.bindSettings;
+    U.bindSettings = function () {
+      bs0.call(this);
+      let A = this.app.settings,
+        el = (id) => document.getElementById(id),
+        upd = () => {
+          el("s-tsc") && (A.touchScale = +el("s-tsc").value);
+          el("s-aim") && (A.aimAssist = el("s-aim").checked);
+          el("s-lh") && (A.leftHand = el("s-lh").checked);
+          el("s-hap") && (A.haptics = el("s-hap").checked);
+          X.applyTouch();
+          this.app.saveSettings?.();
+        };
+      for (let id of ["s-tsc", "s-aim", "s-lh", "s-hap"]) el(id) && (el(id).oninput = el(id).onchange = upd);
+    };
+    X.applyTouch = function () {
+      let A = app()?.settings || {},
+        ui = document.getElementById("touch-ui");
+      if (!ui) return;
+      ui.style.setProperty("--tsc", A.touchScale ?? 1);
+      ui.classList.toggle("lefty", !!A.leftHand);
+    };
+    let ap0 = AP.applySettings;
+    AP.applySettings = function (...a) {
+      let r = ap0.apply(this, a);
+      X.applyTouch();
+      return r;
+    };
+    // ---- extra buttons: auto-run, sprint lock, and the furnishing trio while holding a piece ----
+    let sh1 = U.showHUD;
+    U.showHUD = function (A) {
+      sh1.call(this, A);
+      let ui = document.getElementById("touch-ui");
+      if (!ui || ui.querySelector("#tleft")) return;
+      let L = document.createElement("div");
+      L.id = "tleft";
+      L.innerHTML = `<button class="tb sm" id="t-run" title="Auto-run">\u{1F3C3}</button><button class="tb sm" id="t-sprint" title="Sprint lock">⚡</button>`;
+      ui.appendChild(L);
+      let D = document.createElement("div");
+      D.id = "tdeco";
+      D.innerHTML = `<button class="tb" data-d="place">Place</button><button class="tb" data-d="rot">↻</button><button class="tb" data-d="drop">Put away</button>`;
+      ui.appendChild(D);
+      let tap = (b, f) => b.addEventListener("touchstart", (e) => (e.preventDefault(), f()), { passive: !1 });
+      tap(L.querySelector("#t-run"), () => {
+        let g = game();
+        if (!g?.running) return;
+        g.autoRun = !g.autoRun;
+        L.querySelector("#t-run").classList.toggle("on", g.autoRun);
+        g.toast(g.autoRun ? "Auto-run on (move the stick to stop)" : "Auto-run off", "#ffe08a");
+      });
+      tap(L.querySelector("#t-sprint"), () => {
+        let g = game();
+        if (!g?.running) return;
+        g.sprintLock = !g.sprintLock;
+        L.querySelector("#t-sprint").classList.toggle("on", g.sprintLock);
+      });
+      D.querySelectorAll("[data-d]").forEach((b) =>
+        tap(b, () => {
+          let g = game();
+          if (!g?.deco) return;
+          b.dataset.d === "place" ? g.decoPlace() : b.dataset.d === "rot" ? (g.deco.ry += Math.PI / 8) : g.decoDrop();
+        }),
+      );
+      X.applyTouch();
+    };
+    // auto-run / sprint lock feed the key map; any stick input cancels auto-run
+    let up0 = GP.updatePlayer;
+    GP.updatePlayer = function (A) {
+      let k = this.keys;
+      if (this.autoRun) {
+        if (k.KeyS || k.KeyA || k.KeyD || (k.KeyW && this._padW)) {
+          this.autoRun = !1;
+          document.getElementById("t-run")?.classList.remove("on");
+        } else k.KeyW = !0;
+      }
+      this.sprintLock && (k.ShiftLeft = !0);
+      let r = up0.call(this, A);
+      // aim assist: while attacking, ease the view toward the nearest enemy in a narrow cone
+      let S = window.__app.settings;
+      if (S.aimAssist !== !1 && (this.mouse?.l || this.t - (this._castAt || -9) < 0.35) && !this.deco) {
+        let P = this.player,
+          best = null,
+          bd = 0.3,
+          f = this.fwd();
+        for (let e of this.enemies.values()) {
+          if (!e.alive) continue;
+          let v = e.pos.clone().setY(e.pos.y + e.def.height * e.scale * 0.5).sub(this.camera.position),
+            d = v.length();
+          if (d > 28 || d < 1) continue;
+          v.divideScalar(d);
+          let ang = Math.acos(Math.max(-1, Math.min(1, v.dot(f))));
+          ang < bd && ((bd = ang), (best = { v, d }));
+        }
+        if (best) {
+          let wantYaw = Math.atan2(-best.v.x, -best.v.z),
+            wantPitch = Math.asin(best.v.y),
+            dy = ((((wantYaw - P.yaw + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI,
+            k2 = Math.min(1, A * 7);
+          P.yaw += dy * k2;
+          P.pitch += (wantPitch - P.pitch) * k2 * 0.6;
+        }
+      }
+      return r;
+    };
+    let tc0 = GP.tryCast;
+    GP.tryCast = function (...a) {
+      this._castAt = this.t;
+      return tc0.apply(this, a);
+    };
+    // the deco buttons appear only while holding a piece; skill buttons show cooldowns
+    let uh0 = U.updateHUD;
+    U.updateHUD = function (A, i) {
+      uh0.call(this, A, i);
+      let D = document.getElementById("tdeco");
+      D && D.classList.toggle("on", !!A.deco);
+      let w = A.hero,
+        I = A.player;
+      if (w)
+        for (let [key, idx] of [
+          ["KeyQ", 2],
+          ["KeyE", 3],
+          ["KeyR", 4],
+        ]) {
+          let b = document.querySelector(`#tbtns .tb[data-k="${key}"]`),
+            e = w.skills[idx];
+          if (!b || !e) continue;
+          let t = I.cds[e.id] || 0,
+            M = e.cd * A.cdMul(e.id) || 1;
+          b.style.setProperty("--cd", t > 0 ? `${Math.min(100, (t / M) * 100)}%` : "0%");
+          let txt = t > 1 ? Math.ceil(t) : t > 0 ? t.toFixed(1) : key[3];
+          b.textContent !== String(txt) && (b.textContent = txt);
+          b.classList.toggle("nores", I.res < e.cost);
+        }
+    };
+    // haptics on taking a hit
+    let hp0 = GP.hurtPlayer;
+    GP.hurtPlayer = function (...a) {
+      let r = hp0.apply(this, a);
+      try {
+        window.__app.settings.haptics !== !1 && a[0] > this.player.maxHp * 0.03 && navigator.vibrate?.(18);
+      } catch {}
+      return r;
+    };
+    // stick input flag (for auto-run cancel) — the pad sets KeyW itself
+    let css = document.createElement("style");
+    css.textContent = `
+    #touch-ui{--tsc:1}
+    #tbtns{transform:scale(var(--tsc));transform-origin:bottom right}#tpad{transform:scale(var(--tsc));transform-origin:bottom left}
+    #touch-ui.lefty #tpad{left:auto;right:4vw;transform-origin:bottom right}#touch-ui.lefty #tbtns{right:auto;left:2vw;transform-origin:bottom left}#touch-ui.lefty #tleft{left:auto;right:4vw}
+    #tleft{position:absolute;left:4vw;bottom:calc(9vh + 150px * var(--tsc));display:flex;gap:8px;pointer-events:auto}
+    #tleft .tb,#tdeco .tb{width:44px;height:44px;border-radius:50%;background:rgba(20,14,10,.7);border:2px solid rgba(255,220,160,.45);color:#ffe8c0;font-size:18px;touch-action:none;user-select:none}
+    #tleft .tb.on{background:rgba(255,200,120,.6)}
+    #tdeco{display:none;position:absolute;left:50%;bottom:6vh;transform:translateX(-50%);gap:10px;pointer-events:auto}#tdeco.on{display:flex}#tdeco .tb{width:auto;padding:0 16px;border-radius:22px;font-size:15px}
+    #tbtns .tb{position:relative;overflow:hidden}#tbtns .tb::after{content:"";position:absolute;left:0;right:0;bottom:0;height:var(--cd,0%);background:rgba(0,0,0,.55);pointer-events:none}
+    #tbtns .tb.nores{color:#8a7a6a}
+    #tbtns .tb,#tpad,#tleft .tb{padding:6px;background-clip:padding-box}
+    `;
+    document.head.appendChild(css);
+    X.HELP && X.HELP.controls.push(["Touch", "Stick moves (push far to sprint), drag the right side to look. Buttons: ⚔ attack, 🛡 block, Q/E/R skills, ⬆ jump, ↻ dodge, F interact. 🏃 auto-run, ⚡ sprint lock. Settings → Touch controls for button size, left-handed layout and aim assist."]);
+  }
+}
+
+/* ---- EU_hints.js ---- */
+// ===== 1.17 first-encounter hints: a short card the first time you meet each system (once per account, dismissable, Help has the long form) =====
+{
+  const GP = SC.prototype,
+    U = XC.prototype;
+  X.HINTS = {
+    node_herb: ["Herbalism", "Glowing plants are herbs. Press F to pick them; your Herbalism skill rises as you do. Open the Professions book (B) to craft with what you gather."],
+    node_ore: ["Mining", "Sparkling rocks are ore veins. Press F to mine them. Smelt bars at Brannoc's anvil through the Professions book (B)."],
+    fish: ["Fishing", "Press F at the water to cast; when the float dips, press F again to hook. Cook your catch at any fire for a Well Fed bonus."],
+    shrine: ["Shrines", "Lighting a shrine sets your respawn, refills oil and draughts, and lets you fast-travel between lit shrines with G."],
+    chest: ["Strongboxes", "Chests hold Soul Shards, a gear item and remedies. They reset daily. Items you don't need: right-click them in your bag to salvage for shards."],
+    portal: ["Dungeon Finder", "Press F at a portal to queue. Dungeons take 4 (tank, healer, 2 damage), raids 8. If nobody joins within 20 s, companions fill the empty seats — you can run everything solo-queued."],
+    raid: ["Raids", "Raid bosses use mechanics: watch the banners — blue circles want players inside, purple marks want you apart, green circles are the only safe spot, casts should be interrupted."],
+    home: ["Your home", "Inside: a bed (+15% XP for 20 min), your stash, and later a wardrobe and a talent altar. The workbench sells furnishings you can place anywhere."],
+    stable: ["Mounts", "Gellert sells mounts for shards. Press Z to mount and dismount; riding shows your hero in third person."],
+    kennel: ["Companions", "Ilse keeps companions: cosmetic friends that follow you at a distance. Enemies ignore them."],
+    guild: ["Guilds", "Mara founds guilds for 500 shards. A guild has a bank, weekly quests with rewards, chat (/g) and a hall."],
+    auction: ["Auction board", "Odile lists items from players in your world and your friends' worlds. Buy with shards; list your own for a cut."],
+    tokens: ["World events", "Every few minutes a world boss or caravan appears — follow the gold marker. Rewards include Vigil Tokens, spent at Quartermaster Brann."],
+    arena: ["PvP", "Kessa runs ranked 2v2 / 3v3 arena and the Wardfall battleground. Bots fill empty slots. Aim at a player outside and press G to duel."],
+    event: ["A world event begins", "Follow the gold marker on the minimap. Everyone within 90 m when it ends is rewarded."],
+    rare: ["A rare enemy", "Named enemies with a silver frame drop better loot and count for Collections (,)."],
+    blood: ["Blood Moon", "The dead are stronger and more numerous tonight — but shards and loot are richer too. Keep the lantern lit."],
+    mount_first: ["Riding", "Z mounts and dismounts. Your mount is faster than sprinting and some can swim; you cannot fight from the saddle."],
+    deco: ["Furnishing", "A piece follows where you look. LMB or F places it, Q/E or the wheel rotate, R puts it back. Press F at a placed piece to move it."],
+    death: ["You fell", "Hold F on a downed ally to revive them; a healer companion will revive you when it is safe. Dying costs nothing but time — your gear keeps its wear."],
+  };
+  let hints = (p) => (p.hints ||= {});
+  U.hint = function (id) {
+    let g = this.app.game,
+      p = this.app.profile;
+    if (!g || !X.HINTS[id] || hints(p)[id] || !g.running) return;
+    hints(p)[id] = 1;
+    let [t, d] = X.HINTS[id],
+      el = document.getElementById("hintcard");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "hintcard";
+      document.body.appendChild(el);
+      el.onclick = () => el.classList.remove("on");
+    }
+    el.innerHTML = `<div class="hc-t">${gI("quest", "#ffd070", 26)} ${t}</div><div class="hc-d">${d}</div><div class="hc-x">tap or click to dismiss \xB7 F1 for the full guide</div>`;
+    el.classList.add("on");
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove("on"), 14000);
+    this.app.audio?.play("ui", null, 0.5);
+    this.app.saveProfile?.();
+  };
+  let css = document.createElement("style");
+  css.textContent = `#hintcard{display:none;position:fixed;left:50%;top:130px;transform:translateX(-50%);width:460px;max-width:92vw;background:rgba(12,9,7,.9);border:1px solid #c9a96a;border-radius:8px;padding:10px 14px;color:#e8d4a0;z-index:30;cursor:pointer;box-shadow:0 6px 24px #000a;font-size:14px}
+  #hintcard.on{display:block;animation:hcin .35s ease}@keyframes hcin{from{opacity:0;transform:translate(-50%,-10px)}to{opacity:1;transform:translate(-50%,0)}}
+  #hintcard .hc-t{font-weight:bold;color:#ffe08a;display:flex;align-items:center;gap:8px;font-size:16px}#hintcard .hc-d{margin-top:6px;line-height:1.4}#hintcard .hc-x{margin-top:6px;font-size:11px;opacity:.6}
+  @media (pointer:coarse){#hintcard{top:70px;width:70vw;font-size:12px}}`;
+  document.head.appendChild(css);
+
+  // ---- triggers ----
+  // prompts: the first time a prompt of a kind shows
+  let pr0 = U.prompt,
+    map = [
+      [/\bPick\b/, "node_herb"],
+      [/\bMine\b/, "node_ore"],
+      [/Cast a line/, "fish"],
+      [/\[F\] Light /, "shrine"],
+      [/strongbox/i, "chest"],
+      [/Dungeon Finder:.*Raid/, "raid"],
+      [/Dungeon Finder:/, "portal"],
+      [/Enter your home/, "home"],
+    ];
+  U.prompt = function (A) {
+    pr0.call(this, A);
+    if (!A || A === this._lastPr) return;
+    this._lastPr = A;
+    for (let [re, id] of map)
+      if (re.test(A)) {
+        this.hint(id);
+        break;
+      }
+  };
+  // NPC dialogs
+  let nd0 = U.npcDialog,
+    npcHint = { gellert: "stable", ilse: "kennel", mara: "guild", odile: "auction", brann: "tokens", kessa: "arena" };
+  U.npcDialog = function (B) {
+    let r = nd0.call(this, B);
+    npcHint[B.id] && this.hint(npcHint[B.id]);
+    return r;
+  };
+  // banners / events
+  let bn0 = U.banner;
+  U.banner = function (A, i, I) {
+    let r = bn0.call(this, A, i, I);
+    try {
+      /WORLD BOSS|CARAVAN/i.test(A) && this.hint("event");
+      /RARE/i.test(A) && !/SLAIN/i.test(A) && this.hint("rare");
+      /BLOOD MOON/i.test(A) && this.hint("blood");
+      /YOU HAVE FALLEN|FALLEN/i.test(A) && this.hint("death");
+    } catch {}
+    return r;
+  };
+  let tm0 = GP.toggleMount;
+  tm0 &&
+    (GP.toggleMount = function (...a) {
+      let r = tm0.apply(this, a);
+      this.mounted && this.ui.hint("mount_first");
+      return r;
+    });
+  let dh0 = GP.decoHold;
+  dh0 &&
+    (GP.decoHold = function (...a) {
+      let r = dh0.apply(this, a);
+      r && this.ui.hint("deco");
+      return r;
+    });
+  // settings: replay hints
+  let sh0 = U.settingsHTML;
+  U.settingsHTML = function () {
+    return sh0.call(this).replace('<button id="s-tut">Replay the tutorial</button>', '<button id="s-tut">Replay the tutorial</button><button id="s-hints">Show first-time hints again</button>');
+  };
+  let bs0 = U.bindSettings;
+  U.bindSettings = function () {
+    bs0.call(this);
+    let b = document.getElementById("s-hints");
+    b &&
+      (b.onclick = () => {
+        this.app.profile.hints = {};
+        this.app.saveProfile?.();
+        this.app.game?.toast("Hints will show again as you meet each system", "#ffe08a");
+      });
+  };
+}
+
+/* ---- EV_weather.js ---- */
+// ===== 1.17 weather & seasons visuals: snow in Frostpeak (and everywhere in winter), falling leaves in Thornwood (and in autumn),
+// sand haze instead of rain in the Wastes, storms that keep flashing over Stormcrown, petals in spring =====
+{
+  const GP = SC.prototype;
+  // real-calendar season (northern): Dec–Feb winter, Mar–May spring, Jun–Aug summer, Sep–Nov autumn
+  X.season = () => {
+    let m = new Date().getMonth();
+    return m <= 1 || m === 11 ? "winter" : m <= 4 ? "spring" : m <= 7 ? "summer" : "autumn";
+  };
+  // ---- snow: a second line-particle layer like the rain, slower, drifting, white ----
+  class Snow {
+    constructor(scene, n = 2600) {
+      let I = new Ti();
+      ((this.count = n), (this.p = new Float32Array(n * 6)), (this.off = new Float32Array(n * 4)));
+      for (let w = 0; w < n; w++) ((this.off[w * 4] = (Math.random() - 0.5) * 70), (this.off[w * 4 + 1] = Math.random() * 30), (this.off[w * 4 + 2] = (Math.random() - 0.5) * 70), (this.off[w * 4 + 3] = Math.random() * 6.28));
+      I.setAttribute("position", new Yi(this.p, 3).setUsage(jg));
+      this.mesh = new lg(I, new Lw({ color: 0xf0f6ff, transparent: !0, opacity: 0.55, depthWrite: !1 }));
+      this.mesh.frustumCulled = !1;
+      scene.add(this.mesh);
+      this.intensity = 0;
+      this.t = 0;
+    }
+    update(A, i) {
+      this.t += A;
+      if (((this.mesh.visible = this.intensity > 0.02), !this.mesh.visible)) return;
+      this.mesh.material.opacity = 0.6 * Math.min(1, this.intensity);
+      let I = Math.floor(this.count * Math.min(1, this.intensity)),
+        T = this.t;
+      for (let w = 0; w < this.count; w++) {
+        let o = w * 4,
+          g = this.off[o + 1] - A * 2.6;
+        g < 0 && (g += 30);
+        this.off[o + 1] = g;
+        let ph = this.off[o + 3],
+          C = i.x + this.off[o] + Math.sin(T * 0.7 + ph) * 1.2,
+          Q = i.z + this.off[o + 2] + Math.cos(T * 0.5 + ph) * 1.2,
+          s = i.y - 10 + g,
+          D = w * 6;
+        if (w >= I) {
+          ((this.p[D] = this.p[D + 3] = 0), (this.p[D + 1] = this.p[D + 4] = -9999), (this.p[D + 2] = this.p[D + 5] = 0));
+          continue;
+        }
+        ((this.p[D] = C), (this.p[D + 1] = s), (this.p[D + 2] = Q), (this.p[D + 3] = C + 0.06), (this.p[D + 4] = s - 0.1), (this.p[D + 5] = Q + 0.04));
+      }
+      this.mesh.geometry.attributes.position.needsUpdate = !0;
+    }
+  }
+  let LEAF = [0xc8742a, 0xe0a030, 0x9a4a20, 0xd8c040].map((c) => new _(c)),
+    PETAL = [0xffd0e0, 0xffffff, 0xffe8f0].map((c) => new _(c)),
+    rainCol0 = null;
+  let ue0 = GP.updateEnv;
+  GP.updateEnv = function (A) {
+    ue0.call(this, A);
+    try {
+      let i = this.env,
+        P = this.player,
+        zone = Vi(P.pos.x, P.pos.z),
+        inside = this.inst || this.home || this.pocket,
+        season = X.season(),
+        snowy = !inside && (zone === "frost" || (season === "winter" && !X.OUT[zone] && zone !== "citadel")),
+        leafy = !inside && (zone === "thorn" || (season === "autumn" && !X.OUT[zone] && zone !== "citadel")),
+        sandy = !inside && zone === "waste",
+        stormy = !inside && zone === "storm";
+      // snow replaces rain where it is cold, plus a light constant fall
+      this.snow ||= new Snow(this.scene, this.settings.quality === "low" ? 1200 : 2600);
+      let want = snowy ? Math.max(zone === "frost" ? 0.35 : 0.15, i.rain) : 0;
+      this.snow.intensity += (want - this.snow.intensity) * Math.min(1, A * 0.5);
+      this.snow.update(A, this.camera.position);
+      if (snowy) this.rain.intensity = 0;
+      // rain turns into blowing sand in the Wastes
+      let rm = this.rain.mesh.material;
+      rainCol0 ||= rm.color.getHex();
+      if (sandy) ((rm.color.setHex(0xd8b070)), (this.rain.intensity = Math.min(this.rain.intensity, 0.7)), (rm.opacity = 0.18 * i.rain));
+      else rm.color.getHex() !== rainCol0 && rm.color.setHex(rainCol0);
+      // storms over Stormcrown: lightning twice as often, wind-blown rain
+      if (stormy && i.rain > 0.25 && i.lightningT > 7) i.lightningT = 7;
+      // leaves / petals: a few particles a second around the player
+      let kind = leafy ? "leaf" : season === "spring" && !inside && !X.OUT[zone] ? "petal" : null;
+      if (kind && this.particles && Math.random() < A * (kind === "leaf" ? 7 : 2.5)) {
+        let x = P.pos.x + (Math.random() - 0.5) * 30,
+          z = P.pos.z + (Math.random() - 0.5) * 30,
+          y = this.world.heightAt(x, z) + 5 + Math.random() * 4,
+          cols = kind === "leaf" ? LEAF : PETAL;
+        this.particles.emit(x, y, z, { vel: [0.6 + Math.random() * 0.8, -0.5 - Math.random() * 0.4, (Math.random() - 0.5) * 0.8], color: cols[(Math.random() * cols.length) | 0], life: 7 + Math.random() * 4, size: kind === "leaf" ? 0.14 : 0.09, drag: 0.08 });
+      }
+    } catch (e) {
+      this._wxErr || ((this._wxErr = 1), console.warn("weather", e));
+    }
+  };
+  // the season shows in the region line once per session
+  let st0 = GP.start;
+  GP.start = function (...a) {
+    let r = st0.apply(this, a);
+    this.after?.(6, () => this.toast({ winter: "Winter: snow falls across the inner lands", spring: "Spring: petals on the wind", summer: "Summer: long days", autumn: "Autumn: the leaves are turning" }[X.season()], "#c0d8ff"));
+    return r;
+  };
+  X.HELP && X.HELP.systems.push(["Weather & seasons", "Frostpeak snows, Thornwood sheds leaves, the Wastes blow sand instead of rain and Stormcrown storms flash. The real calendar sets the season at home: snow in winter, petals in spring, leaves in autumn."]);
+}
+
+/* ---- EW_travel.js ---- */
+// ===== 1.17 fast travel network: Wayfarers in the Hamlet and the four ports fly you on a drake between places you have visited =====
+{
+  const GP = SC.prototype,
+    U = XC.prototype,
+    H = yI.hamlet;
+  let at = (Z, dx, dz) => [Math.round(Z.hub[0] + Z.dir[0] * dx + Z.dir[1] * dz), Math.round(Z.hub[1] + Z.dir[1] * dx - Z.dir[0] * dz)];
+  X.WAY = {
+    hamlet: { name: "Hamlet of Last Light", pos: [H[0] + 10, H[1] - 6], npc: "way_hamlet" },
+    frost: { name: X.TOWNS.frost.name, pos: at(X.OUT.frost, 9, 7), npc: "way_frost" },
+    waste: { name: X.TOWNS.waste.name, pos: at(X.OUT.waste, 9, 7), npc: "way_waste" },
+    thorn: { name: X.TOWNS.thorn.name, pos: at(X.OUT.thorn, 9, 7), npc: "way_thorn" },
+    storm: { name: X.TOWNS.storm.name, pos: at(X.OUT.storm, 9, 7), npc: "way_storm" },
+    mire: { name: "Drowned Chapel", pos: [36, -210], npc: "way_mire" },
+    ossuary: { name: "Charnel Gate", pos: [222, 24], npc: "way_ossuary" },
+    cathedral: { name: "Cinder Steps", pos: [-222, -36], npc: "way_cathedral" },
+  };
+  let looks = { m: { robe: 0x3a4a5a, trim: 0xd0e0ff, prop: "staff", sex: "m", hair: "short", hairC: 0x8a6a40 }, f: { robe: 0x3a4a5a, trim: 0xd0e0ff, prop: "staff", sex: "f", hair: "tail", hairC: 0xd0b080 } },
+    names = { hamlet: ["Wayfarer Ilona", "f"], frost: ["Wayfarer Torvald", "m"], waste: ["Wayfarer Samira", "f"], thorn: ["Wayfarer Bran", "m"], storm: ["Wayfarer Gull", "m"], mire: ["Wayfarer Sedge", "m"], ossuary: ["Wayfarer Petronel", "f"], cathedral: ["Wayfarer Ash", "f"] };
+  for (let id in X.WAY) {
+    let W = X.WAY[id],
+      [nm, sx] = names[id];
+    qI.push({ id: W.npc, name: nm, title: "Drake Wayfarer", pos: W.pos, shop: "wayfarer", way: id, look: looks[sx], greet: "The drakes know every roof in Aldmoor. Where to?", loc: W.name });
+  }
+  let visited = (p) => (p.flights ||= { hamlet: 1 });
+  // ---- dialog ----
+  X.npcExtra = X.npcExtra || {};
+  X.npcExtra.wayfarer = function (g, npc) {
+    let p = g.profile,
+      here = npc.way,
+      V = visited(p),
+      rows = Object.keys(X.WAY)
+        .filter((id) => id !== here)
+        .map((id) => {
+          let W = X.WAY[id],
+            d = Math.hypot(W.pos[0] - X.WAY[here].pos[0], W.pos[1] - X.WAY[here].pos[1]),
+            cost = X.flightCost(d),
+            known = !!V[id];
+          return `<div class="shop-i"><div class="tip-n">${W.name}</div><div class="tip-r">${Math.round(d)} m \xB7 ${known ? `◆ ${cost}` : "not yet visited"}</div><button data-fly="${id}" ${!known || p.shards < cost ? "disabled" : ""}>${known ? "Fly" : "Unknown"}</button></div>`;
+        })
+        .join("");
+    return `<h3>Flights <small>talk to a Wayfarer once to learn the route \xB7 drakes won't fly in combat</small></h3><div class="shop">${rows}</div>`;
+  };
+  X.npcBind = X.npcBind || {};
+  X.npcBind.wayfarer = function (g, root, redo, npc) {
+    root.querySelectorAll("[data-fly]").forEach((b) => (b.onclick = () => g.flyTo(b.dataset.fly, npc?.way) && g.ui.closeModal()));
+  };
+  X.flightCost = (d) => Math.max(30, Math.round(d * 0.12));
+  // learning routes: standing near a Wayfarer, or opening its dialog
+  let nd0 = U.npcDialog;
+  U.npcDialog = function (B) {
+    let g = this.app.game;
+    if (B.way && g) {
+      let V = visited(g.profile);
+      if (!V[B.way]) {
+        V[B.way] = 1;
+        g.toast(`Route learned: ${X.WAY[B.way].name}`, "#c0d8ff");
+        g.audio.play("quest", null, 0.6);
+      }
+    }
+    return nd0.call(this, B);
+  };
+  let us0 = GP.updateSystems;
+  GP.updateSystems = function (B) {
+    us0.call(this, B);
+    if ((this._wayT = (this._wayT || 0) + B) < 1) return;
+    this._wayT = 0;
+    let V = visited(this.profile),
+      P = this.player.pos;
+    for (let id in X.WAY) {
+      if (V[id]) continue;
+      let W = X.WAY[id];
+      if (Math.hypot(P.x - W.pos[0], P.z - W.pos[1]) < 40) {
+        V[id] = 1;
+        this.toast(`Route learned: ${X.WAY[id].name}`, "#c0d8ff");
+        this.audio.play("quest", null, 0.6);
+      }
+    }
+  };
+  // ---- the flight ----
+  GP.flyTo = function (dest, from) {
+    let p = this.profile,
+      A = this.player,
+      W = X.WAY[dest];
+    if (!W || this.flight) return !1;
+    if (A.combatT > 0) return this.toast("The drake won't take off while you are in danger", "#ff6a5a"), !1;
+    if (this.inst || this.home || this.pocket) return this.toast("Not from here", "#ff6a5a"), !1;
+    let d = Math.hypot(W.pos[0] - A.pos.x, W.pos[1] - A.pos.z),
+      cost = X.flightCost(d);
+    if (p.shards < cost) return this.toast("Not enough Soul Shards", "#ff6a5a"), !1;
+    p.shards -= cost;
+    this.dismount?.(!0);
+    this.decoDrop?.();
+    // a loaned drake
+    let def = X.MOUNTS.emberdrake || X.MOUNTS.horse,
+      m = X.mountModel(X.MOUNTS.emberdrake ? "emberdrake" : "horse");
+    this.scene.add(m);
+    this.mounted = { id: "emberdrake", def, model: m, t: 0, anim: 0, loan: !0 };
+    // EL's third-person rider
+    if (X.riderModel) {
+      this.mounted.rider = X.riderModel(this);
+      this.scene.add(this.mounted.rider);
+      this._rider = this.mounted.rider;
+    }
+    let p0 = A.pos.clone(),
+      p3 = ii(W.pos[0], this.world.heightAt(W.pos[0], W.pos[1]) + 0.3, W.pos[1]),
+      hi = 0;
+    for (let k = 0; k <= 10; k++) {
+      let x = p0.x + (p3.x - p0.x) * (k / 10),
+        z = p0.z + (p3.z - p0.z) * (k / 10);
+      hi = Math.max(hi, this.world.heightAt(x, z));
+    }
+    let cruise = hi + 45 + Math.min(40, d * 0.05),
+      p1 = p0.clone().lerp(p3, 0.3).setY(cruise),
+      p2 = p0.clone().lerp(p3, 0.7).setY(cruise);
+    this.flight = { pts: [p0, p1, p2, p3], t: 0, dur: Math.max(7, d / 48), dest, name: W.name };
+    this.ui.banner("TAKING FLIGHT", `to ${W.name}`, "#c0d8ff");
+    this.audio.play("horn", null, 0.6);
+    this.track("flights");
+    this.save();
+    return !0;
+  };
+  let bez = (P, t, out) => {
+    let u = 1 - t,
+      a = u * u * u,
+      b = 3 * u * u * t,
+      c = 3 * u * t * t,
+      d = t * t * t;
+    return out.set(P[0].x * a + P[1].x * b + P[2].x * c + P[3].x * d, P[0].y * a + P[1].y * b + P[2].y * c + P[3].y * d, P[0].z * a + P[1].z * b + P[2].z * c + P[3].z * d);
+  };
+  let tmpA = new N(),
+    tmpB = new N();
+  let up0 = GP.updatePlayer;
+  GP.updatePlayer = function (dt) {
+    let F = this.flight;
+    if (!F) return up0.call(this, dt);
+    let A = this.player;
+    this.keys = {};
+    this.mouse = { l: !1, r: !1 };
+    up0.call(this, dt);
+    F.t += dt;
+    let k = Math.min(1, F.t / F.dur),
+      e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    bez(F.pts, e, tmpA);
+    bez(F.pts, Math.min(1, e + 0.01), tmpB);
+    A.pos.copy(tmpA);
+    A.vel.set(0, 0, 0);
+    A.onGround = !1;
+    A.combatT = 0;
+    let dx = tmpB.x - tmpA.x,
+      dz = tmpB.z - tmpA.z;
+    (dx || dz) && (A.yaw = Math.atan2(-dx, -dz));
+    A.pitch = Math.max(-0.5, Math.min(0.3, -Math.atan2(tmpB.y - tmpA.y, Math.hypot(dx, dz) || 1)));
+    let M = this.mounted;
+    if (M) {
+      M.model.position.copy(A.pos);
+      M.model.rotation.y = A.yaw + Math.PI;
+      M.anim += dt * 9;
+      let parts = M.model.userData.parts;
+      parts && Xw(parts, { t: this.t, ph: M.anim, mv: 1 });
+    }
+    if (k >= 1) {
+      this.flight = null;
+      A.pos.copy(F.pts[3]);
+      A.pos.y = this.world.heightAt(A.pos.x, A.pos.z) + 0.3;
+      this.dismount(!0);
+      this.ui.banner(F.name.toUpperCase(), "The drake wheels away", "#c0d8ff");
+      this.audio.play("land", null, 0.6);
+    }
+  };
+  // the loaned drake is never saved as owned; dismount cleans up
+  let dm0 = GP.dismount;
+  GP.dismount = function (...a) {
+    this.flight && !a[1] && (this.flight = null);
+    return dm0.apply(this, a);
+  };
+  // no interactions mid-air
+  let sp0 = GP.sysPrompt;
+  GP.sysPrompt = function () {
+    if (this.flight) return { text: `Flying to ${this.flight.name}…`, near: { kind: "flight" } };
+    return sp0.call(this);
+  };
+  let si0 = GP.sysInteract;
+  GP.sysInteract = function (n) {
+    if (n.kind === "flight") return !0;
+    return si0.call(this, n);
+  };
+  // map pins
+  for (let id in X.WAY) mM.push?.({ id: "way_" + id, name: X.WAY[id].name + " — Wayfarer", pos: X.WAY[id].pos, kind: "way" });
+  WB.push({ id: "fly_first", name: "Wings over Aldmoor", desc: "Take a drake flight", stat: "flights", goal: 1, reward: 25 }, { id: "fly_ten", name: "Frequent flyer", desc: "Take 10 drake flights", stat: "flights", goal: 10, reward: 25 });
+  X.HELP && X.HELP.systems.push(["Fast travel", "Wayfarers in the Hamlet, the four ports and at the three inner shrines fly you by drake to any Wayfarer you have met (cost by distance). Lit shrines still teleport you with G."]);
+}
+
+/* ---- EX_titles.js ---- */
+// ===== 1.17 titles & meta-achievements: earn titles from deeds, wear one under your name (seen by everyone), meta-achievements for collecting achievements =====
+{
+  const GP = SC.prototype,
+    U = XC.prototype;
+  // title: { id, name, how, test(profile, hsave) }
+  X.TITLES = [
+    { id: "vigilant", name: "the Vigilant", how: "Light the Vigil bonfire", test: (p) => p.quests?.q_flame?.s === "done" || (p.stats.bonfires || 0) >= 1 },
+    { id: "wolfsbane", name: "Wolfsbane", how: "Kill 100 dire wolves", test: (p) => (p.stats.kill_hound || 0) >= 100 },
+    { id: "gravedigger", name: "the Gravedigger", how: "Kill 1,000 enemies", test: (p) => (p.stats.kills || 0) >= 1000 },
+    { id: "matron", name: "Widowmaker", how: "Defeat the Weeping Matron", test: (p) => p.campaign.bosses.includes("matron") },
+    { id: "sigils", name: "Sigil-bearer", how: "Hold all three Sigils", test: (p) => (p.campaign.sigils || []).length >= 3 },
+    { id: "darklord", name: "Lightbringer", how: "Defeat Malgareth", test: (p) => p.campaign.victory },
+    { id: "reckoning", name: "of the Reckoning", how: "Clear The Reckoning raid", test: (p) => (p.stats.raid_citadel || 0) >= 1 },
+    { id: "throne", name: "Stormbreaker", how: "Clear the Throne of Storms", test: (p) => (p.stats.raid_throne || 0) >= 1 },
+    { id: "deep", name: "Tidebreaker", how: "Clear the Drowned Deep", test: (p) => (p.stats.raid_deep || 0) >= 1 },
+    { id: "sixty", name: "the Undying", how: "Reach level 60", test: (p, h) => (h?.level || 0) >= 60 },
+    { id: "angler", name: "the Angler", how: "Catch 100 fish", test: (p) => (p.stats.fish || 0) >= 100 },
+    { id: "smith", name: "Master Smith", how: "Craft 60 things", test: (p) => (p.stats.crafts || 0) >= 60 },
+    { id: "founder", name: "Guildfounder", how: "Found a guild", test: (p) => !!p.guild?.id && (p.stats.guild_founded || 0) >= 1 },
+    { id: "homemaker", name: "the Homemaker", how: "Place 10 furnishings", test: (p) => (p.stats.deco_placed || 0) >= 10 },
+    { id: "wayfarer", name: "the Wayfarer", how: "Take 10 drake flights", test: (p) => (p.stats.flights || 0) >= 10 },
+    { id: "explorer", name: "the Explorer", how: "Learn every flight route", test: (p) => Object.keys(p.flights || {}).length >= Object.keys(X.WAY || {}).length },
+    { id: "gladiator", name: "Gladiator", how: "Win 25 arena matches", test: (p) => (p.stats.arena_wins || 0) >= 25 },
+    { id: "merciful", name: "the Merciful", how: "Spare the thief, return the ring, forgive Corvin", test: (p) => p.flags?.thief_spared && p.flags?.ring_returned && p.flags?.corvin_forgiven },
+    { id: "iron", name: "Ironhand", how: "Hang the thief, keep the ring, report Corvin", test: (p) => p.flags?.thief_hanged && p.flags?.ring_kept && p.flags?.corvin_reported },
+    { id: "collector", name: "the Collector", how: "Earn 25 achievements", test: (p) => Object.keys(p.ach || {}).length >= 25 },
+    { id: "legend", name: "Legend of Aldmoor", how: "Earn 60 achievements", test: (p) => Object.keys(p.ach || {}).length >= 60 },
+  ];
+  X.titleOf = (id) => X.TITLES.find((t) => t.id === id);
+  X.myTitle = (g) => {
+    let t = g?.hsave?.title && X.titleOf(g.hsave.title);
+    return t ? t.name : "";
+  };
+  X.titleUnlocked = (g, t) => {
+    try {
+      return !!t.test(g.profile, g.hsave);
+    } catch {
+      return !1;
+    }
+  };
+  // meta-achievements: count achievements earned
+  WB.push(
+    { id: "meta_10", name: "Jack of all trades", desc: "Earn 10 achievements", stat: "ach_count", goal: 10, reward: 50 },
+    { id: "meta_25", name: "Collector of deeds", desc: "Earn 25 achievements", stat: "ach_count", goal: 25, reward: 100 },
+    { id: "meta_60", name: "Legend of Aldmoor", desc: "Earn 60 achievements", stat: "ach_count", goal: 60, reward: 300 },
+  );
+  let ca0 = GP.checkAch;
+  GP.checkAch = function (A) {
+    ca0.call(this, A);
+    if (A === "ach_count") return;
+    let n = Object.keys(this.profile.ach || {}).length;
+    if (n !== this.profile.stats.ach_count) {
+      this.profile.stats.ach_count = n;
+      ca0.call(this, "ach_count");
+    }
+    // new titles
+    let got = (this.profile.titles ||= {});
+    for (let t of X.TITLES)
+      if (!got[t.id] && X.titleUnlocked(this, t)) {
+        got[t.id] = 1;
+        this.toast(`Title earned: ${t.name} — choose it in Achievements (K)`, "#ffd070");
+        this.audio.play("fanfare", null, 0.6);
+      }
+  };
+  // titles are checked on start too (old saves)
+  let st0 = GP.start;
+  GP.start = function (...a) {
+    let r = st0.apply(this, a);
+    try {
+      this.checkAch("ach_count");
+    } catch {}
+    return r;
+  };
+  // ---- the Titles section in the Achievements panel ----
+  let pn0 = U.panel;
+  U.panel = function (A, i) {
+    pn0.call(this, A, i);
+    if (A !== "ach") return;
+    let g = this.app.game,
+      M = document.getElementById("modal"),
+      h2 = M?.querySelector("h2");
+    if (!g || !h2) return;
+    let cur = g.hsave.title || "",
+      sec = document.createElement("div");
+    sec.className = "titles";
+    sec.innerHTML = `<h3>Titles <small>${Object.keys(g.profile.titles || {}).length} / ${X.TITLES.length} \xB7 shown under your name</small></h3><div class="title-grid"><button class="tbt ${cur ? "" : "on"}" data-title="">No title</button>${X.TITLES.map((t) => {
+      let ok = X.titleUnlocked(g, t);
+      return `<button class="tbt ${ok ? "" : "locked"} ${cur === t.id ? "on" : ""}" data-title="${t.id}" ${ok ? "" : "disabled"} data-tip="${t.how}">${ok ? t.name : "???"}<small>${t.how}</small></button>`;
+    }).join("")}</div>`;
+    h2.insertAdjacentElement("afterend", sec);
+    sec.querySelectorAll("[data-title]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          g.hsave.title = b.dataset.title || "";
+          g.save();
+          this.app.audio.play("ui");
+          this.panel("ach", i);
+        }),
+    );
+  };
+  let css = document.createElement("style");
+  css.textContent = `.title-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px;margin-bottom:12px}.tbt{text-align:left;display:flex;flex-direction:column;gap:2px;padding:6px 8px}.tbt small{opacity:.65;font-weight:normal;font-size:11px}.tbt.on{border-color:#ffd070;background:rgba(255,208,112,.15)}.tbt.locked{opacity:.5}
+  .ntitle{color:#ffd070;font-size:.85em}`;
+  document.head.appendChild(css);
+  // ---- shown under names: HUD line, name tags, portraits ----
+  let uh0 = U.updateHUD;
+  U.updateHUD = function (A, i) {
+    uh0.call(this, A, i);
+    let t = X.myTitle(A);
+    if (t) {
+      let el = document.getElementById("lvl");
+      el && !el.textContent.includes(t) && (el.textContent = `${A.hero.name}, ${t} \xB7 Level ${A.hsave.level}`);
+    }
+  };
+  // over the network, piggybacking on the guild-tag packet patch
+  let ns0 = GP.netSend;
+  GP.netSend = function () {
+    let n0 = this.net;
+    if (!n0) return ns0.call(this);
+    let send0 = n0.send,
+      bc0 = n0.broadcast,
+      ti = this.hsave?.title || "",
+      patch = (m) => {
+        m && m.t === "me" && (m.ti = ti);
+        m && m.t === "snap" && m.ps?.host && (m.ps.host.ti = ti);
+        return m;
+      };
+    n0.send = function (m) {
+      return send0.call(this, patch(m));
+    };
+    n0.broadcast = function (m, ex) {
+      return bc0.call(this, patch(m), ex);
+    };
+    try {
+      ns0.call(this);
+    } finally {
+      ((n0.send = send0), (n0.broadcast = bc0));
+    }
+  };
+  let ur0 = GP.updateRemote;
+  GP.updateRemote = function (id, m) {
+    ur0.call(this, id, m);
+    let R = this.remotes.get(id);
+    R && m.ti !== void 0 && (R.ti = m.ti || "");
+  };
+  let pt0 = U.placeTag;
+  U.placeTag = function (A, i, I, w) {
+    pt0.call(this, A, i, I, w);
+    if (I?.ti && A.style.display !== "none") {
+      let t = X.titleOf(I.ti);
+      if (!t) return;
+      let sm = A.querySelector("small");
+      sm && !sm.textContent.includes(t.name) && (sm.textContent = `${t.name} \xB7 ` + sm.textContent);
+    }
+  };
+  X.HELP && X.HELP.systems.push(["Titles", "Deeds earn titles (Achievements, K): wear one and it shows under your name for everyone. Meta-achievements reward collecting achievements themselves."]);
+}
+
+/* ---- EY_photo.js ---- */
+// ===== 1.17 photo mode: F8 (or the pause menu) — free camera, hidden interface, your hero visible, filters, PNG capture =====
+{
+  const GP = SC.prototype,
+    U = XC.prototype,
+    AP = bE.prototype;
+  const FILTERS = [
+    ["none", ""],
+    ["warm", "sepia(.25) saturate(1.2) contrast(1.05)"],
+    ["cold", "hue-rotate(15deg) saturate(.9) brightness(1.05) contrast(1.1)"],
+    ["noir", "grayscale(1) contrast(1.3) brightness(.95)"],
+    ["vintage", "sepia(.55) contrast(.95) brightness(1.05) saturate(.8)"],
+    ["vivid", "saturate(1.6) contrast(1.1)"],
+  ];
+  GP.photoToggle = function () {
+    if (this.photo) return this.photoExit();
+    if (!this.running || this.player.dead) return;
+    let A = this.player,
+      cam = this.camera;
+    this.photo = { pos: cam.position.clone(), yaw: A.yaw, pitch: A.pitch, filter: 0, speed: 6, keysWas: this.keys, body: null };
+    this.keys = {};
+    this.mouse = { l: !1, r: !1 };
+    // your hero stands where you were
+    try {
+      let m = X.riderModel ? X.riderModel(this) : null;
+      if (m) {
+        m.userData.parts && (m.userData.parts.riding = !1);
+        m.position.copy(A.pos);
+        m.rotation.y = A.yaw + Math.PI;
+        this.scene.add(m);
+        this.photo.body = m;
+      }
+    } catch (e) {
+      console.warn("photo body", e);
+    }
+    this.viewModel && (this.viewModel.visible = !1);
+    document.body.classList.add("photo");
+    this.ui.pause(!1);
+    window.__app.paused = !this.net;
+    this._photoHint = document.getElementById("photohint");
+    if (!this._photoHint) {
+      let h = document.createElement("div");
+      h.id = "photohint";
+      document.body.appendChild(h);
+      this._photoHint = h;
+    }
+    this._photoHint.innerHTML = X.isTouch ? "Photo mode \xB7 drag to look \xB7 stick to fly \xB7 tap ⚔ to capture \xB7 Q filter \xB7 ☰ exit" : "Photo mode \xB7 WASD fly \xB7 Q/E down/up \xB7 Shift fast \xB7 F filter \xB7 Space or click: capture \xB7 H hide this \xB7 F8 / Esc exit";
+    this._photoHint.classList.add("on");
+    this.audio.play("ui");
+  };
+  GP.photoExit = function () {
+    let P = this.photo;
+    if (!P) return;
+    this.photo = null;
+    P.body && this.scene.remove(P.body);
+    document.body.classList.remove("photo");
+    this.renderer.domElement.style.filter = "";
+    this._photoHint?.classList.remove("on");
+    this.keys = {};
+    window.__app.paused = !1;
+    this.viewModel && (this.viewModel.visible = !this.mounted);
+  };
+  GP.photoCapture = function () {
+    this._photoShot = !0;
+  };
+  // free camera
+  let uc0 = GP.updateCamera;
+  GP.updateCamera = function (dt) {
+    let P = this.photo;
+    if (!P) return uc0.call(this, dt);
+    let cam = this.camera,
+      k = this.keys,
+      sp = P.speed * (k.ShiftLeft ? 3.5 : 1) * dt,
+      f = new N(-Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), -Math.cos(P.yaw) * Math.cos(P.pitch)),
+      r = new N(-f.z, 0, f.x).normalize();
+    k.KeyW && P.pos.addScaledVector(f, sp);
+    k.KeyS && P.pos.addScaledVector(f, -sp);
+    k.KeyD && P.pos.addScaledVector(r, sp);
+    k.KeyA && P.pos.addScaledVector(r, -sp);
+    k.KeyE && (P.pos.y += sp);
+    k.KeyQ && (P.pos.y -= sp);
+    k.Space && !X.isTouch && this.photoCapture();
+    let gy = this.world.heightAt(P.pos.x, P.pos.z) + 0.3;
+    P.pos.y < gy && (P.pos.y = gy);
+    cam.position.copy(P.pos);
+    cam.rotation.set(P.pitch, P.yaw, 0, "YXZ");
+    this.viewModel && (this.viewModel.visible = !1);
+    this.mounted?.rider && (this.mounted.rider.visible = !0);
+  };
+  let ol0 = GP.onLook;
+  GP.onLook = function (A, i) {
+    let P = this.photo;
+    if (!P) return ol0.call(this, A, i);
+    let I = 0.0022 * this.settings.sens;
+    P.yaw -= A * I;
+    P.pitch = Math.max(-1.5, Math.min(1.5, P.pitch - i * I));
+  };
+  // the player stands still while you roam
+  let up0 = GP.updatePlayer;
+  GP.updatePlayer = function (dt) {
+    if (!this.photo) return up0.call(this, dt);
+    let k = this.keys;
+    this.keys = {};
+    up0.call(this, dt);
+    this.keys = k;
+    this.player.vel.x = this.player.vel.z = 0;
+    this.photo.body && this.photo.body.userData.parts && Xw(this.photo.body.userData.parts, { t: this.t, ph: 0, mv: 0 });
+  };
+  // keys: F8 toggles; inside photo mode F cycles filters, Space captures, H hides the hint, Esc exits
+  let ok0 = GP.onKey;
+  GP.onKey = function (A, i) {
+    if (A === "F8" && i) return this.photoToggle();
+    if (this.photo) {
+      this.keys[A] = i;
+      if (!i) return;
+      if (A === "KeyF") {
+        let P = this.photo;
+        P.filter = (P.filter + 1) % FILTERS.length;
+        this.renderer.domElement.style.filter = FILTERS[P.filter][1];
+        this.toast(`Filter: ${FILTERS[P.filter][0]}`, "#ffe08a");
+      } else if (A === "Space") this.photoCapture();
+      else if (A === "KeyH") this._photoHint?.classList.toggle("on");
+      else if (A === "Escape") this.photoExit();
+      return;
+    }
+    return ok0.call(this, A, i);
+  };
+  let om0 = GP.onMouse;
+  GP.onMouse = function (b, down) {
+    if (this.photo) {
+      down && b === 0 && this.photoCapture();
+      return;
+    }
+    return om0.call(this, b, down);
+  };
+  // capture right after the frame is drawn
+  let lp0 = AP.loop;
+  AP.loop = function (A) {
+    let g = this.game;
+    if (g?.photo && this.paused) {
+      // solo: the world is frozen, only the camera moves
+      let dt = Math.min(0.05, (A - (this.last || A)) / 1e3) || 0.016;
+      g.updateCamera(dt);
+      g.photo.body?.userData.parts && Xw(g.photo.body.userData.parts, { t: g.t, ph: 0, mv: 0 });
+    }
+    let r = lp0.call(this, A);
+    if (g?._photoShot) {
+      g._photoShot = !1;
+      try {
+        let c = this.renderer.domElement,
+          out = document.createElement("canvas");
+        ((out.width = c.width), (out.height = c.height));
+        let ctx = out.getContext("2d");
+        ctx.filter = c.style.filter || "none";
+        ctx.drawImage(c, 0, 0);
+        out.toBlob((b) => {
+          if (!b) return;
+          let a = document.createElement("a");
+          a.href = URL.createObjectURL(b);
+          a.download = `vigilfall_${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.png`;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        }, "image/png");
+        let fl = document.getElementById("photoflash") || Object.assign(document.body.appendChild(document.createElement("div")), { id: "photoflash" });
+        fl.classList.remove("on");
+        void fl.offsetWidth;
+        fl.classList.add("on");
+        g.audio.play("ui", null, 0.8);
+        g.track("photos");
+      } catch (e) {
+        console.warn("photo", e);
+      }
+    }
+    return r;
+  };
+  // in photo mode the world keeps rendering while paused (solo): make sure the loop still renders — paused only skips update
+  // pause menu button + touch hooks
+  let pz0 = U.pause;
+  U.pause = function (A) {
+    let g = this.app.game;
+    if (A && g?.photo) return g.photoExit(), pz0.call(this, !1);
+    pz0.call(this, A);
+    let col = document.querySelector("#pause .menu-col, #pause");
+    if (A && col && !col.querySelector("[data-photo]")) {
+      let b = document.createElement("button");
+      ((b.dataset.photo = 1), (b.textContent = "Photo mode (F8)"), (b.onclick = () => this.app.game?.photoToggle()));
+      let st = col.querySelector("[data-help]") || col.querySelector("[data-p='settings']");
+      st ? st.after(b) : col.appendChild(b);
+    }
+  };
+  if (X.isTouch) {
+    // on touch: the attack button captures, the pause button exits, the stick flies
+    let sh0 = U.showHUD;
+    U.showHUD = function (A) {
+      sh0.call(this, A);
+      let b = document.querySelector('#tbtns .tb[data-k="LMB"]');
+      b && !b._photo && ((b._photo = !0), b.addEventListener("touchstart", () => window.__app.game?.photo && window.__app.game.photoCapture(), { passive: !0 }));
+    };
+  }
+  let css = document.createElement("style");
+  css.textContent = `body.photo #hud,body.photo #touch-ui,body.photo #fps,body.photo #hintcard,body.photo #banner,body.photo #toasts,body.photo #prompt,body.photo #minimap,body.photo #vtip{display:none!important}
+  body.photo #touch-ui{display:block!important}body.photo #tbtns .tb:not([data-k="LMB"]),body.photo #tleft,body.photo #ttop .tb:not([data-p="pause"]){display:none!important}
+  #photohint{display:none;position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:rgba(0,0,0,.55);color:#e8d4a0;padding:6px 14px;border-radius:14px;font-size:13px;z-index:40;pointer-events:none}#photohint.on{display:block}
+  #photoflash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:50}#photoflash.on{animation:pflash .35s ease-out}@keyframes pflash{from{opacity:.9}to{opacity:0}}`;
+  document.head.appendChild(css);
+  WB.push({ id: "photo_first", name: "Picture perfect", desc: "Take a photo in photo mode", stat: "photos", goal: 1, reward: 20 });
+  X.HELP && X.HELP.controls.push(["F8", "Photo mode: free camera, hidden interface, filters (F), capture (Space / click)"]);
+}
+
+/* ---- EZ_xp.js ---- */
+// ===== 1.17 XP pacing: levelling slowed about 5× — the first five levels keep their pace, the brake eases in up to level 20 =====
+{
+  const GP = SC.prototype;
+  X.XPRATE = (L) => (L <= 5 ? 1 : L >= 20 ? 0.2 : 1 - ((L - 5) / 15) * 0.8);
+  let gx0 = GP.gainXp;
+  GP.gainXp = function (a) {
+    let L = this.hsave?.level || 1;
+    return gx0.call(this, a * X.XPRATE(L));
+  };
+  X.HELP && X.HELP.systems.push(["Levelling pace", "Experience slows down after level 5 (full brake from level 20): the road to 60 is a long one. Rested (+15%), Veteran's Boon (+50%) and guild levels still apply on top."]);
 }
 
   window.__app = new bE();
