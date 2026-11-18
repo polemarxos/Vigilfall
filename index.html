@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.17.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.17.1</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33622,8 +33622,14 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.17.0";
+  X.VERSION = "1.17.1";
   X.CHANGELOG = {
+    "1.17.1": [
+      "Riding: the rider's arms no longer windmill (the seated pose was being re-applied every frame on bones the idle animation does not reset) — this was the hero \"doing circles\" on every mount.",
+      "The 1.17 NPCs (Wren, Finn, Old Maud, Aldo, Sister Petra, Corvin and the eight Drake Wayfarers) now use the character pack models; Aldo and the Mire Wayfarer moved out of the chapel ruin.",
+      "Houses on slopes get step tiers around their plinth instead of a door hanging in the air.",
+      "Mobile: the touch controls hide while any dialog or panel is open (you could not reach Accept), bigger buttons in dialogs.",
+    ],
     "1.17.0": [
       "Performance: draw calls per frame roughly halved with no change to the picture — herb/ore nodes, torch flames and glow sprites are instanced, settlement props are batched, static scene nodes stop recomposing matrices, HUD text only touches the DOM when it changes. The FPS counter now reads \"cpu x ms / y ms\": if the cpu number is far below the frame time, your GPU (resolution scale, SSAO, shadows) is the limit.",
       "Housing: furnish your home. The workbench inside sells 30+ pieces — tables, chairs, beds, rugs, lights, banners, weapon displays, garden plants, a fountain — plus free trophies of every boss you have killed. Pieces follow where you look; LMB/F places, Q/E or the wheel rotates, R stores, F on a placed piece moves it. Saved per account.",
@@ -36119,6 +36125,18 @@ X.buildPocket = function (game, d) {
         f.castShadow = f.receiveShadow = !0;
         this.scene.add(f);
         (this._foundations ||= []).push(f);
+        // 1.17.1: a tall plinth gets two step tiers around it, so doors don't hang in the air
+        if (hgt > 0.9) {
+          for (let k = 1; k <= 2; k++) {
+            let th = hgt - k * 0.32,
+              t = new p(new iA(hw * 2 + k * 0.9, Math.max(0.3, th), hd * 2 + k * 0.9), f.material);
+            t.position.set(A, f.position.y - hgt / 2 + Math.max(0.3, th) / 2, i);
+            t.rotation.y = I;
+            t.castShadow = t.receiveShadow = !0;
+            this.scene.add(t);
+            this._foundations.push(t);
+          }
+        }
       }
     } catch (e) {}
     return z;
@@ -38909,11 +38927,27 @@ Object.assign(X.COMPANIONS, {
   };
   // the animation driver: a mounted rider gets the idle clip + seated overrides instead of walk/run
   let Xw4 = Xw;
+  // the seated overrides are added with rotateOnAxis, so bones the idle clip does not drive (arms on some rigs) must be
+  // put back to their rest pose first every frame — otherwise the rotation accumulates and the arms windmill (1.17.1 fix)
+  const RIDE_BONES = ["upperlegl", "upperlegr", "lowerlegl", "lowerlegr", "footl", "footr", "upperarml", "upperarmr", "lowerarml", "lowerarmr", "spine", "head"];
+  let restore = (B) => {
+    let R = B._rideRest;
+    if (!R) return;
+    for (let n in R) B.bones[n] && B.bones[n].quaternion.copy(R[n]);
+  };
   Xw = function (B, A) {
     if (B?.rig === "gltf" && (A?.ride || B.riding)) {
+      if (!B._rideRest) {
+        B._rideRest = {};
+        for (let n of RIDE_BONES) B.bones[n] && (B._rideRest[n] = B.bones[n].quaternion.clone());
+      } else restore(B);
       Xw4(B, { ...A, mv: 0, ph: 0 });
       X.ridePose(B, A);
       return;
+    }
+    if (B?._rideRest) {
+      restore(B);
+      delete B._rideRest;
     }
     Xw4(B, A);
   };
@@ -44219,7 +44253,7 @@ Object.assign(X.COMPANIONS, {
     { id: "wren", name: "Wren", title: "The Gravedigger's Daughter", pos: [H[0] + 12, H[1] - 12], look: { robe: 0x3a3a3a, trim: 0xa0a0a0, prop: "shovel", sex: "f", hair: "short", hairC: 0x2a1a10 }, greet: "Father dug the graves. Now the graves dig themselves up, and I keep the count.", loc: "Hamlet of Last Light" },
     { id: "finn", name: "Finn", title: "Shepherd", pos: [H[0] + 24, H[1] - 4], look: { robe: 0x6a5a3a, trim: 0xe0d0a0, prop: "staff", sex: "m", hair: "short", hairC: 0xc0a060 }, greet: "Forty sheep in autumn. Eleven now. You do the sums.", loc: "Hamlet of Last Light" },
     { id: "maud", name: "Old Maud", title: "Herb-wife", pos: [H[0] - 14, H[1] + 12], look: { robe: 0x4a5a3a, trim: 0xd0e0a0, sex: "f", hair: "bun", hairC: 0xd8d8d8 }, greet: "Silverleaf for fever, thornroot for grief. I am out of both.", loc: "Hamlet of Last Light" },
-    { id: "aldo", name: "Aldo", title: "The Ferryman", pos: [22, -206], look: { robe: 0x2a3a3a, trim: 0x8ab0b0, prop: "staff", sex: "m", hair: "bald", hairC: 0x303030, beard: !0 }, greet: "Nobody crosses the Mire for free. Not even the dead — they pay in what they remember.", loc: "Drowned Chapel Shrine, the Mire" },
+    { id: "aldo", name: "Aldo", title: "The Ferryman", pos: [14, -200], look: { robe: 0x2a3a3a, trim: 0x8ab0b0, prop: "staff", sex: "m", hair: "bald", hairC: 0x303030, beard: !0 }, greet: "Nobody crosses the Mire for free. Not even the dead — they pay in what they remember.", loc: "Drowned Chapel Shrine, the Mire" },
     { id: "petra", name: "Sister Petra", title: "Bone-reader", pos: [210, 37], look: { robe: 0xe0d8c0, trim: 0x8a7a5a, hood: !0, sex: "f", hair: "long", hairC: 0x8a6a40 }, greet: "Every skeleton that walks was a knight once. I read their oaths in the cracks.", loc: "Charnel Gate Shrine, the Ossuary" },
     { id: "corvin", name: "Corvin", title: "Deserter", pos: [-208, -24], look: { robe: 0x4a2a2a, trim: 0x8a4a4a, sex: "m", hair: "long", hairC: 0x1a1008, beard: !0 }, greet: "I wore their ash. I sang in that choir. Don't look at me like that — you'd have sung too.", loc: "Cinder Steps Shrine, the Cathedral" },
   );
@@ -44873,7 +44907,7 @@ Object.assign(X.COMPANIONS, {
     waste: { name: X.TOWNS.waste.name, pos: at(X.OUT.waste, 9, 7), npc: "way_waste" },
     thorn: { name: X.TOWNS.thorn.name, pos: at(X.OUT.thorn, 9, 7), npc: "way_thorn" },
     storm: { name: X.TOWNS.storm.name, pos: at(X.OUT.storm, 9, 7), npc: "way_storm" },
-    mire: { name: "Drowned Chapel", pos: [36, -210], npc: "way_mire" },
+    mire: { name: "Drowned Chapel", pos: [40, -198], npc: "way_mire" },
     ossuary: { name: "Charnel Gate", pos: [222, 24], npc: "way_ossuary" },
     cathedral: { name: "Cinder Steps", pos: [-222, -36], npc: "way_cathedral" },
   };
@@ -45432,6 +45466,83 @@ Object.assign(X.COMPANIONS, {
     return gx0.call(this, a * X.XPRATE(L));
   };
   X.HELP && X.HELP.systems.push(["Levelling pace", "Experience slows down after level 5 (full brake from level 20): the road to 60 is a long one. Rested (+15%), Veteran's Boon (+50%) and guild levels still apply on top."]);
+}
+
+/* ---- F0_fixes171.js ---- */
+// ===== 1.17.1 fixes: KayKit bodies for the 1.17 NPCs, touch controls hidden while a dialog is open, world audit helpers =====
+{
+  const GP = SC.prototype,
+    U = XC.prototype;
+  // ---- every new NPC gets a pack model (they rendered with the old procedural body) ----
+  Object.assign(ZM, {
+    wren: { m: "rogue", show: [], tint: 0x8a8a8a, h: 1.68 },
+    finn: { m: "barbarian", show: [], h: 1.85, tint: 0xd0c0a0 },
+    maud: { m: "mage", show: [], body: "rogue", tint: 0xa0b090, h: 1.62 },
+    aldo: { m: "barbarian", show: ["Mug"], h: 1.9, tint: 0x90a0a0 },
+    petra: { m: "mage", show: ["Spellbook"], tint: 0xe8e0d0, cape: "mage" },
+    corvin: { m: "rogue_hooded", show: ["Knife"], tint: 0x9a6a6a, cape: "rogue" },
+    way_hamlet: { m: "mage", show: ["2H_Staff"], body: "rogue", tint: 0xa0b8d8, h: 1.7, cape: "mage" },
+    way_frost: { m: "knight", show: [], hat: !0, tint: 0xa0b8d8, h: 1.85 },
+    way_waste: { m: "mage", show: ["2H_Staff"], body: "rogue", tint: 0xd8c090, h: 1.7, cape: "mage" },
+    way_thorn: { m: "rogue", show: [], legs: "knight", tint: 0x90b090 },
+    way_storm: { m: "barbarian", show: [], h: 1.9, tint: 0xa0a0c0 },
+    way_mire: { m: "rogue_hooded", show: [], tint: 0x90a8a0, cape: "rogue" },
+    way_ossuary: { m: "mage", show: ["Spellbook"], body: "rogue", tint: 0xd8d0c0, h: 1.68, cape: "mage" },
+    way_cathedral: { m: "mage", show: [], body: "rogue", tint: 0xc0a0a0, h: 1.68 },
+  });
+  // ---- touch: the control overlay gets out of the way of dialogs and panels ----
+  if (X.isTouch) {
+    let om0 = U.openModal,
+      cm0 = U.closeModal;
+    U.openModal = function (...a) {
+      document.body.classList.add("modal-open");
+      return om0.apply(this, a);
+    };
+    U.closeModal = function (...a) {
+      document.body.classList.remove("modal-open");
+      return cm0.apply(this, a);
+    };
+    let css = document.createElement("style");
+    css.textContent = `body.modal-open #touch-ui,body.modal-open #tleft,body.modal-open #tdeco{display:none!important}
+    @media (pointer:coarse){#modal{font-size:14px}#modal button,#modal .tab{min-height:44px;font-size:14px}#modal .q-act button.big,#modal .q-choices button{min-height:48px;padding:10px 18px;font-size:16px}#modal .npc{max-height:84vh;overflow:auto}#modal .shop-i button{min-height:40px}}`;
+    document.head.appendChild(css);
+  }
+  // ---- audit (used by the headless sweep; harmless in play): NPCs inside colliders, buildings off the ground ----
+  X.audit = function (g) {
+    let w = g.world,
+      out = { npcBlocked: [], floating: [], sunk: [], fallbackNpc: [] };
+    for (let n of g.npcs) {
+      w.pointBlocked(n.pos.x, 0.3, n.pos.z) && out.npcBlocked.push(n.def.id);
+      let rig = n.mesh.userData.parts?.rig;
+      rig !== "gltf" && out.fallbackNpc.push(n.def.id);
+    }
+    let B = new lI();
+    g.scene.traverse((o) => {
+      if (!o.userData.src || o.parent !== g.scene || !o.userData.size) return;
+      let nm = Object.keys(X.assets()).find((k) => X.assets()[k] === o.userData.src) || "?";
+      if (!/^b_/.test(nm)) return;
+      let s = o.userData.size,
+        hw = s.x * 0.4,
+        hd = s.z * 0.4,
+        hs = [];
+      for (let [dx, dz] of [
+        [-hw, -hd],
+        [hw, -hd],
+        [-hw, hd],
+        [hw, hd],
+      ]) {
+        let x = o.position.x + dx * Math.cos(o.rotation.y) + dz * Math.sin(o.rotation.y),
+          z = o.position.z - dx * Math.sin(o.rotation.y) + dz * Math.cos(o.rotation.y);
+        hs.push(w.heightAt(x, z));
+      }
+      let base = o.position.y,
+        lo = Math.min(...hs),
+        hi = Math.max(...hs);
+      base - lo > 1.2 && !(w._foundations || []).some((f) => Math.hypot(f.position.x - o.position.x, f.position.z - o.position.z) < 2) && out.floating.push([nm, +o.position.x.toFixed(0), +o.position.z.toFixed(0), +(base - lo).toFixed(2)]);
+      hi - base > 1.5 && out.sunk.push([nm, +o.position.x.toFixed(0), +o.position.z.toFixed(0), +(hi - base).toFixed(2)]);
+    });
+    return out;
+  };
 }
 
   window.__app = new bE();
