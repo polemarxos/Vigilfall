@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.18.3</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.18.4</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33623,8 +33623,11 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.18.3";
+  X.VERSION = "1.18.4";
   X.CHANGELOG = {
+    "1.18.4": [
+      "Enemy level gap tripled: an enemy 2 levels above you hits about 3× as hard and takes about 40% damage; at +4 it hits about 8× as hard and takes under 20%; from +6 it is hopeless (a level-2 hero dies to a level-6 enemy in about 7 seconds). Enemies at or below your level are unchanged.",
+    ],
     "1.18.3": [
       "Every townsperson now looks like their own person: each NPC gets a unique skin tone, hair colour and outfit colours (repainted on the original character pack, no new models) and a slightly different head size — no two NPCs built on the same body share the same face colouring.",
       "Enemies no longer wear the townsfolk/hero bodies: cultists, archers, stalkers, brutes and the bosses that used them (Malgareth, the Generals, Hrimgar, Varek, the Thornmother and others) are now undead built on the skeleton set, with their own weapons, colours and glows.",
@@ -46232,9 +46235,12 @@ body.pause-open #touch-ui,body.pause-open #tleft,body.pause-open #tdeco{display:
   // ---------------------------------------------------------------- (3) level-gap combat
   // d = enemy level − your level (only when the enemy is higher): gentle at +1/+2, steep from +4.
   // d=1 ×1.22 / ×0.86 · d=2 ×1.68 / ×0.68 · d=4 ×3.32 / ×0.40 · d=6 ×5.92 / ×0.26 (a level-2 hero loses to a level-8 enemy)
+  // 1.18.4: the user asked for triple the effect — the extra damage above ×1 and the extra resistance are both ×3.
+  // d=1 ×1.66 / ×0.67 · d=2 ×3.04 / ×0.41 · d=4 ×7.96 / ×0.18 · d=6 ×15.8 / ×0.105
   X.levelGap = {
-    out: (d) => (d > 0 ? 1 + 0.1 * Math.min(d, 12) + 0.12 * Math.min(d, 12) ** 2 : 1),
-    in: (d) => (d > 0 ? 1 / (1 + 0.08 * Math.min(d, 12) + 0.08 * Math.min(d, 12) ** 2) : 1),
+    k: 3,
+    out: (d) => (d > 0 ? 1 + X.levelGap.k * (0.1 * Math.min(d, 12) + 0.12 * Math.min(d, 12) ** 2) : 1),
+    in: (d) => (d > 0 ? 1 / (1 + X.levelGap.k * (0.08 * Math.min(d, 12) + 0.08 * Math.min(d, 12) ** 2)) : 1),
   };
   const GP = SC.prototype;
   // remember which enemy is acting while its attacks resolve
@@ -46287,7 +46293,7 @@ body.pause-open #touch-ui,body.pause-open #tleft,body.pause-open #tdeco{display:
     }
     return he0.call(this, A, i, I);
   };
-  X.HELP?.systems?.push(["Enemy level", "An enemy above your level hits harder and takes less damage from you — noticeably at +2, very dangerous at +4, hopeless from +6. Its level colour in the target frame warns you; ☠ means 5 or more levels above you."]);
+  X.HELP?.systems?.push(["Enemy level", "An enemy above your level hits harder and takes less damage from you — dangerous at +2, deadly at +4, hopeless beyond. Its level colour in the target frame warns you; ☠ means 5 or more levels above you."]);
 }
 
 // ---------------------------------------------------------------- chest lids: hinge on the seam, not the rim
