@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.19.3</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.20.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -30887,12 +30887,61 @@ Object.assign(rw.unbound, { hp: 240000 });
     g.world.resolve(probe, BOT_R, y + 0.5);
     return Math.hypot(probe.x - x, probe.z - z) > 0.08;
   };
-  let moveBot = (g, r, dst, dt, stopAt = 0.4) => {
+  // 1.20: route planning — A* on a local grid (cells tested against the world colliders, lazily) when the straight way is
+  // blocked; the bot then walks the waypoints with the same steering. Plans at most once a second per bot.
+  const planPath = (g, r, dst) => {
+    let sx = r.pos.x, sz = r.pos.z, tx = dst.x, tz = dst.z, y = r.pos.y,
+      pad = 10, x0 = Math.min(sx, tx) - pad, z0 = Math.min(sz, tz) - pad, x1 = Math.max(sx, tx) + pad, z1 = Math.max(sz, tz) + pad,
+      cell = Math.max(0.9, Math.max(x1 - x0, z1 - z0) / 64), W = Math.ceil((x1 - x0) / cell) + 1, H = Math.ceil((z1 - z0) / cell) + 1;
+    let ci = (x) => Math.max(0, Math.min(W - 1, Math.round((x - x0) / cell))), cj = (z) => Math.max(0, Math.min(H - 1, Math.round((z - z0) / cell)));
+    let si = ci(sx), sj = cj(sz), ti = ci(tx), tj = cj(tz), N = W * H, goal = tj * W + ti, start = sj * W + si;
+    let bl = new Int8Array(N), gS = new Float32Array(N).fill(1e9), from = new Int32Array(N).fill(-1), shut = new Uint8Array(N);
+    let isB = (k) => { if (k === goal || k === start) return !1; if (!bl[k]) bl[k] = blocked(g, x0 + (k % W) * cell, z0 + ((k / W) | 0) * cell, y) ? 1 : 2; return bl[k] === 1; };
+    let h = (k) => { let dx = Math.abs((k % W) - ti), dz = Math.abs(((k / W) | 0) - tj); return Math.max(dx, dz) + 0.414 * Math.min(dx, dz); };
+    let open = [start]; gS[start] = 0;
+    let fS = new Float32Array(N).fill(1e9); fS[start] = h(start);
+    for (let it = 0; open.length && it < 2600; it++) {
+      let bi = 0; for (let q = 1; q < open.length; q++) fS[open[q]] < fS[open[bi]] && (bi = q);
+      let k = open[bi]; open[bi] = open[open.length - 1]; open.pop();
+      if (k === goal) break;
+      if (shut[k]) continue; shut[k] = 1;
+      let i = k % W, j = (k / W) | 0;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        if (!di && !dj) continue;
+        let ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= W || nj >= H) continue;
+        let n = nj * W + ni; if (shut[n] || isB(n)) continue;
+        if (di && dj && (isB(j * W + ni) || isB(nj * W + i))) continue; // no corner cutting
+        let c = gS[k] + (di && dj ? 1.414 : 1);
+        if (c < gS[n]) { gS[n] = c; from[n] = k; fS[n] = c + h(n); open.push(n); }
+      }
+    }
+    if (from[goal] < 0) return null;
+    let cells = []; for (let k = goal; k !== start && k >= 0; k = from[k]) cells.push(k);
+    cells.reverse();
+    // keep only the turning points
+    let pts = [], pd = null;
+    for (let q = 0; q < cells.length; q++) {
+      let k = cells[q], nx = cells[q + 1], d = nx === undefined ? null : nx - k;
+      (d !== pd || nx === undefined) && pts.push({ x: x0 + (k % W) * cell, z: z0 + ((k / W) | 0) * cell });
+      pd = d;
+    }
+    pts.length && (pts[pts.length - 1] = { x: tx, z: tz });
+    return { pts, i: 0, gx: tx, gz: tz };
+  };
+  X.botPlan = planPath;
+  let moveBot = (g, r, dst0, dt, stopAt = 0.4) => {
+    let dd = Math.hypot(dst0.x - r.pos.x, dst0.z - r.pos.z);
+    if (dd < stopAt) return !0;
+    let dst = dst0, P = r._path;
+    if (P && Math.hypot(P.gx - dst0.x, P.gz - dst0.z) < 2.5 && P.i < P.pts.length) {
+      let w = P.pts[P.i];
+      Math.hypot(w.x - r.pos.x, w.z - r.pos.z) < 0.9 && P.i++;
+      P.i < P.pts.length ? (dst = P.pts[P.i]) : (r._path = null);
+    } else r._path = null;
     let dx = dst.x - r.pos.x,
       dz = dst.z - r.pos.z,
-      d = Math.hypot(dx, dz);
-    if (d < stopAt) return !0;
-    let s = Math.min(d, r.speed * dt),
+      d = Math.max(0.01, Math.hypot(dx, dz));
+    let s = Math.min(d, dd, r.speed * dt),
       base = Math.atan2(dx, dz),
       look = Math.max(0.9, s * 3),
       side = r.steerSide || 1,
@@ -30907,6 +30956,12 @@ Object.assign(rw.unbound, { hp: 240000 });
         break;
       }
     }
+    // the straight way is blocked and we are not on a route yet: plan one (rate-limited)
+    if ((ang === null || ang !== base) && !r._path && dd > 2.5 && dd < 60 && g.t > (r._planT || 0)) {
+      r._planT = g.t + 1.2;
+      r._path = planPath(g, r, dst0);
+      X._planCount = (X._planCount || 0) + 1;
+    }
     if (ang === null) ang = base; // boxed in: push straight and let resolve slide us
     r.pos.x += Math.sin(ang) * s;
     r.pos.z += Math.cos(ang) * s;
@@ -30919,7 +30974,7 @@ Object.assign(rw.unbound, { hp: 240000 });
     r.yaw = Math.atan2(-Math.sin(ang), -Math.cos(ang));
     r.moving = !0;
     // progress bookkeeping for the unstuck logic
-    let nd = Math.hypot(dst.x - r.pos.x, dst.z - r.pos.z);
+    let nd = Math.hypot(dst0.x - r.pos.x, dst0.z - r.pos.z);
     r._mvT = (r._mvT || 0) + dt;
     if (r._mvT > 1.5) {
       r.stuck = (r._mvBest ?? 1e9) - nd < 0.5 ? (r.stuck || 0) + r._mvT : 0;
@@ -33726,8 +33781,17 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.19.3";
+  X.VERSION = "1.20.0";
   X.CHANGELOG = {
+    "1.20.0": [
+      "Sound: every skill has its own sound (before, all of a class's spells shared one); zones have living ambience — surf on the coast, forest and night insects, sand, mountain gusts, cave hum and dripping water; dungeons and raids echo like stone halls; boss fights get war drums, a brass ostinato and choir.",
+      "Greek: items, materials, recipes, cosmetics, mounts, companions, furniture, lore pages, rare enemies and shrines are now in Greek too (item names are composed with proper Greek grammar).",
+      "Companions plan routes: when walls or houses block the straight way they find a path around (out of dead ends too) instead of sliding along the wall.",
+      "Mythic+: enemies now match your group's level on every dungeon (a level-60 group in a level-12 dungeon used to face level-12 enemies), and the old level bump that made +8 to +10 impossible is gone; each tier adds 9% health and 6.5% damage, Quaking hits for 18%, keys from +7 get 10% more time.",
+      "Arena: rating now moves fairly (you are matched near your own rating — before, a win at 1600+ gave +3 and a loss −29), and the gladiators that fill the other team get stronger as you climb.",
+      "Phones: frame cap (60 by default — 90/120 Hz phones were drawing up to 120 frames a second), adaptive resolution when the phone struggles, and lighter shadow updates. Settings → Phone. PCs are unchanged.",
+      "Set items are named after their piece (Rimeguard Helm) instead of a random word.",
+    ],
     "1.19.3": [
       "Android app: phones on Android get a Download Android app (APK) button in the main menu — a real app that opens Vigilfall full screen and updates itself with the game.",
       "Phones: the main menu scrolls when it does not fit the screen, and Install as app sits right under the first buttons (it was below the bottom of a phone held sideways).",
@@ -34579,6 +34643,7 @@ Object.assign(rw.unbound, { hp: 240000 });
     { tier: 10, id: "quaking", name: "Quaking", desc: "Every 20 s the ground shakes under each player: step out of the circle.", color: "#9ad0ff" },
   ];
   X.affixes = (tier) => X.AFFIX.filter((a) => tier >= a.tier);
+  X.MPLUS = { hp: (t) => Math.pow(1.09, Math.max(0, t - 1)), dmg: (t) => Math.pow(1.065, Math.max(0, t - 1)) };
   X.parTime = (d) => (d.raid ? 0 : 60 * (9 + (d.rooms || 3) * 2));
   X.keys = () => (app().profile.keys ||= {});
   // the LFG queue carries the chosen tier; lobbies are per tier so groups match on the same difficulty
@@ -34665,13 +34730,15 @@ Object.assign(rw.unbound, { hp: 240000 });
     let e = se0.call(this, type, x, z, lv, opts),
       I = this.inst;
     if (!e || !this.isHost || !I?.mtier) return e;
+    // 1.20: the tier no longer adds enemy levels (with the level-gap rule a +10 key was ×20 health and ×21 damage, i.e.
+    // impossible); enemies match the party's level instead (see FH_endgame) and the tier scales them on a smooth curve
     let t = I.mtier,
       boss = !!e.def.boss,
-      hpM = 1 + 0.12 * (t - 1),
-      dmM = 1 + 0.07 * (t - 1);
+      hpM = X.MPLUS.hp(t),
+      dmM = X.MPLUS.dmg(t);
     t >= 2 && !boss && ((hpM *= 1.2), (dmM *= 1.15));
     t >= 4 && boss && ((hpM *= 1.3), (dmM *= 1.2));
-    ((e.maxHp *= hpM), (e.hp = e.maxHp), (e.dmgMul = (e.dmgMul || 1) * dmM), (e.level = Math.min(60, e.level + Math.floor(t / 2))));
+    ((e.maxHp *= hpM), (e.hp = e.maxHp), (e.dmgMul = (e.dmgMul || 1) * dmM));
     return e;
   };
   let ke0 = P.killEnemy;
@@ -34730,7 +34797,7 @@ Object.assign(rw.unbound, { hp: 240000 });
           this.telegraphEnemy(p, 4, 2.2, 0x9ad0ff, () => {
             for (let t2 of this.playerTargets()) {
               let q = this.targetPos(t2.id);
-              q && Math.hypot(q.x - p.x, q.z - p.z) < 4 && this.damagePlayer(t2.id, 0.22 * (t2.id === "self" ? this.player.maxHp : this.remotes.get(t2.id)?.maxHp || 1000), { pure: !0, src: { x: p.x, z: p.z } });
+              q && Math.hypot(q.x - p.x, q.z - p.z) < 4 && this.damagePlayer(t2.id, 0.18 * (t2.id === "self" ? this.player.maxHp : this.remotes.get(t2.id)?.maxHp || 1000), { pure: !0, src: { x: p.x, z: p.z } });
             }
             this.shake?.(0.6);
           });
@@ -35253,7 +35320,7 @@ Object.assign(rw.unbound, { hp: 240000 });
     if (it && this.inst && !it.set) {
       let z = this.inst.def.zone,
         S = X.SETS[z === "citadel" || z === "ossuary" ? "storm" : z];
-      S && it.slot !== "relic" && Math.random() < (this.inst.def.raid ? 0.5 : 0.3) && ((it.set = S.zone), (it.name = `${S.name} ${it.name.split(" ").slice(-1)[0]}`));
+      S && it.slot !== "relic" && Math.random() < (this.inst.def.raid ? 0.5 : 0.3) && ((it.set = S.zone), (it.name = `${S.name} ${[...Object.values(Bl).flat(), ...Object.values(gl).flat()].sort((a, b) => b.length - a.length).find((b) => it.name.includes(b)) || it.name.split(" ").slice(-1)[0]}`));
     }
     return di0.call(this, pos, it);
   };
@@ -48249,6 +48316,462 @@ X.EL.quests = {
   setInterval(follow, 250);
 }
 
+/* ---- FG_sound.js ---- */
+/* 1.20.0 — sound pass. Every skill gets its own signature layer on top of the shared hit/whoosh sounds (before, all of a
+   class's skills shared one sound — every Warlock spell was the same "dark" swell, every Mystic spell "water"); zones get
+   continuous ambience beds (surf, forest, night insects, sand, gusting mountain wind, cave hum and drips) that cross-fade
+   with the zone and the time of day; dungeons and raids get a stone-hall echo on every sound; bosses get their own
+   heavier music layer (war drums, low brass ostinato, choir). All procedural, no files. */
+{
+  const AP = cM.prototype, GP = SC.prototype;
+  const mtof = (n) => 440 * Math.pow(2, (n - 69) / 12), R = (a, b) => a + Math.random() * (b - a);
+  // ---------- skill signatures ----------
+  // building blocks: each gets (audio, dest, time, volume)
+  const K = {
+    slash: (a, s, t, v, f = 1) => { a._whoosh(s, t, 0.45 * v, 700 * f, 4200 * f, 0.22); a._n(s, t + 0.06, "highpass", 6000, 8000, 0.8, 0.002, 0.09, 0.12 * v); },
+    cleave: (a, s, t, v) => { a._whoosh(s, t, 0.6 * v, 260, 2200, 0.4); a._o(s, t + 0.12, "sawtooth", 90, 45, 0.005, 0.25, 0.12 * v); },
+    bash: (a, s, t, v) => { a._thud(s, t, 0.9 * v, 75); a._metal(s, t + 0.005, 300, 0.12 * v, 0.6, 1.1); },
+    holy: (a, s, t, v, base = 76) => { a._chime(s, t, [mtof(base), mtof(base + 4), mtof(base + 7), mtof(base + 12)], 0.08 * v, 0.045, 1.4); },
+    heal: (a, s, t, v, base = 72) => { a._chime(s, t, [mtof(base), mtof(base + 7), mtof(base + 12)], 0.06 * v, 0.09, 1.8, "sine"); a._n(s, t, "highpass", 5000, 9000, 0.5, 0.2, 0.8, 0.03 * v); },
+    fire: (a, s, t, v, f = 1) => { a._whoosh(s, t, 0.5 * v, 200 * f, 1600 * f, 0.4); a._crackle(s, t + 0.04, 0.35, 0.18 * v); a._o(s, t, "sine", 120 * f, 60, 0.01, 0.3, 0.2 * v); },
+    shadow: (a, s, t, v, f = 1) => { a._o(s, t, "sawtooth", 110 * f, 55 * f, 0.03, 0.5, 0.1 * v, -12); a._o(s, t, "sawtooth", 110 * f, 56 * f, 0.03, 0.5, 0.1 * v, 12); a._n(s, t, "bandpass", 900 * f, 300, 3, 0.05, 0.5, 0.18 * v); },
+    whisper: (a, s, t, v) => { for (let i = 0; i < 4; i++) a._n(s, t + i * 0.06, "bandpass", R(1400, 2600), R(800, 1500), 9, 0.02, 0.25, 0.08 * v); },
+    water: (a, s, t, v, f = 1) => { for (let i = 0; i < 5; i++) { const q = R(600, 1500) * f; a._o(s, t + i * 0.04 + R(0, 0.02), "sine", q, q * 1.8, 0.003, 0.08, 0.12 * v); } a._n(s, t, "lowpass", 1200, 300, 0.7, 0.05, 0.5, 0.15 * v); },
+    wind: (a, s, t, v, f = 1) => { a._whoosh(s, t, 0.35 * v, 300 * f, 1800 * f, 0.7); },
+    earth: (a, s, t, v) => { a._o(s, t, "sine", 55, 28, 0.004, 0.9, 0.7 * v); a._n(s, t, "lowpass", 700, 80, 0.6, 0.01, 1.0, 0.6 * v); for (let i = 0; i < 6; i++) a._thud(s, t + 0.08 + i * 0.05, 0.12 * v, R(140, 260)); },
+    wood: (a, s, t, v) => { for (let i = 0; i < 4; i++) a._o(s, t + i * 0.05, "triangle", R(180, 320), R(120, 200), 0.002, 0.08, 0.14 * v); a._n(s, t, "bandpass", 600, 300, 2, 0.02, 0.5, 0.15 * v); },
+    glass: (a, s, t, v) => { a._o(s, t, "sine", 2400, 2380, 0.001, 0.4, 0.06 * v); a._o(s, t + 0.01, "sine", 3700, 3690, 0.001, 0.25, 0.04 * v); },
+    zap: (a, s, t, v) => { for (let i = 0; i < 4; i++) a._n(s, t + i * 0.025, "highpass", R(3000, 6000), 7000, 0.8, 0.0005, R(0.02, 0.06), 0.3 * v); a._o(s, t, "square", 140, 70, 0.002, 0.18, 0.06 * v); },
+    thunder: (a, s, t, v) => { a._n(s, t, "lowpass", 1800, 70, 0.6, 0.004, 1.6, 0.8 * v); a._o(s, t, "sine", 70, 30, 0.01, 1.2, 0.5 * v); },
+    shield: (a, s, t, v, base = 64) => { a._o(s, t, "triangle", mtof(base), mtof(base + 12), 0.05, 0.8, 0.12 * v); a._o(s, t, "sine", mtof(base + 7), mtof(base + 19), 0.05, 0.9, 0.08 * v); a._metal(s, t + 0.02, mtof(base + 24), 0.04 * v, 1.2, 1.4); },
+    howl: (a, s, t, v) => { a._o(s, t, "sawtooth", 180, 340, 0.08, 0.9, 0.08 * v); a._o(s, t, "sawtooth", 183, 335, 0.08, 0.9, 0.06 * v); a._n(s, t, "bandpass", 700, 1200, 3, 0.1, 0.8, 0.12 * v); },
+    blink: (a, s, t, v, f = 1) => { a._o(s, t, "sine", 400 * f, 2400 * f, 0.004, 0.18, 0.12 * v); a._n(s, t + 0.1, "highpass", 3000, 9000, 0.5, 0.005, 0.15, 0.1 * v); },
+    thrown: (a, s, t, v) => { a._whoosh(s, t, 0.3 * v, 900, 3000, 0.25); a._o(s, t + 0.05, "triangle", 900, 500, 0.002, 0.08, 0.05 * v); },
+    bow: (a, s, t, v) => { a._o(s, t, "triangle", 210, 140, 0.001, 0.2, 0.25 * v); a._n(s, t, "bandpass", 3200, 1200, 3, 0.001, 0.04, 0.3 * v); a._whoosh(s, t + 0.03, 0.2 * v, 2000, 6000, 0.2); },
+    blood: (a, s, t, v) => { a._o(s, t, "sine", 55, 50, 0.02, 0.6, 0.35 * v); a._o(s, t + 0.45, "sine", 55, 48, 0.02, 0.5, 0.3 * v); a._n(s, t, "lowpass", 400, 120, 1, 0.05, 0.6, 0.12 * v); },
+    // ultimates: a bigger, rarer layer
+    ult: (a, s, t, v, base = 50) => {
+      a._o(s, t, "sawtooth", mtof(base - 12), mtof(base - 12), 0.15, 1.6, 0.08 * v); a._o(s, t, "sawtooth", mtof(base - 5), mtof(base - 5), 0.15, 1.6, 0.06 * v);
+      a._o(s, t, "sine", mtof(base - 24), mtof(base - 26), 0.05, 1.8, 0.35 * v); a._n(s, t, "lowpass", 2400, 120, 0.6, 0.02, 1.4, 0.3 * v);
+      a._chime(s, t + 0.2, [mtof(base + 24), mtof(base + 31), mtof(base + 36)], 0.05 * v, 0.06, 2.2);
+    },
+  };
+  const P = (...parts) => parts; // [[kind, vol, ...args], ...]
+  X.SKILL_SND = {
+    tp_strike: P(["slash", 1, 1]), tp_bash: P(["bash", 1]), tp_conse: P(["holy", 1, 69], ["earth", 0.4]), tp_aegis: P(["shield", 1.2, 62], ["ult", 0.8, 50]),
+    wd_cleave: P(["cleave", 1]), wd_guard: P(["blood", 1], ["shield", 0.6, 57]), wd_charge: P(["cleave", 0.7], ["earth", 0.5]), wd_howl: P(["howl", 1]), wd_pact: P(["blood", 1.2], ["ult", 0.8, 45]),
+    cl_smash: P(["bash", 1.1]), cl_slam: P(["earth", 1]), cl_chains: P(["shadow", 0.8, 0.8], ["bash", 0.4]), cl_tomb: P(["earth", 1], ["bash", 0.5]), cl_undying: P(["ult", 1, 43], ["shadow", 0.6, 0.6]),
+    cr_bolt: P(["holy", 0.7, 81]), cr_mend: P(["heal", 1, 76]), cr_nova: P(["holy", 1, 72], ["wind", 0.5, 1.4]), cr_sanct: P(["heal", 0.9, 69], ["holy", 0.5, 81]), cr_dawn: P(["ult", 1.2, 60], ["holy", 1, 72]),
+    dr_thorn: P(["thrown", 0.8], ["wood", 0.5]), dr_rejuv: P(["heal", 0.8, 74], ["wind", 0.4, 0.8]), dr_roots: P(["wood", 1.2], ["earth", 0.4]), dr_wolf: P(["howl", 1]), dr_grove: P(["ult", 1, 55], ["wood", 0.8], ["heal", 0.8, 67]),
+    ap_vial: P(["thrown", 0.8], ["glass", 0.8]), ap_elixir: P(["thrown", 0.6], ["glass", 1], ["heal", 0.5, 79]), ap_leech: P(["blood", 0.8], ["water", 0.5, 0.6]), ap_smoke: P(["wind", 1, 0.6]), ap_panacea: P(["ult", 1, 57], ["glass", 1], ["heal", 0.8, 72]),
+    wi_bolt: P(["fire", 0.8, 1.3]), wi_wave: P(["fire", 1.2, 0.9]), wi_meteor: P(["fire", 0.6, 0.7], ["wind", 0.8, 0.5]), wi_blink: P(["blink", 1, 1], ["fire", 0.4, 1.5]), wi_inferno: P(["ult", 1, 52], ["fire", 1.2, 0.8]),
+    rg_shot: P(["bow", 1]), rg_volley: P(["bow", 0.8], ["wind", 0.6, 1.6]), rg_leap: P(["wind", 0.8, 1.2], ["wood", 0.5]), rg_barrage: P(["ult", 0.8, 57], ["bow", 1.2]),
+    as_stab: P(["slash", 0.7, 1.6]), as_step: P(["blink", 1, 0.7], ["whisper", 0.6]), as_fan: P(["thrown", 1], ["slash", 0.5, 1.8]), as_vanish: P(["whisper", 1], ["blink", 0.5, 0.5]), as_lotus: P(["ult", 0.8, 48], ["slash", 1, 1.4]),
+    th_strike: P(["bash", 0.8]), th_ward: P(["shield", 1, 59], ["zap", 0.5]), th_clap: P(["thunder", 0.8], ["zap", 0.8]), th_leap: P(["wind", 0.8, 0.8], ["thunder", 0.6]), th_tempest: P(["ult", 1, 46], ["thunder", 1], ["zap", 1]),
+    my_lash: P(["water", 0.8, 1.2]), my_mist: P(["heal", 0.7, 77], ["wind", 0.4, 1.8]), my_rain: P(["water", 1, 0.8], ["wind", 0.4, 1]), my_current: P(["water", 0.8, 0.6], ["heal", 0.6, 72]), my_spring: P(["ult", 1, 58], ["water", 1, 1], ["heal", 0.7, 74]),
+    wl_bolt: P(["shadow", 0.7, 1.4]), wl_agony: P(["whisper", 1], ["shadow", 0.5, 0.7]), wl_rot: P(["shadow", 0.6, 0.5], ["water", 0.4, 0.4]), wl_siphon: P(["blood", 0.6], ["shadow", 0.8, 1]), wl_doom: P(["ult", 1, 41], ["whisper", 1]),
+  };
+  AP.skillSound = function (id, pos, vol = 1) {
+    if (!this.ctx) return;
+    const parts = X.SKILL_SND[id];
+    if (!parts) return;
+    const s = this._spatial(pos, 0.2), t = this.ctx.currentTime;
+    for (const [k, v, ...args] of parts) try { K[k](this, s, t, vol * v, ...args); } catch (e) {}
+  };
+  // after a successful cast (the skill went on cooldown)
+  const tc0 = GP.tryCast;
+  GP.tryCast = function (slot, ...a) {
+    const sk = this.hero?.skills?.[slot], cd0 = sk && this.player?.cds?.[sk.id];
+    const r = tc0.call(this, slot, ...a);
+    try {
+      const cd1 = sk && this.player?.cds?.[sk.id];
+      if (sk && cd1 > 0 && cd1 !== cd0) this.audio?.skillSound?.(sk.id, this.player.pos, slot === 0 ? 0.55 : 0.9);
+    } catch (e) {}
+    return r;
+  };
+  // ---------- zone ambience beds ----------
+  const BEDS = {
+    // per zone: [wind, surf, leaves, insects(night), sand, cave] target levels
+    hamlet: [0.35, 0, 0.25, 0.6, 0, 0], mire: [0.2, 0.25, 0.35, 0.9, 0, 0], ossuary: [0.55, 0, 0.05, 0.3, 0, 0], cathedral: [0.45, 0, 0, 0.2, 0, 0],
+    citadel: [0.7, 0, 0, 0, 0, 0.2], frost: [1, 0, 0, 0, 0, 0], waste: [0.45, 0, 0, 0.5, 0.9, 0], thorn: [0.25, 0, 0.8, 1, 0, 0], storm: [0.95, 0.15, 0, 0, 0, 0],
+    sea: [0.5, 1, 0, 0, 0, 0], dungeon: [0, 0, 0, 0, 0, 1], raid: [0, 0, 0, 0, 0, 1], arena: [0.2, 0, 0, 0, 0.2, 0],
+  };
+  AP._bedsInit = function () {
+    const c = this.ctx, mk = (type, f, q, g = 0) => { const src = this._noiseSrc(), bf = c.createBiquadFilter(), gn = c.createGain(); bf.type = type; bf.frequency.value = f; bf.Q.value = q; gn.gain.value = g; src.connect(bf); bf.connect(gn); gn.connect(this.master); src.start(0, Math.random() * 1.5); return { bf, gn }; };
+    const lfo = (target, rate, depth) => { const o = c.createOscillator(), g = c.createGain(); o.frequency.value = rate; g.gain.value = depth; o.connect(g); g.connect(target); o.start(); return o; };
+    const B = (this._beds = {});
+    B.wind = mk("bandpass", 600, 1.2); lfo(B.wind.bf.frequency, 0.11, 380); lfo(B.wind.gn.gain, 0.07, 0.02);
+    B.surf = mk("lowpass", 520, 0.7); lfo(B.surf.gn.gain, 0.12, 0.05); lfo(B.surf.bf.frequency, 0.12, 260);
+    B.leaves = mk("highpass", 3800, 0.6);  lfo(B.leaves.gn.gain, 0.23, 0.012);
+    B.insects = mk("bandpass", 4700, 14); lfo(B.insects.gn.gain, 6.5, 0.025);
+    B.sand = mk("highpass", 5200, 0.9); lfo(B.sand.gn.gain, 0.17, 0.015);
+    B.cave = mk("lowpass", 160, 0.9);
+    // dungeon echo: every sound effect also feeds the hall reverb
+    this._caveSend = c.createGain(); this._caveSend.gain.value = 0; this.sfx.connect(this._caveSend); this._caveSend.connect(this.reverb);
+    this._dripT = 2;
+  };
+  const LVL = { wind: 0.05, surf: 0.11, leaves: 0.035, insects: 0.03, sand: 0.035, cave: 0.13 };
+  const nt0 = AP._natureTick;
+  AP._natureTick = function (dt) {
+    nt0 && nt0.call(this, dt);
+    if (!this.ctx) return;
+    try {
+      this._beds || this._bedsInit();
+      const zone = this.zone || this.region || "hamlet", T = BEDS[zone] || BEDS.hamlet, night = 1 - (this.dayAmt ?? 1), t = this.ctx.currentTime;
+      const names = ["wind", "surf", "leaves", "insects", "sand", "cave"];
+      names.forEach((n, i) => {
+        let target = T[i] * LVL[n];
+        n === "insects" && (target *= Math.min(1, night * 1.4)); // crickets at night
+        n === "leaves" && (target *= 0.6 + 0.4 * (1 - night));
+        this._beds[n].gn.gain.setTargetAtTime(target, t, 1.5);
+      });
+      const indoor = zone === "dungeon" || zone === "raid";
+      this._caveSend.gain.setTargetAtTime(indoor ? 0.55 : 0, t, 0.8);
+      // the base wind bed is quieter indoors
+      this.windGain && this.windGain.gain.setTargetAtTime(indoor ? 0.02 : 0.18, t, 1.5);
+      if (indoor && (this._dripT -= dt) <= 0) {
+        this._dripT = R(0.8, 3.2);
+        const a = Math.random() * 6.28, d = R(4, 14), s = this._spatial({ x: this.listener.x + Math.cos(a) * d, z: this.listener.z + Math.sin(a) * d }, 0.6), q = R(900, 1700);
+        this._o(s, t, "sine", q, q * 2.2, 0.001, 0.06, 0.12);
+      }
+    } catch (e) {}
+  };
+  // ---------- boss music layer ----------
+  const mt0 = AP._musicTick;
+  AP._musicTick = function (dt) {
+    const step0 = this._step;
+    mt0.call(this, dt);
+    if (this.mode !== "boss" || this._step === step0 || !this.ctx || this.vol.music <= 0.01) return;
+    try {
+      const st = this._step, C = this.chords[this._chord], t = this.ctx.currentTime;
+      // war drums on the off-beats, a low brass ostinato and a timpani roll every 8 steps
+      st % 2 === 1 && this._drum(0.28);
+      const bass = [0, 0, 7, 0, 3, 0, 7, 10][st % 8];
+      this._o(this.music, t, "sawtooth", mtof(C[0] - 24 + bass), mtof(C[0] - 24 + bass), 0.02, 0.28, 0.05);
+      this._o(this.music, t, "square", mtof(C[0] - 12 + bass), mtof(C[0] - 12 + bass), 0.02, 0.22, 0.018);
+      if (st % 8 === 7) for (let i = 0; i < 6; i++) this._drum(0.12 + i * 0.03);
+      st % 16 === 8 && this._choir(C.map((q) => mtof(q + 12)), 4);
+    } catch (e) {}
+  };
+}
+
+/* ---- FH_endgame.js ---- */
+/* 1.20.0 — endgame tuning.
+   Mythic+: enemies now match the party's level (a level-60 group in the level-12 Barrow Crypts used to face level-12
+   enemies, so most keys were trivial — and the old +1 level per two tiers made high keys impossible under the
+   level-gap rule). Tier curve: health ×1.09 and damage ×1.065 per tier (+10: ×2.2 / ×1.8, plus Fortified/Tyrannical),
+   the timer allows 10% more time from +7 up, and the Quaking hit is a fixed 18% of health.
+   Arena: the Elo opponent was a fixed 1150, so at 1600+ a win gave +3 and a loss −29; opponents now sit near your own
+   rating and the gladiators who fill the other team grow with it (−15% at 900 … +45% at 2100). */
+{
+  const P = SC.prototype;
+  const partyLevel = (g) => {
+    const lv = [g.hsave?.level || 1];
+    for (const r of g.remotes?.values?.() || []) (r.level || r.lv) && lv.push(r.level || r.lv);
+    return Math.round(lv.reduce((a, b) => a + b, 0) / lv.length);
+  };
+  X.partyLevel = partyLevel;
+  const se0 = P.spawnEnemy;
+  P.spawnEnemy = function (type, x, z, lv, opts) {
+    const I = this.inst;
+    if (I?.mtier && this.isHost && typeof lv === "number") {
+      const pl = partyLevel(this);
+      const bump = lv - (I.def?.lv || lv); // keep the dungeon's own +1/+2 for elites and bosses
+      lv = Math.min(60, Math.max(lv, pl + Math.max(0, bump)));
+    }
+    return se0.call(this, type, x, z, lv, opts);
+  };
+  // a bit more time on high keys
+  const pt0 = X.parTime;
+  X.parTime = (d) => pt0(d);
+  const ek0 = P.enterInstance;
+  P.enterInstance = function (...a) {
+    const r = ek0.apply(this, a);
+    try { const I = this.inst; I?.mtier >= 7 && I.par && !I._parBoost && ((I.par *= 1.1), (I._parBoost = 1)); } catch (e) {}
+    return r;
+  };
+  // ---- arena ----
+  X.ARENA_SCALE = (rating) => Math.max(0.85, Math.min(1.45, 1 + (rating - 1200) / 2000));
+  const A = X.arena;
+  if (A) {
+    const fin0 = A.finish;
+    A.finish = function (g, win) {
+      const p = g.profile, a = (p.arena ||= { rating: 1200, wins: 0, losses: 0, marks: 0 });
+      const before = a.rating, c = A.cur;
+      const r = fin0.call(this, g, win);
+      try {
+        if (c && !c._elo && a.rating !== undefined) {
+          c._elo = 1;
+          // redo the rating step against an opponent near your own rating (±60), K = 36
+          const opp = before + (c.oppOffset ?? 0), exp = 1 / (1 + Math.pow(10, (opp - before) / 400));
+          const s = !win ? 0.5 : win === c.my ? 1 : 0;
+          a.rating = Math.max(0, Math.round(before + 36 * (s - exp)));
+          a.best = Math.max(a.best || 0, a.rating);
+          a.rating >= 1800 && g.setStat?.("arena_1800", 1);
+        }
+      } catch (e) {}
+      return r;
+    };
+    const su0 = A.setup;
+    A.setup = function (g, d) {
+      const r = su0.call(this, g, d);
+      try {
+        const c = A.cur, rating = g.profile.arena?.rating ?? 1200, k = X.ARENA_SCALE(rating);
+        c.oppOffset = Math.round((Math.random() - 0.5) * 120);
+        for (const id of c.teams.B) {
+          const b = g.remotes.get(id);
+          if (!b?.bot || b._arenaK) continue;
+          b._arenaK = k;
+          b.maxHp = Math.round(b.maxHp * k); b.hp = b.maxHp;
+          b.st && (b.st = { ...b.st, dmg: b.st.dmg * k, hp: b.maxHp });
+        }
+      } catch (e) {}
+      return r;
+    };
+  }
+}
+
+/* ---- FI_phoneperf.js ---- */
+/* 1.20.0 — phone performance (touch devices only; PCs are untouched):
+   - frame cap: 60 by default (90/120 Hz phones were drawing up to 120 frames a second and heating up), 30 = battery saver;
+   - adaptive resolution: when the phone can't hold ~30 fps the render resolution steps down (to 60% of your setting at
+     most) and climbs back when there is headroom;
+   - sun shadows are redrawn every second frame (the sun moves slowly; characters' shadows lag by one frame at most).
+   Settings → Phone: frame cap, adaptive resolution. */
+{
+  const touch = () => X.isTouch || matchMedia("(pointer:coarse)").matches;
+  const AP = bE.prototype, U = XC.prototype;
+  const S = () => window.__app?.settings || {};
+  X.phonePerf = { dyn: 1, fps: 60, n: 0, t: 0 };
+  const PP = X.phonePerf;
+  const rs0 = AP.resize;
+  AP.resize = function (...a) {
+    if (!touch() || S().adaptiveRes === !1) return rs0.apply(this, a);
+    const s = this.settings, keep = s.renderScale;
+    s.renderScale = keep * PP.dyn;
+    try { return rs0.apply(this, a); } finally { s.renderScale = keep; }
+  };
+  const lp0 = AP.loop;
+  AP.loop = function (A) {
+    if (!touch()) return lp0.call(this, A);
+    const cap = S().fpsCap ?? 60;
+    if (cap && this._pf && A - this._pf < 1000 / cap - 2) { requestAnimationFrame((w) => this.loop(w)); return; }
+    const dt = this._pf ? A - this._pf : 16;
+    this._pf = A;
+    // shadows every other frame
+    const r = this.renderer;
+    if (r?.shadowMap?.enabled) { r.shadowMap.autoUpdate = !1; PP.flip = !PP.flip; PP.flip && (r.shadowMap.needsUpdate = !0); }
+    // adaptive resolution, judged every 2 s of play
+    if (this.game?.running && !this.paused && S().adaptiveRes !== !1) {
+      PP.n++; PP.t += dt;
+      if (PP.t > 2000) {
+        const fps = (PP.n * 1000) / PP.t; PP.fps = fps; PP.n = 0; PP.t = 0;
+        const target = Math.min(30, (cap || 60) * 0.9);
+        let d = PP.dyn;
+        if (fps < target - 3 && d > 0.6) d = Math.max(0.6, d - 0.1);
+        else if (fps > Math.min(48, (cap || 60) * 0.95) && d < 1) d = Math.min(1, d + 0.1);
+        d !== PP.dyn && ((PP.dyn = d), this.resize());
+      }
+    }
+    return lp0.call(this, A);
+  };
+  // settings (shown on phones only)
+  const sh0 = U.settingsHTML;
+  U.settingsHTML = function () {
+    let h = sh0.call(this);
+    if (!touch()) return h;
+    const s = this.app.settings, cap = s.fpsCap ?? 60, ad = s.adaptiveRes !== !1;
+    return h + `<h3>Phone</h3><label>Frame cap <select id="s-fcap"><option value="30" ${cap === 30 ? "selected" : ""}>30 (battery saver)</option><option value="60" ${cap === 60 ? "selected" : ""}>60</option><option value="0" ${!cap ? "selected" : ""}>No cap</option></select></label>
+      <label>Adaptive resolution <input type="checkbox" id="s-adres" ${ad ? "checked" : ""}><span class="sd">Lowers the resolution a little when the phone struggles, and raises it again when it can.</span></label>`;
+  };
+  const bs0 = U.bindSettings;
+  U.bindSettings = function (...a) {
+    const r = bs0.apply(this, a);
+    const app = this.app, fc = document.getElementById("s-fcap"), ad = document.getElementById("s-adres");
+    const save = () => { try { localStorage.setItem(Md, JSON.stringify(app.settings)); } catch (e) {} };
+    fc && (fc.oninput = fc.onchange = () => { app.settings.fpsCap = +fc.value; save(); });
+    ad && (ad.oninput = ad.onchange = () => { app.settings.adaptiveRes = ad.checked; ad.checked || (PP.dyn = 1); app.resize(); save(); });
+    return r;
+  };
+}
+
+/* ---- FY_el_items.js ---- */
+/* 1.20.0 — Greek (ελληνικά): items and everything you own. Item names are stored in English in saves (and travel between
+   players), so they are composed in Greek when shown: [adjectives] noun [of-phrase], with the adjectives agreeing with the
+   noun's gender and number. Materials, recipes, cosmetics, mounts, companions, furniture, lore, rares, places, affixes. */
+X.EL = X.EL || {};
+{
+  // adjective forms: [masc, fem, neut, masc pl, fem pl, neut pl]
+  const os = (st, f = "η") => [st + "ος", st + f, st + "ο", st + "οι", st + "ες", st + "α"];
+  const oss = (st) => [st + "ός", st + "ή", st + "ό", st + "οί", st + "ές", st + "ά"];
+  X.EL.ADJ = {
+    Dawnforged: os("Αυγογέννητ"), Silvered: os("Επάργυρ"), Ashen: oss("Στακτερ"), Moonlit: os("Φεγγαρόλουστ"), Gilded: os("Επίχρυσ"),
+    Runed: oss("Ρουνικ"), Stormwrought: os("Θυελλόπλαστ"), "Ember-kissed": os("Φλογοφίλητ"), Verdant: oss("Χλοερ"), Temple: oss("Ναϊκ"),
+    Barrow: oss("Τυμβικ"), Thorned: oss("Αγκαθωτ"), Frostbound: os("Παγόδετ"), Sunfired: os("Ηλιοπυρωμέν"),
+    "Grave-touched": oss("Ταφικ"), Sorrowful: os("Θλιμμέν"), Moonless: os("Αφέγγαρ"), Pale: oss("Χλωμ"), Wept: os("Δακρυσμέν"),
+    Hollowed: os("Κούφι", "α"), Bleak: oss("Ζοφερ"), Forged: os("Σφυρήλατ"), Copper: os("Χάλκιν"), Iron: os("Σιδερένι", "α"),
+    Sunsteel: os("Ηλιοχαλύβδιν"), Stormsilver: os("Θυελλασημένι", "α"), Worn: os("Φθαρμέν"), Blessed: os("Ευλογημέν"),
+    Hallowed: os("Αγιασμέν"), Cursed: os("Καταραμέν"), Mythic: oss("Μυθικ"), Rimeguard: oss("Παγοφρουρ"), Sunwrought: os("Ηλιόπλαστ"),
+    Thornweave: os("Αγκαθόπλεκτ"),
+  };
+  // adjectives that read better after the noun in Greek
+  X.EL.POST = { Vigil: "της Φρουράς", Chapel: "του Παρεκκλησιού", Dragonbone: "από Κόκαλο Δράκου", Voidforged: "του Κενού", Stormcrown: "του Θυελλοστέμματος" };
+  // nouns: [greek, gender index 0 m / 1 f / 2 n, plural]
+  const N = (g, k, p = 0) => [g, k, p];
+  X.EL.NOUN = {
+    Blade: N("Λεπίδα", 1), Cleaver: N("Μπαλτάς", 0), Staff: N("Ραβδί", 2), Fang: N("Κυνόδοντας", 0), Bow: N("Τόξο", 2), Scepter: N("Σκήπτρο", 2), Maul: N("Ρόπαλο", 2),
+    Longsword: N("Μακρύ Σπαθί", 2), Oathblade: N("Ορκολεπίδα", 1), "Arming Sword": N("Ξίφος", 2), Greataxe: N("Μεγάλο Τσεκούρι", 2), "Bearded Axe": N("Πελέκι", 2),
+    Morningstar: N("Αγκαθωτό Ρόπαλο", 2), "Grave Mace": N("Κορύνη των Τάφων", 1), Warhammer: N("Πολεμικό Σφυρί", 2), "Storm Maul": N("Σφυρί της Θύελλας", 2),
+    Crozier: N("Ποιμαντορική Ράβδος", 1), Totem: N("Τοτέμ", 2), "Antler Staff": N("Ραβδί από Κέρατο", 2), Bandolier: N("Φυσιγγιοθήκη", 1), Alembic: N("Αποστακτήρας", 0),
+    Chalice: N("Δισκοπότηρο", 2), "Tide Focus": N("Εστία της Παλίρροιας", 1), "Ember Bracers": N("Περικάρπια της Θράκας", 2, 1), "Cinder Gauntlets": N("Γάντια της Στάχτης", 2, 1),
+    Longbow: N("Μακρύ Τόξο", 2), "Recurve Bow": N("Καμπύλο Τόξο", 2), Warbow: N("Πολεμικό Τόξο", 2), Fangs: N("Κυνόδοντες", 0, 1), Stilettos: N("Στιλέτα", 2, 1), Kris: N("Κρις", 2),
+    Grimoire: N("Γκριμουάρ", 2), Tome: N("Τόμος", 0), Codex: N("Κώδικας", 0),
+    Helm: N("Κράνος", 2), Cowl: N("Κουκούλα", 1), Visage: N("Προσωπίδα", 1), Crown: N("Στέμμα", 2), Hood: N("Κουκούλα", 1), Mask: N("Μάσκα", 1),
+    Hauberk: N("Αλυσιδωτός Θώρακας", 0), Robes: N("Ράσα", 2, 1), Cuirass: N("Θώρακας", 0), Shroud: N("Σάβανο", 2), Mail: N("Αλυσιδωτό", 2), Vestments: N("Άμφια", 2, 1), Plate: N("Πανοπλία", 1),
+    Greaves: N("Περικνημίδες", 1, 1), Treads: N("Σανδάλια", 2, 1), Sabatons: N("Σιδεροπάπουτσα", 2, 1), Boots: N("Μπότες", 1, 1), Wraps: N("Περιτυλίγματα", 2, 1),
+    Reliquary: N("Λειψανοθήκη", 1), Censer: N("Θυμιατό", 2), Ossicle: N("Οσταράκι", 2), Candle: N("Κερί", 2), Amulet: N("Φυλαχτό", 2), "Saint's Finger": N("Δάχτυλο Αγίου", 2),
+    Weapon: N("Όπλο", 2), Sword: N("Σπαθί", 2), Axe: N("Τσεκούρι", 2), Mace: N("Κορύνη", 1), Flask: N("Φιάλη", 1), Orb: N("Σφαίρα", 1), Daggers: N("Στιλέτα", 2, 1), Tidecaller: N("Ραβδί της Παλίρροιας", 2),
+    // slot words used by "Worn chest · level 24" lines
+    weapon: N("όπλο", 2), helm: N("κράνος", 2), chest: N("θώρακας", 0), boots: N("μπότες", 1, 1), relic: N("κειμήλιο", 2),
+  };
+  X.EL.OF = {
+    "of the Everflame": "της Αιώνιας Φλόγας", "of Aldmoor": "του Άλντμουρ", "of the Marsh Queen": "της Βασίλισσας του Βάλτου", "of Silver Bells": "των Ασημένιων Καμπάνων",
+    "of the Long Winter": "του Μακριού Χειμώνα", "of the Dawn": "της Αυγής", "of the Wayfarer": "του Ταξιδευτή", "of Bone and Oath": "του Οστού και του Όρκου",
+    "of the Frostpeak": "των Παγοκόρυφων", "of the Sunscorch": "της Ηλιόκαυτης", "of Thornwood": "του Αγκαθόδασους", "of the Stormcrown": "του Θυελλοστέμματος",
+    "of the Last Candle": "του Τελευταίου Κεριού", "of the Drowned Saints": "των Πνιγμένων Αγίων", "of Quiet Bells": "των Σιωπηλών Καμπάνων",
+    "of the Ninth Winter": "του Ένατου Χειμώνα", "of Mourning": "του Πένθους", "of the Unlit Road": "του Σκοτεινού Δρόμου",
+  };
+  const NOUNS = Object.keys(X.EL.NOUN).sort((a, b) => b.length - a.length);
+  const OFS = Object.keys(X.EL.OF).sort((a, b) => b.length - a.length);
+  const form = (adj, n) => adj[n[1] + (n[2] ? 3 : 0)];
+  // "Moonlit Cuirass of the Long Winter" → "Φεγγαρόλουστος Θώρακας του Μακρύ Χειμώνα"; null when any word is unknown
+  X.EL.itemName = function (s, lower) {
+    if (!s || s.length > 80) return null;
+    let of = "";
+    for (const o of OFS) if (s.endsWith(" " + o)) { of = X.EL.OF[o]; s = s.slice(0, -o.length - 1); break; }
+    let noun = null, pre = "";
+    for (const k of NOUNS) if (s === k || s.endsWith(" " + k)) { noun = k; pre = s.slice(0, s.length - k.length).trim(); break; }
+    if (!noun) return null;
+    const n = X.EL.NOUN[noun], adj = [], post = [];
+    for (const w of pre ? pre.split(" ") : []) {
+      if (X.EL.ADJ[w]) adj.push(form(X.EL.ADJ[w], n));
+      else if (X.EL.POST[w]) post.push(X.EL.POST[w]);
+      else return null;
+    }
+    let out = [...adj, n[0], ...post, of].filter(Boolean).join(" ");
+    if (lower) out = out.charAt(0).toLowerCase() + out.slice(1);
+    return out;
+  };
+  // stat lines on items
+  X.EL.STAT = [
+    [/^\+(\d+)% Damage$/, "+$1% Ζημιά"], [/^\+(\d+) Max HP$/, "+$1 Μέγ. ζωή"], [/^\+(\d+) Armor$/, "+$1 Θωράκιση"], [/^-(\d+)% Cooldowns$/, "-$1% Αναμονές"],
+    [/^\+(\d+)% Crit Chance$/, "+$1% Πιθανότητα κρίσιμου"], [/^\+(\d+)% Lifesteal$/, "+$1% Απορρόφηση ζωής"], [/^\+(\d+)% Healing$/, "+$1% Θεραπεία"], [/^-(\d+)% Sanity Loss$/, "-$1% Απώλεια Λογικής"],
+    [/^\+([\d.]+) vitality$/, "+$1 ζωτικότητα"], [/^\+([\d.]+)% damage$/, "+$1% ζημιά"], [/^\+([\d.]+)% critical( chance)?$/, "+$1% κρίσιμο"], [/^\+([\d.]+)% haste$/, "+$1% ταχύτητα"],
+    [/^\+([\d.]+)% lifesteal$/, "+$1% απορρόφηση ζωής"], [/^\+([\d.]+) move speed$/, "+$1 ταχύτητα κίνησης"],
+  ];
+  X.EL.MATS = {
+    herb0: "Ασημόφυλλο", herb1: "Παγοάνθι", herb2: "Ηλιογαϊδουράγκαθο", herb3: "Αγκαθόριζα", ore0: "Μετάλλευμα Χαλκού", ore1: "Μετάλλευμα Σιδήρου", ore2: "Μετάλλευμα Ηλιοχάλυβα",
+    ore3: "Μετάλλευμα Θυελλάργυρου", bar0: "Ράβδος Χαλκού", bar1: "Ράβδος Σιδήρου", bar2: "Ράβδος Ηλιοχάλυβα", bar3: "Ράβδος Θυελλάργυρου", hide0: "Λεπτό Τομάρι", hide1: "Χοντρό Τομάρι",
+    hide2: "Φολιδωτό Τομάρι", hide3: "Τομάρι Θύελλας", leather0: "Μαλακό Δέρμα", leather1: "Βαρύ Δέρμα", leather2: "Φολιδωτό Δέρμα", leather3: "Δέρμα Θύελλας", dust0: "Παράξενη Σκόνη",
+    dust1: "Σκόνη Ψυχής", dust2: "Σκόνη Ονείρων", dust3: "Σκόνη Θύελλας", ess0: "Κατώτερη Ουσία", ess1: "Ανώτερη Ουσία", ess2: "Αιώνια Ουσία", ess3: "Ουσία Καταιγίδας", ink0: "Χλωμό Μελάνι",
+    ink1: "Μελάνι Πάγου", ink2: "Μελάνι Ήλιου", ink3: "Μελάνι Αγκαθιών", vellum0: "Περγαμηνή", vellum1: "Λεπτή Περγαμηνή", vellum2: "Φολιδωτή Περγαμηνή", vellum3: "Περγαμηνή Θύελλας",
+    fish0: "Λασπόψαρο", fish1: "Παγολούτσος", fish2: "Ηλιοπέρκα", fish3: "Χέλι της Θύελλας", meat0: "Άπαχο Κρέας", meat1: "Μπούτι Λύκου", meat2: "Κρέας Σαύρας των Θινών",
+    meat3: "Στήθος Βροντοπουλιού", obsidian: "Οψιδιανός Σβώλος", core: "Αβυσσαλέος Πυρήνας",
+  };
+  X.EL.COS = {
+    "Blackened Iron": "Μαυρισμένο Σίδερο", "Gilded Vow": "Επίχρυσος Όρκος", Obsidian: "Οψιδιανός", "Ossuary Bone": "Κόκαλο Οστεοφυλακίου", Bloodsteel: "Ματωμένο Ατσάλι",
+    "Sea Verdigris": "Θαλασσινή Πατίνα", "Dark Lord's Crown": "Στέμμα του Σκοτεινού Άρχοντα", "Ash Grey": "Σταχτί", "Crimson Oath": "Άλικος Όρκος", Midnight: "Μεσάνυχτα",
+    "Mire Moss": "Βρύα του Βάλτου", "Royal Purple": "Βασιλικό Πορφυρό", "Shroud of Bone": "Σάβανο από Κόκαλο", Voidweave: "Υφαντό του Κενού", Emerald: "Σμαραγδί", "Storm Grey": "Γκρι Θύελλας",
+    "Sunset Gold": "Χρυσό του Δειλινού", "Snow White": "Λευκό του Χιονιού", "Dawn Red": "Κόκκινο της Αυγής", Dragonscale: "Δρακοφολίδα", "Wayfarer's Cloak": "Μανδύας του Ταξιδευτή",
+    "Rising Embers": "Ανερχόμενες Σπίθες", "Grave Frost": "Παγωνιά του Τάφου", "Void Motes": "Σωματίδια του Κενού", Saintlight: "Φως των Αγίων", "Blood Moon": "Ματωμένο Φεγγάρι",
+    "Verdant Dance": "Χλοερός Χορός", "Arcane Rings": "Μαγικοί Κύκλοι", Starfall: "Βροχή Αστεριών", "Ring of Fire": "Δαχτυλίδι Φωτιάς", Stormcrown: "Θυελλόστεμμα", "Gladiator's Glory": "Δόξα του Μονομάχου",
+    "Hearth Flame": "Φλόγα της Εστίας", Ghostfire: "Φασματική Φωτιά", "Mire Witchlight": "Μαγικό Φως του Βάλτου", "Crimson Wick": "Άλικο Φυτίλι", "Violet Requiem": "Βιολετί Ρέκβιεμ",
+    "First Dawn": "Πρώτη Αυγή", "Knight's Helm": "Κράνος Ιππότη", "Wizard's Hat": "Καπέλο Μάγου", "Horned Helm": "Κερασφόρο Κράνος", "Traveller's Hood": "Κουκούλα Ταξιδιώτη",
+    "Silver Circlet": "Ασημένιο Διάδημα", "Flower Crown": "Στεφάνι από Λουλούδια", "Witch's Hat": "Καπέλο Μάγισσας", "Grove Antlers": "Κέρατα του Άλσους", "Golden Crown": "Χρυσό Στέμμα",
+    "Skull Mask": "Μάσκα Κρανίου", "Saint's Halo": "Φωτοστέφανο Αγίου", "Ember Wings": "Φτερά της Θράκας", "Fae Wings": "Φτερά Νεράιδας", "Seraph Wings": "Φτερά Σεραφείμ",
+    "Night Wings": "Φτερά της Νύχτας", "Raven Wings": "Φτερά Κόρακα", "Frost Crystal Wings": "Φτερά από Κρύσταλλο Πάγου", "Phoenix Wings": "Φτερά Φοίνικα", "Drake Wings": "Φτερά Δράκου",
+    "Oath Emblem": "Έμβλημα του Όρκου", "Crown of Embers": "Στέμμα από Θράκα", "Wings of the Vigil": "Φτερά της Φρουράς", Ascendant: "Ανερχόμενος", "Hollow Crown": "Κούφιο Στέμμα",
+    "Drowned Verdigris": "Πνιγμένη Πατίνα", None: "Κανένα",
+  };
+  X.EL.MOUNTS = {
+    horse: ["Άτι του Ντόνμιρ", "Ένα σταθερό καφετί άτι από τον στάβλο του Γκέλερτ."], greyhorse: ["Γκρίζο Άλογο", "Γρήγορο και σίγουρο, με ανοιχτόγκριζη πανοπλία."],
+    wolf: ["Εξημερωμένος Άγριος Λύκος", "Γρυλίζει ακόμα στους ξένους."], stag: ["Πνευματικό Ελάφι", "Ένα φάντασμα του παλιού δάσους. Δεν αφήνει ίχνη."],
+    frostwolf: ["Λύκος των Παγοκόρυφων", "Σπάνιο λάφυρο από τον Χρίμγκαρ. Πάγος φυτρώνει στη ράχη του."], jackal: ["Λιοντάρι της Ηλιόκαυτης", "Σπάνιο λάφυρο από τον Βάρεκ. Λιοντάρι της ερήμου με καψαλισμένη χαίτη."],
+    thornstag: ["Ελάφι του Αγκαθόδασους", "Σπάνιο λάφυρο από την Αγκαθομάνα. Βρύα φυτρώνουν στα κέρατά του."], stormsteed: ["Άτι της Θύελλας", "Σπάνιο λάφυρο από τον Αζρακούλ. Κεραυνοί σέρνονται στην πανοπλία του."],
+    bonecharger: ["Κοκάλινος Πολεμιστής", "Από την επιδρομή Η Κρίση. Μόνο κόκαλα και κακία."], unboundsteed: ["Εφιάλτης του Αδέσμευτου", "Από τον Θρόνο των Θυελλών. Η χαίτη του είναι φωτιά."],
+    tidesteed: ["Άτι της Παλίρροιας", "Από τα Πνιγμένα Βάθη. Πτερύγια για χαίτη, φύκια για ουρά."], ashcharger: ["Στακτερό Πολεμικό Άλογο", "Ένα πολεμικό άλογο με μαύρη πανοπλία που πέρασε μέσα από τη φωτιά του Καθεδρικού."],
+    moondoe: ["Φεγγαρόχλωμη Ελαφίνα", "Ανταμοιβή για τον Μαθητή του Θεριστή. Σιωπηλή σαν χιονόπτωση."], vigilhound: ["Λαγωνικό της Φρουράς", "Ανταμοιβή για 25 μπουντρούμια. Θωρακισμένο, ξέρει κάθε κρύπτη από τη μυρωδιά."],
+    keyhorse: ["Αυτόματο του Θεμέλιου Λίθου", "Ανταμοιβή για 10 εγκαίρως Μυθικό+. Μπρούτζος, γρανάζια και καρδιά από θεμέλιο λίθο."], gladhorse: ["Πολεμικό Άλογο του Μονομάχου", "Ανταμοιβή για 25 νίκες αρένας. Κόκκινο λοφίο, κόκκινη πανοπλία."],
+    boar: ["Αγκαθοράχης Κάπρος", "Χαμηλός, γρήγορος και κακότροπος. Πωλείται στον στάβλο."], ram: ["Κριάρι των Παγοκόρυφων", "Σκαρφαλώνει σαν να του ανήκει το βουνό. Πωλείται στον στάβλο."],
+    bear: ["Αρκούδα Παγόστομη", "Σπάνιο λάφυρο από τον Χρίμγκαρ. Αργή στον θυμό, αδύνατο να σταματήσει."], weaver: ["Υφάντρα του Βάλτου", "Σπάνιο λάφυρο από την Αγκαθομάνα. Οκτώ πόδια, κανένα έλεος."],
+    emberdrake: ["Δράκος της Θράκας", "Από την επιδρομή Η Κρίση. Φτερά που ποτέ δεν σε σηκώνουν εντελώς."], stormdrake: ["Δράκος της Θύελλας", "Από τον Θρόνο των Θυελλών."],
+    deepcrab: ["Πνιγμένος Κάβουρας", "Από τα Πνιγμένα Βάθη. Το πλάγια είναι κι αυτό μπροστά."], warbear: ["Πολεμική Αρκούδα της Φρουράς", "Ανταμοιβή για 10 εισβολές."],
+    champdestrier: ["Άτι του Πρωταθλητή", "Ανταμοιβή για σεζόν με 2000+ βαθμούς αρένας."], caravanmule: ["Μουλάρι του Καραβανιού", "Με Μάρκες Φρουράς. Αργό, πεισματάρικο, κουβαλά τα πάντα."],
+  };
+  X.EL.COMPS = {
+    pup: ["Λυκόπουλο", "Το τελευταίο κουτάβι της Ίλσε. Δαγκώνει αστραγάλους. Μεγαλώνει μαζί σου."], hound: ["Πολεμικό Σκυλί", "Εκπαιδευμένο σκυλί που περπατά δίπλα σου."],
+    squire: ["Σκελετός Ιπποκόμος", "Ένας δεμένος σκελετός, πιστός ως το κόκαλο."], wisp: ["Φωτάκι του Φαναριού", "Μια σπίθα της Αιώνιας Φλόγας."],
+    golem: ["Πέτρινο Γκόλεμ", "Αργό, βαρύ και πολύ δύσκολο να το αγνοήσεις."], drake: ["Δρακάκι της Θράκας", "Από την επιδρομή Η Κρίση. Φτύνει φωτιά."],
+    deepwisp: ["Φωτάκι των Βαθών", "Από τα Πνιγμένα Βάθη. Ένα πνιγμένο φως που θέλει ακόμα να βοηθήσει."], frostwisp: ["Φωτάκι του Πάγου", "Σπάνιο λάφυρο από τον Χρίμγκαρ. Κρύα παρηγοριά, κυριολεκτικά."],
+    cryptrat: ["Αρουραίος της Κρύπτης", "Ανταμοιβή για 5 Κρύπτες των Τύμβων. Αρουραίος σαν σκύλος, παράξενα πιστός."], clockgolem: ["Κουρδιστό Γκόλεμ", "Από τον Μεσίτη. Χτυπά σαν ρολόι όταν ανησυχεί."],
+    stormdrake: ["Δρακάκι της Θύελλας", "Από τον Θρόνο των Θυελλών. Φτύνει κεραυνούς."], pitdog: ["Σκυλί του Λάκκου", "Ανταμοιβή για 10 νίκες αρένας. Μυρίζει αίμα."],
+    barrowcat: ["Γάτα των Τύμβων", "Πωλείται στο κυνοτροφείο. Ορμά σε ό,τι κουνιέται."], boarlet: ["Αγκαθοράχικο Γουρουνάκι", "Πωλείται στο κυνοτροφείο. Μικρό, στρογγυλό, αρνείται να κουνηθεί."],
+    lamb: ["Αρνάκι των Παγοκόρυφων", "Πωλείται στο κυνοτροφείο. Το μαλλί του μυρίζει βότανα του βουνού."], beetle: ["Κουρδιστό Σκαθάρι", "Ανταμοιβή για 10 Μυθικό+. Βγάζει σπίθες όταν είναι χαρούμενο."],
+    hatchling: ["Νεογνό της Παλίρροιας", "Από τα Πνιγμένα Βάθη. Τσιμπάει."], frostpup: ["Κουτάβι του Πάγου", "Ανταμοιβή για τον Προσκυνητή της Στάχτης."],
+    emberkin: ["Δρακογέννημα της Θράκας", "Ανταμοιβή για 5 εισβολές."], marketgoat: ["Κατσίκα της Αγοράς", "Με Μάρκες Φρουράς. Κουτουλά όποιον την κοιτάξει στραβά."],
+  };
+  X.EL.DECO = {
+    table: "Δρύινο τραπέζι", table_long: "Τραπέζι γιορτής", chair: "Καρέκλα", stool: "Σκαμπό", shelves: "Ράφια", bed2: "Κρεβάτι επισκεπτών", trunk: "Μπαούλο ταξιδιού", chest_g: "Επίχρυσο σεντούκι",
+    keg: "Βαρελάκι", barrel: "Βαρέλι", crate: "Κιβώτιο", crates: "Στοίβα κιβωτίων", rug: "Υφαντό χαλί", rug_red: "Άλικο χαλί", candles: "Κεριά", brazier: "Μαγκάλι", lamp: "Λάμπα δαπέδου",
+    banner_r: "Κόκκινο λάβαρο", banner_b: "Μπλε λάβαρο", banner_s: "Οικόσημο λάβαρο", arms: "Σταυρωτά όπλα", column: "Πέτρινη κολόνα", sword_d: "Προθήκη μεγάλου σπαθιού",
+    axe_d: "Προθήκη μεγάλου τσεκουριού", staff_d: "Προθήκη ραβδιού", tree_pot: "Δέντρο σε γλάστρα", tree_pot2: "Πεύκο σε γλάστρα", planter: "Ζαρντινιέρα", flowers: "Γλάστρα με λουλούδια",
+    hedge: "Φράχτης από θάμνους", stone: "Πέτρα κήπου", fountain: "Μικρό σιντριβάνι",
+  };
+  X.EL.DECOCAT = { Furniture: "Έπιπλα", Lights: "Φώτα", Walls: "Τοίχοι", Garden: "Κήπος" };
+  X.EL.AFFIX = {
+    ember_heart: ["Θράκα του Μαλγκάρεθ", "Οι εχθροί που σκοτώνεις εκρήγνυνται για 40 ζημιά φωτιάς."], saints_tear: ["Δάκρυ της Αγίας", "Οι θεραπείες σου δίνουν και ασπίδα 20 ζωής."],
+    thornmail: ["Αγκαθωτή Πανοπλία", "Όσοι σε χτυπούν δέχονται 20 ζημιά."], gravecall: ["Κάλεσμα του Τάφου", "10% πιθανότητα σε χτύπημα να σηκωθεί φασματικό χέρι που κάνει 60 ζημιά."],
+    lantern_eternal: ["Αιώνιο Φυτίλι", "Το φανάρι σου δεν ξεμένει ποτέ από λάδι."], swift_death: ["Γρήγορος Θάνατος", "Οι σκοτωμοί μειώνουν όλες τις αναμονές κατά 1s."],
+    curse_blood: ["Τίμημα Αίματος", "+35% ζημιά, αλλά χάνεις 1 ζωή/s."], curse_mind: ["Μυαλό που Ψιθυρίζει", "+25% κρίσιμο, αλλά η Λογική χάνεται δύο φορές πιο γρήγορα."],
+  };
+  X.EL.CONS = {
+    draught: ["Θεραπευτικό Φίλτρο", "Ξαναγεμίζει ένα θεραπευτικό φίλτρο."], e_wrath: ["Ελιξίριο της Οργής", "+15% ζημιά για 10 λεπτά."],
+    e_iron: ["Ελιξίριο του Σιδήρου", "15% λιγότερη ζημιά για 10 λεπτά."], e_grace: ["Ελιξίριο του Ελέους", "+25% θεραπεία για 10 λεπτά."],
+  };
+  X.EL.RARITY = { Worn: "Φθαρμένο", Blessed: "Ευλογημένο", Hallowed: "Αγιασμένο", Relic: "Κειμήλιο", Cursed: "Καταραμένο", Mythic: "Μυθικό" };
+  X.EL.SETS = { Rimeguard: "Παγοφρουρά", Sunwrought: "Ηλιόπλαστο", Thornweave: "Αγκαθόπλεκτο", Stormcrown: "Θυελλόστεμμα" };
+  X.EL.STATN = { Power: "Δύναμη", Vitality: "Ζωτικότητα", Armor: "Θωράκιση", Haste: "Ταχύτητα", Critical: "Κρίσιμο", Leech: "Απορρόφηση", Grace: "Χάρη", Resolve: "Αποφασιστικότητα" };
+  X.EL.RARES = {
+    gnash: "Γέρο-Τρίξιμο", judge: "Το Φάντασμα της Αγχόνης", leech: "Μάνα Βδέλλα", pell: "Σερ Πελ, ο Ακοίμητος", cantor: "Ο Ψάλτης της Θράκας", rimeclaw: "Παγόνυχος",
+    frozenknight: "Ο Παγωμένος Ιππότης", dunestalker: "Ο Κυνηγός των Θινών", sandscourge: "Μάστιγα της Άμμου", bramblejaw: "Γέρο-Βατοσαγόνας", dryad: "Η Κούφια Δρυάδα",
+    vex: "Βεξ η Καλέστρα της Θύελλας", thunderwraith: "Το Φάντασμα της Βροντής",
+  };
+  X.EL.PLACES = {
+    vigil: "Η Φωτιά της Φρουράς", mire: "Ιερό του Βυθισμένου Παρεκκλησιού", ossuary: "Ιερό της Πύλης των Τύμβων", cathedral: "Ιερό των Σκαλοπατιών της Στάχτης",
+    crossroads: "Σταυροδρόμι του Ταξιδευτή", citadel: "Πρόσβαση στο Κάστρο", frost_hub: "Ιερό των Παγοκόρυφων", frost_lair: "Ιερό της Σκοπιάς του Γίγαντα", waste_hub: "Ιερό του Καραβανιού",
+    waste_lair: "Ιερό της Ηλιόκαυτης", thorn_hub: "Κούφιο Ιερό", thorn_lair: "Ιερό της Όχθης", storm_hub: "Ιερό της Κουρνιάστρας", storm_lair: "Ιερό του Θυελλοστέμματος",
+    sh_hrimhavn: "Εστία του Χρίμχαβν", sh_qasr: "Εστία του Κασρ Ντουνέλ", sh_mossend: "Εστία του Μόσεντ", sh_gulls: "Εστία του Γκάλσριτς",
+  };
+  X.EL.LORE = [
+    ["Γράμμα ενός Παιδιού", "Αγαπητή Αιώνια Φλόγα, σε παρακαλώ φέρε πίσω τον ήλιο. Ο μπαμπάς λέει ότι η Φρουρά θα το διορθώσει. Ο μπαμπάς λέει ότι δεν τα παρατάνε ποτέ. — Ίλσα, 7 χρονών. (Βρέθηκε στο περβάζι ενός σπιτιού στο Ντόνμιρ.)"],
+    ["Τάγμα της Αυγής, Τελευταίος Κατάλογος", "Σερ Γκομόν — έπεσε. Σερ Ιβέτ — έπεσε. Σερ Πελ — περπατά ξανά, αλλά όχι ως Σερ Πελ. Σερ Άλντρικ — κρατά ακόμα την πύλη. Ανάψτε τα φανάρια. Ανάψτε ΟΛΑ τα φανάρια."],
+    ["Κατάστιχο του Βάλτου, Φένχολοου", "Η βασίλισσα του βάλτου τραγουδά πια κάθε νύχτα. Όσοι ακούνε μπαίνουν στο νερό και δεν γυρίζουν. Βουλώστε τα αυτιά σας με κερί και κρατήστε ψηλά το φανάρι."],
+    ["Επιγραφή, Πύλη των Τύμβων", "ΕΔΩ ΜΕΤΡΙΟΥΝΤΑΙ ΟΙ ΝΕΚΡΟΙ. ΕΔΩ ΦΥΛΑΓΟΝΤΑΙ ΟΙ ΝΕΚΡΟΙ. ΕΔΩ ΒΑΣΙΛΕΥΟΥΝ ΟΙ ΝΕΚΡΟΙ. (Κάποιος έχει χαράξει από κάτω: ο Βασιλιάς των Οστών μετρά, κι όταν του τελειώνουν οι νεκροί φτιάχνει κι άλλους.)"],
+    ["Σελίδα του Πύργου της Θράκας", "Ο Αρχιμάγος υποσχέθηκε στην πόλη ζεστασιά όταν αλυσοδέθηκε ο ήλιος. Κράτησε τον λόγο του. Η πόλη καίγεται ακόμα."],
+    ["Η Εξομολόγηση του Μαλγκάρεθ", "Δεν φοβόμουν το σκοτάδι. Φοβόμουν το τέλος κάθε φωτός. Γι' αυτό πήρα την καρδιά της Φλόγας για τον εαυτό μου κι αλυσόδεσα τον ήλιο για να μη μου τον πάρει κανείς. Από τότε δεν ζεστάθηκα ποτέ."],
+    ["Σημείωμα του Φαναρά", "Κράτα το φυτίλι κομμένο. Κράτα το λάδι γεμάτο. Τα πλάσματα του σκοταδιού βλέπουν άσχημα στο φως του φαναριού. Χαμήλωσέ το για να περάσεις δίπλα τους — αλλά ποτέ για πολύ."],
+    ["Η Προφητεία της Φρουράς", "Όταν τρεμοσβήσει το τελευταίο φως, δώδεκα θα σηκωθούν που κουβαλούν φωτιά: τέσσερις για να σταθούν, τέσσερις για να γιατρέψουν, τέσσερις για να χτυπήσουν. Δεν θα είναι αρκετοί. Θα πάνε παρ' όλα αυτά."],
+    ["Χάραγμα των Παγοκόρυφων", "Ο Χρίμγκαρ ήταν βασιλιάς των γιγάντων πριν από τον Μακρύ Χειμώνα. Ο Σκοτεινός Άρχοντας του υποσχέθηκε έναν χειμώνα που δεν θα τελειώνει ποτέ. Πήρε αυτό που ευχήθηκε."],
+    ["Ημερολόγιο Κυνηγού του Πάγου", "Η Παγετώδης Κοιλότητα αναπνέει. Ζεστός αέρας μέσα, κρύος έξω. Κάτι κοιμάται κάτω από τον πάγο εκεί, και μας ονειρεύεται."],
+    ["Ημερολόγιο Καραβανιού, Ηλιόκαυτη", "Μέρα ένατη. Η άμμος τραγουδά τη νύχτα. Οι καβαλάρηδες του Βάρεκ πήραν το τελευταίο νερό. Η Ναντίρα λέει ότι ο Βυθισμένος Θησαυροφύλακας κρύβει πηγή. Η Ναντίρα λέει πολλά."],
+    ["Προσευχή της Αίρεσης της Άμμου", "Χετ, που δεν κοιμάσαι, που δεν πεθαίνεις, που περιμένεις κάτω από τους αμμόλοφους: όταν καλέσει ο Σκοτεινός Άρχοντας, σήκω."],
+    ["Η Προειδοποίηση του Ρόουαν", "Μην τρως τα μανιτάρια που λάμπουν. Μην πίνεις από τη λίμνη. Μην ακούς όταν τα δέντρα λένε το όνομά σου. Η Αγκαθομάνα απλώς πεινάει."],
+    ["Τραγουδάκι των Βάτων", "Αγκάθι, ρίζα, βατόκοκαλο, η Μάνα κάθεται στο θρόνο της· ξυπνά το σούρουπο, κοιμάται το μεσημέρι, και ξεκουρδίζει το δάσος με το τραγούδι της."],
+    ["Πλάκα του Θυελλοστέμματος", "Ο Αζρακούλ έδεσε τον κεραυνό με επτά αλυσίδες. Οι έξι έσπασαν. Όταν σπάσει η έβδομη, ο ίδιος ο ουρανός θα πέσει πάνω στο Άλντμουρ."],
+    ["Τελευταία Καταχώριση της Φύλακα", "Οι Φοβεροί Στρατηγοί υπακούν σε έναν θρόνο πάνω από τα σύννεφα. Τον είδα μέσα στη θύελλα: ένα κάθισμα από μαύρο γυαλί, και κάτι που σκαρφαλώνει πάλι πάνω του."],
+  ];
+}
+
 /* ---- FY_el_text.js ---- */
 /* 1.19.0 — Greek (ελληνικά): heroes, people, places, foes, deeds, help */
 X.EL = X.EL || {};
@@ -48883,6 +49406,66 @@ X.EL.msg = {
       if (sys) { for (let i = 0; i < sys.length; i++) { const t = EL.help?.[sys[i][0]]; t && (sys[i] = t); } EL.help.Language && sys.push(EL.help.Language); }
     } catch (e) {}
     try { for (const k in D.nI || {}) { const n = D.nI[k]; n && EL.res?.[n.name] && (n.name = EL.res[n.name]); } } catch (e) {}
+    // ---- 1.20: items, materials, recipes, cosmetics, mounts, companions, furniture, lore, rares, places ----
+    const ITEMX = new Map(); // english → greek for names that may still arrive in English (saves, other players, logs)
+    const put = (en, el) => en && el && en !== el && ITEMX.set(en, el);
+    const matEn = {};
+    try { for (const k in X.MATS || {}) { const m = X.MATS[k], g = EL.MATS?.[k]; if (!g) continue; matEn[m.name] = g; put(m.name, g); m.name = g; } } catch (e) {}
+    const matG = (n) => matEn[n] || n;
+    const ENCH = { Power: "Δύναμη", Precision: "Ακρίβεια", Vitality: "Ζωτικότητα", Swiftness: "Ταχύτητα", Haste: "Βιασύνη", "Abyssal Edge": "Αβυσσαλέα Κόψη", "Abyssal Bulwark": "Αβυσσαλέος Προμαχώνας", "Abyssal Mind": "Αβυσσαλέο Μυαλό", "Abyssal Stride": "Αβυσσαλέο Βήμα" };
+    const SLOTG = { Weapon: "Όπλου", Chest: "Θώρακα", Boots: "Μπότας", Helm: "Κράνους" };
+    const SLOTN = { Weapon: "Όπλο", Chest: "Θώρακας", Boots: "Μπότες", Helm: "Κράνος" };
+    const GLY = { Fury: "της Μανίας", Haste: "της Βιασύνης", Reach: "της Εμβέλειας", Persistence: "της Επιμονής", Thrift: "της Λιτότητας" };
+    const SCR = { Might: "της Ισχύος", Fortitude: "της Αντοχής", Wind: "του Ανέμου", "the Abyss": "της Αβύσσου" };
+    const FOOD = { "Grilled Mudfish": "Ψητό Λασπόψαρο", "Lean Stew": "Ελαφρύ Στιφάδο", "Icepike Chowder": "Σούπα Παγολούτσου", "Wolf Haunch Roast": "Ψητό Μπούτι Λύκου", "Fisherman's Banquet": "Γεύμα του Ψαρά",
+      "Sunperch Skewers": "Σουβλάκια Ηλιοπέρκας", "Dune Lizard Curry": "Κάρι Σαύρας των Θινών", "Caravan Supper": "Δείπνο του Καραβανιού", "Storm Eel Pie": "Πίτα με Χέλι της Θύελλας", "Thunderbird Feast": "Γιορτή του Βροντοπουλιού", "Stormcrown Feast": "Γιορτή του Θυελλοστέμματος" };
+    const statPh = (t) => { for (const [re, r] of EL.STAT || []) if (re.test(t)) return t.replace(re, r); return t.replace(/ max health$/, " μέγ. ζωή").replace(/ move speed$/, " ταχύτητα κίνησης").replace(/ damage$/, " ζημιά").replace(/ haste$/, " ταχύτητα").replace(/ critical chance$/, " κρίσιμο").replace(/ vitality$/, " ζωτικότητα"); };
+    const recName = (n) => {
+      let m;
+      if (FOOD[n]) return FOOD[n];
+      if ((m = /^Smelt (\w+)$/.exec(n))) return `Λιώσιμο: ${EL.itemName?.(m[1] + " Weapon")?.replace(/ Όπλο$/, "") || m[1]}`.replace(/Λιώσιμο: (.+)$/, (x, a) => "Λιώσιμο " + ({ Copper: "Χαλκού", Iron: "Σιδήρου", Sunsteel: "Ηλιοχάλυβα", Stormsilver: "Θυελλάργυρου" }[m[1]] || a));
+      if ((m = /^Tan (.+)$/.exec(n))) return `Κατεργασία: ${matG(m[1])}`;
+      if ((m = /^Mill (.+)$/.exec(n))) return `Άλεσμα: ${matG(m[1])}`;
+      if ((m = /^Make (.+)$/.exec(n))) return `Κατασκευή: ${matG(m[1])}`;
+      if ((m = /^Enchant (Weapon|Chest|Boots|Helm) — (.+?)( \d)?$/.exec(n))) return `Μαγεία ${SLOTG[m[1]]} — ${ENCH[m[2]] || m[2]}${m[3] || ""}`;
+      if ((m = /^Glyph of (\w+)( \d)?$/.exec(n))) return `Γλυφή ${GLY[m[1]] || m[1]}${m[2] || ""}`;
+      if ((m = /^Scroll of (.+?)( \d)?$/.exec(n))) return `Πάπυρος ${SCR[m[1]] || m[1]}${m[2] || ""}`;
+      return EL.itemName?.(n) || n;
+    };
+    const recText = (t) => {
+      let m;
+      if ((m = /^(\d+) (.+) → (\d+) (.+)$/.exec(t))) { const w = { hides: "τομάρια", leather: "δέρμα", herbs: "βότανα", vellum: "περγαμηνή" }; return `${m[1]} ${w[m[2]] || matG(m[2])} → ${m[3]} ${w[m[4]] || matG(m[4])}`; }
+      if ((m = /^Forge (a weapon for your class|chest armour|a helm|boots), item level (\d+)$/.exec(t))) return `Σφυρηλάτησε ${{ "a weapon for your class": "όπλο για την κλάση σου", "chest armour": "θώρακα", "a helm": "κράνος", boots: "μπότες" }[m[1]]}, επίπεδο αντικειμένου ${m[2]}`;
+      if ((m = /^(Weapon|Chest|Boots|Helm): (.+?)( \(Grandmaster\))?$/.exec(t))) return `${SLOTN[m[1]]}: ${statPh(m[2])}${m[3] ? " (Αρχιμάστορας)" : ""}`;
+      if ((m = /^Glyph: ([+-]\d+)% (damage\/healing|cooldown|reach|duration|cost) on one skill \(choose when inscribing\)$/.exec(t)))
+        return `Γλυφή: ${m[1]}% ${{ "damage/healing": "ζημιά/θεραπεία", cooldown: "αναμονή", reach: "εμβέλεια", duration: "διάρκεια", cost: "κόστος" }[m[2]]} σε μία δεξιότητα (τη διαλέγεις στη χάραξη)`;
+      if ((m = /^30 minutes: (.+) \(read at once\)$/.exec(t))) return `30 λεπτά: ${statPh(m[1])} (διαβάζεται αμέσως)`;
+      if ((m = /^Well Fed 20 min: (.+)$/.exec(t))) return `Χορτάτος 20 λεπτά: ${statPh(m[1])}`;
+      if (/^Grandmaster: item level 60/.test(t)) return "Αρχιμάστορας: επίπεδο αντικειμένου 60, πάντα θρυλικό — θέλει Αβυσσαλέους Πυρήνες (επιδρομές, Μυθικό+5, διάλυση θρυλικών)";
+      return t;
+    };
+    X.EL.recName = recName; X.EL.recText = recText;
+    try {
+      for (const r of X.RECIPES || []) {
+        const gn = recName(r.name); put(r.name, gn); r.name = gn;
+        r.text && (r.text = recText(r.text));
+        r.glyph?.name && (put(r.glyph.name, recName(r.glyph.name)), (r.glyph.name = recName(r.glyph.name)));
+        r.scroll?.name && (put(r.scroll.name, recName(r.scroll.name)), (r.scroll.name = recName(r.scroll.name)));
+        r.ench?.label && (r.ench.label = statPh(r.ench.label));
+      }
+    } catch (e) {}
+    try { for (const k in X.PROF || {}) { const p = X.PROF[k], g = DICT0[p.name]; g && (put(p.name, g), (p.name = g)); } } catch (e) {}
+    try { for (const cat in Zi) for (const c of Zi[cat]) { const g = EL.COS?.[c.name]; g && (put(c.name, g), (c.name = g)); } } catch (e) {}
+    try { for (const k in X.MOUNTS || {}) { const g = EL.MOUNTS?.[k]; g && (put(X.MOUNTS[k].name, g[0]), (X.MOUNTS[k].name = g[0]), (X.MOUNTS[k].desc = g[1])); } } catch (e) {}
+    try { for (const k in X.COMPANIONS || {}) { const g = EL.COMPS?.[k]; g && (put(X.COMPANIONS[k].name, g[0]), (X.COMPANIONS[k].name = g[0]), (X.COMPANIONS[k].desc = g[1])); } } catch (e) {}
+    try { for (const d of X.DECO || []) { const g = EL.DECO?.[d.id]; g && (put(d.name, g), (d.name = g)); } } catch (e) {}
+    try { if (UC.length === EL.LORE?.length) UC.forEach((u, i) => { put(u.title, EL.LORE[i][0]); u.title = EL.LORE[i][0]; u.text = EL.LORE[i][1]; }); } catch (e) {}
+    try { for (const h of Hw) { const g = EL.RARES?.[h.id]; g && (put(h.name, g), (h.name = g)); } } catch (e) {}
+    try { for (const l of LC) { const g = EL.PLACES?.[l.id]; g && (put(l.name, g), (l.name = g)); } } catch (e) {}
+    try { for (const a of [...Gs, ...js]) { const g = EL.AFFIX?.[a.id]; g && (put(a.name, g[0]), put(a.desc, g[1]), (a.name = g[0]), (a.desc = g[1])); } } catch (e) {}
+    try { for (const c of hC) { const g = EL.CONS?.[c.id]; g && (put(c.name, g[0]), put(c.desc, g[1]), (c.name = g[0]), (c.desc = g[1])); } } catch (e) {}
+    try { for (const k in vg) { const v = vg[k], f = v.fmt, g = EL.STATN?.[v.name]; g && (v.name = g); v.fmt = (B) => statPh(f(B)); } } catch (e) {}
+
     // ---- talents: names and descriptions come from templates, translated where they are built ----
     const TAL = {
       Brutality: "Βαρβαρότητα", "Killing Edge": "Θανάσιμη Κόψη", Cruelty: "Σκληρότητα", Quickness: "Γρηγοράδα", "Blood for Blood": "Αίμα για Αίμα", "Lingering Pain": "Παρατεταμένος Πόνος",
@@ -48953,6 +49536,15 @@ X.EL.msg = {
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.20.0"] && (X.CHANGELOG["1.20.0"] = [
+        "Ήχος: κάθε δεξιότητα έχει τον δικό της ήχο (πριν, όλα τα ξόρκια μιας κλάσης μοιράζονταν έναν)· οι περιοχές έχουν ζωντανή ατμόσφαιρα — κύμα στην ακτή, δάσος και έντομα τη νύχτα, άμμος, ριπές στα βουνά, βουητό και σταγόνες στις σπηλιές· μπουντρούμια και επιδρομές αντηχούν σαν πέτρινες αίθουσες· οι μάχες με αρχηγούς έχουν πολεμικά τύμπανα, χάλκινα και χορωδία.",
+        "Ελληνικά: αντικείμενα, υλικά, συνταγές, διακοσμητικά, άλογα, σύντροφοι, έπιπλα, σελίδες ιστορίας, σπάνιοι εχθροί και ιερά είναι πλέον κι αυτά στα ελληνικά (τα ονόματα αντικειμένων σχηματίζονται με σωστή ελληνική γραμματική).",
+        "Οι σύντροφοι σχεδιάζουν διαδρομή: όταν τοίχοι ή σπίτια κλείνουν τον ίσιο δρόμο βρίσκουν μονοπάτι γύρω τους (και έξω από αδιέξοδα) αντί να γλιστράνε στον τοίχο.",
+        "Μυθικό+: οι εχθροί ταιριάζουν πλέον στο επίπεδο της ομάδας σου σε κάθε μπουντρούμι, και το παλιό ανέβασμα επιπέδου που έκανε αδύνατα τα +8 ως +10 έφυγε· κάθε βαθμίδα προσθέτει 9% ζωή και 6,5% ζημιά, ο Σεισμός χτυπά για 18%, τα κλειδιά από +7 έχουν 10% περισσότερο χρόνο.",
+        "Αρένα: η βαθμολογία κινείται πλέον δίκαια (σε ταιριάζει κοντά στη δική σου βαθμολογία — πριν, μια νίκη στα 1600+ έδινε +3 και μια ήττα −29), και οι μονομάχοι της άλλης ομάδας δυναμώνουν όσο ανεβαίνεις.",
+        "Κινητά: όριο καρέ (60 από προεπιλογή — τα κινητά 90/120 Hz σχεδίαζαν ως 120 καρέ το δευτερόλεπτο), προσαρμοζόμενη ανάλυση όταν το κινητό δυσκολεύεται και ελαφρύτερες ενημερώσεις σκιών. Ρυθμίσεις → Κινητό. Οι υπολογιστές δεν αλλάζουν.",
+        "Τα αντικείμενα σετ παίρνουν το όνομα του κομματιού τους (Παγοφρουρό Κράνος) αντί για μια τυχαία λέξη.",
+      ]);
       X.CHANGELOG && X.CHANGELOG["1.19.3"] && (X.CHANGELOG["1.19.3"] = [
         "Εφαρμογή Android: τα κινητά Android έχουν κουμπί Λήψη εφαρμογής Android (APK) στο κύριο μενού — πραγματική εφαρμογή που ανοίγει το Vigilfall σε πλήρη οθόνη και ενημερώνεται μαζί με το παιχνίδι.",
         "Κινητά: το κύριο μενού κυλάει όταν δεν χωράει στην οθόνη, και η Εγκατάσταση ως εφαρμογή είναι ακριβώς κάτω από τα πρώτα κουμπιά (ήταν κάτω από το όριο της οθόνης σε οριζόντιο κινητό).",
@@ -48993,6 +49585,23 @@ X.EL.msg = {
     const add = (o) => { for (const k in o || {}) DICT.set(k, o[k]); };
     add(EL.ui); add(EL.msg);
     add({
+      Apprentice: "Μαθητευόμενος", Journeyman: "Τεχνίτης", Expert: "Ειδικός", Artisan: "Καλλιτέχνης", Master: "Δάσκαλος", Grandmaster: "Αρχιμάστορας",
+      Bank: "Τράπεζα", Broker: "Μεσίτης", "Buy 1": "Αγορά 1", "Sell 1": "Πώληση 1", "Sell all": "Πώληση όλων", "Buy a house from Tobin first": "Αγόρασε πρώτα σπίτι από τον Τόμπιν",
+      Companions: "Σύντροφοι", Mounts: "Άλογα", Stable: "Στάβλος", Kennel: "Κυνοτροφείο", "Your house stash": "Η αποθήκη του σπιτιού σου", "Open stash · 50 ◆": "Άνοιγμα αποθήκης · 50 ◆",
+      "Everything you gather is in your Professions book — press B. Craft from there (smithing needs an anvil, cooking a fire).": "Ό,τι μαζεύεις είναι στο βιβλίο Επαγγελμάτων — πάτα B. Κατασκεύασε από εκεί (η σιδηρουργία θέλει αμόνι, η μαγειρική φωτιά).",
+      "Mine ore veins. Smelt ore into bars for Blacksmithing.": "Εξόρυξε φλέβες μεταλλεύματος. Λιώσε το μετάλλευμα σε ράβδους για τη Σιδηρουργία.",
+      "raise an equipped item's level (up to your level + 2)": "ανέβασε το επίπεδο ενός φορεμένου αντικειμένου (έως το επίπεδό σου + 2)",
+      "+2 item level (all stats grow), up to three times per item. Costs 2 bars of the item's tier and 1": "+2 επίπεδο αντικειμένου (όλα τα χαρακτηριστικά μεγαλώνουν), έως τρεις φορές ανά αντικείμενο. Κοστίζει 2 ράβδους της βαθμίδας του και 1",
+      "(dungeons, salvaging epics).": "(μπουντρούμια, διάλυση επικών).", "Obsidian Lump": "Οψιδιανός Σβώλος",
+      "raw materials at three times the sell price · crafted goods are not traded here": "πρώτες ύλες στην τριπλάσια τιμή πώλησης · τα κατασκευασμένα δεν πωλούνται εδώ",
+      "puts it back in storage. Walk up to a placed piece and press": "το μαζεύει στην αποθήκη. Πήγαινε σε τοποθετημένο κομμάτι και πάτα",
+      Everything: "Όλα", "Everything.": "Όλα.", drop: "λάφυρο", "click to show": "κλικ για εμφάνιση",
+      "tap or click to dismiss · F1 for the full guide": "πάτα ή κάνε κλικ για κλείσιμο · F1 για τον πλήρη οδηγό",
+      Phone: "Κινητό", "Frame cap": "Όριο καρέ", "30 (battery saver)": "30 (εξοικονόμηση μπαταρίας)", "No cap": "Χωρίς όριο", "Adaptive resolution": "Προσαρμοζόμενη ανάλυση",
+      "Lowers the resolution a little when the phone struggles, and raises it again when it can.": "Χαμηλώνει λίγο την ανάλυση όταν το κινητό δυσκολεύεται και την ανεβάζει ξανά όταν μπορεί.",
+      Rimeguard: "Παγοφρουρά", Sunwrought: "Ηλιόπλαστο", Thornweave: "Αγκαθόπλεκτο",
+    });
+    add({
       "Best with headphones · A first-person fantasy RPG · Online, with friends or the Dungeon Finder": "Καλύτερα με ακουστικά · RPG φαντασίας σε πρώτο πρόσωπο · Online, με φίλους ή με την Αναζήτηση Μπουντρουμιού",
       "Winter: snow falls across the inner lands": "Χειμώνας: χιονίζει στις εσωτερικές χώρες", "Spring: petals on the wind": "Άνοιξη: πέταλα στον άνεμο", "Autumn: the leaves are turning": "Φθινόπωρο: τα φύλλα αλλάζουν χρώμα",
       "Add to Home Screen (how)": "Προσθήκη στην οθόνη Αφετηρίας (πώς)", "Tap to begin": "Πάτα για να ξεκινήσεις", Prologue: "Πρόλογος",
@@ -49014,6 +49623,9 @@ X.EL.msg = {
       "— Winds up a wide cleave and charges from afar.": "— Ετοιμάζει φαρδύ χτύπημα και εφορμά από μακριά.",
     });
     for (const k in instEn) DICT.set(k, instEn[k]);
+    for (const [k, v] of ITEMX) DICT.has(k) || DICT.set(k, v);
+    for (const k in EL.COS || {}) DICT.has(k) || DICT.set(k, EL.COS[k]);
+    for (const k in EL.DECOCAT || {}) DICT.has(k) || DICT.set(k, EL.DECOCAT[k]);
     // English hero titles and class roles that some screens still build from their own tables
     for (const id in heroTitleEn) EL.heroes?.[id] && DICT.set(heroTitleEn[id], EL.heroes[id].title);
     for (const k in EL.res || {}) DICT.has(k) || DICT.set(k, EL.res[k]);
@@ -49033,6 +49645,22 @@ X.EL.msg = {
       [/^Microphone unavailable: (.+)$/, (m, a) => `Το μικρόφωνο δεν είναι διαθέσιμο: ${a}`],
       [/^(.*) \((\d+) nodes\)$/, (m, a, n) => `${a} (${n} σημεία)`],
       [/^(.+) from wolves and beasts$/, (m, a) => `${a} από λύκους και θηρία`],
+      [/^\((-\d+)% dmg\)$/, (m, a) => `(${a}% ζημιά)`],
+      [/^(\d+) unlocked for transmog$/, (m, a) => `${a} ξεκλειδωμένες για μεταμφίεση`],
+      [/^(\d+) \/ (\d+) · (\d+)% complete$/, (m, a, b, c) => `${a} / ${b} · ${c}% ολοκληρωμένο`],
+      [/^(\d+) tokens \(Quartermaster\)$/, (m, a) => `${a} μάρκες (Επιμελητής)`],
+      [/^you have (\d+) · buy (\d+) ◆ · sell (\d+) ◆$/, (m, a, b, c) => `έχεις ${a} · αγορά ${b} ◆ · πώληση ${c} ◆`],
+      [/^restocks daily and as you level · your stash (\d+)\/(\d+)$/, (m, a, b) => `ανανεώνεται κάθε μέρα και όσο ανεβαίνεις · αποθήκη ${a}/${b}`],
+      [/^◆ ([\d,.]+) · (\d+) placed$/, (m, a, b) => `◆ ${a} · ${b} τοποθετημένα`],
+      [/^draughts (\d+)\/(\d+)$/, (m, a, b) => `φίλτρα ${a}/${b}`],
+      [/^ilvl (\d+)$/, (m, a) => `επ. αντ. ${a}`],
+      [/^no (\w+) in your bag$/, (m, a) => `κανένα ${EL.NOUN?.[a]?.[0] || a} στην τσάντα σου`],
+      [/^(power|vitality|armor|haste|crit|leech|grace|resolve) (\d+)$/, (m, k, n) => `${tr(k)} ${n}`],
+      [/^2: (.+) · 4: (.+)$/, (m, a, b) => `2: ${statPh(a)} · 4: ${statPh(b)}`],
+      [/^Open your stash here for 50 ◆ \((\d+) slots, shared by all your heroes\)$/, (m, a) => `Άνοιξε την αποθήκη σου εδώ για 50 ◆ (${a} θέσεις, κοινές για όλους τους ήρωές σου)`],
+      [/^Salvage all (\d+) items in your bag\?$/, (m, a) => `Διάλυση και των ${a} αντικειμένων της τσάντας;`],
+      [/^You get (\d+) Soul Shards · equipped and locked items are kept · \[Y\] yes · \[N\] no$/, (m, a) => `Παίρνεις ${a} Θραύσματα Ψυχής · τα φορεμένα και κλειδωμένα μένουν · [Y] ναι · [N] όχι`],
+      [/^(.+) set \((\d)\/4\)$/, (m, a, n) => `Σετ ${EL.SETS?.[a] || a} (${n}/4)`],
       [/^Level (\d+)$/, (m, n) => lvl(n)],
       [/^LEVEL (\d+)$/, (m, n) => `ΕΠΙΠΕΔΟ ${n}`],
       [/^Lv (\d+)$/, (m, n) => `Επ. ${n}`],
@@ -49119,12 +49747,16 @@ X.EL.msg = {
       [/^Banish (\d+) Wraiths$/, (m, n) => `Εξόρισε ${n} Φαντάσματα`],
       [/^Time a Mythic \+(\d+) or higher$/, (m, n) => `Ολοκλήρωσε εγκαίρως Μυθικό +${n} ή πάνω`],
       [/^Defeat a raid boss$/, () => "Νίκησε έναν αρχηγό επιδρομής"],
-      [/^Worn (\w+) · level (\d+)$/, (m, s, n) => `Φθαρμένο ${tr(s)} · επίπεδο ${n}`],
-      [/^(Blessed|Hallowed|Relic) (\w+) · level (\d+)$/, (m, q, s, n) => `${{ Blessed: "Ευλογημένο", Hallowed: "Αγιασμένο", Relic: "Κειμήλιο" }[q]} ${tr(s)} · επίπεδο ${n}`],
+      [/^(Worn|Blessed|Hallowed|Relic|Cursed|Mythic) (\w+) · level (\d+)$/, (m, q, s, n) => `${q === "Relic" ? "Κειμήλιο: " + (EL.NOUN[s]?.[0] || s) : EL.itemName?.(q + " " + s) || q + " " + s} · επίπεδο ${n}`],
+      [/^(.+) \(ilvl (\d+)\)$/, (m, a, n) => { const t = tr(a); return t === a ? null : `${t} (επ. αντ. ${n})`; }],
+      [/^(.+) set \((\d)\/4\) · 2: (.+) · 4: (.+)$/, (m, a, n, b2, b4) => `Σετ ${EL.SETS?.[a] || a} (${n}/4) · 2: ${EL.recText ? statPh(b2) : b2} · 4: ${statPh(b4)}`],
+      [/^(\d+) (.+)$/, (m, n, a) => { const g = matEn[a] || ITEMX.get(a); return g ? `${n} ${g}` : null; }],
+      [/^[+-][\d.]+%? [A-Za-z ]+$/, (m) => { const t = statPh(m); return t === m ? null : t; }],
       [/^(.+) · level (\d+)$/, (m, a, n) => `${a} · επίπεδο ${n}`],
       [/^(\d+)\s*\/\s*(\d+) · press Z to ride your favourite$/, (m, a, b) => `${a}/${b} · πάτα Z για να ιππεύσεις το αγαπημένο σου`],
       [/^Placing (.+?): LMB \/ F place · Q E rotate · R put away$/, (m, a) => `Τοποθέτηση ${a}: Αριστερό κλικ / F τοποθέτηση · Q E περιστροφή · R μάζεμα`],
       [/^\[(LMB|RMB|Q|E|R)\] (.+)$/, (m, k, a) => `[${k}] ${tr(a)}`],
+      [/^[A-Z][A-Za-z' -]+$/, (m) => EL.itemName?.(m) || null],
       // a leading symbol, then something known: "🏆 Kingslayer", "◈ Slay Dire Wolves", "“…”"
       [/^([^\p{L}\p{N}\s]{1,3}) (.+)$/u, (m, s, a) => { const t = tr(a); return t === a ? null : `${s} ${t}`; }],
       [/^“(.+)”$/, (m, a) => { const t = tr(a); return t === a ? null : `“${t}”`; }],
