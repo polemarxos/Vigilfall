@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
     static final String REPO = "https://raw.githubusercontent.com/polemarxos/Vigilfall/main/";
     static final String LATEST = REPO + "server/admin/index.html";
     static final String APP_INFO = REPO + "VigilfallAdmin.json";
-    static final String VERSION = "1.6";
+    static final String VERSION = "1.7";
     static final String ACTION_INSTALLED = "com.polemarxos.vigilfall.admin.INSTALLED";
     static final int PICK = 42;
     WebView web;
@@ -104,8 +104,9 @@ public class MainActivity extends Activity {
             public void run() {
                 try {
                     String srv = server();
-                    HttpURLConnection c = open((srv.isEmpty() ? LATEST : srv + "/admin") + "?t=" + System.currentTimeMillis());
-                    if (c.getResponseCode() != 200 && !srv.isEmpty()) c = open(LATEST + "?t=" + System.currentTimeMillis());
+                    // GitHub first (always the newest); the Realm server only if GitHub cannot be reached
+                    HttpURLConnection c = open(LATEST + "?t=" + System.currentTimeMillis());
+                    if (c.getResponseCode() != 200 && !srv.isEmpty()) c = open(srv + "/admin?t=" + System.currentTimeMillis());
                     if (c.getResponseCode() != 200) return;
                     byte[] neu = readAll(c.getInputStream());
                     String s = new String(neu, "UTF-8");
@@ -131,8 +132,8 @@ public class MainActivity extends Activity {
             public void run() {
                 try {
                     String srv = server();
-                    HttpURLConnection c = open((srv.isEmpty() ? APP_INFO : srv + "/VigilfallAdmin.json") + "?t=" + System.currentTimeMillis());
-                    if (c.getResponseCode() != 200 && !srv.isEmpty()) c = open(APP_INFO + "?t=" + System.currentTimeMillis());
+                    HttpURLConnection c = open(APP_INFO + "?t=" + System.currentTimeMillis());
+                    if (c.getResponseCode() != 200 && !srv.isEmpty()) c = open(srv + "/VigilfallAdmin.json?t=" + System.currentTimeMillis());
                     if (c.getResponseCode() != 200) return;
                     JSONObject j = new JSONObject(new String(readAll(c.getInputStream()), "UTF-8"));
                     int code = j.optInt("versionCode", 0);

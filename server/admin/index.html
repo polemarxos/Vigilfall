@@ -92,8 +92,8 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.8";
-const APP_LATEST = "1.6";
+const PAGE_VERSION = "1.9";
+const APP_LATEST = "1.7";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
 const older = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
@@ -477,7 +477,8 @@ function conExec(cmd, ask) {
   if (conRun?.busy) return toast("A command is still running — Stop it first");
   if (!VFAApp.hasKey()) return toast("Choose your SSH key first");
   // the server's own copy of the setup (works with a private repository: it reuses the saved read token)
-  if (cmd === "@setup") cmd = `D=${S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, "")}; if [ -f /opt/vigilfall-realm/setup.sh ]; then sudo VF_NONINTERACTIVE=1 VF_DOMAIN=$D bash /opt/vigilfall-realm/setup.sh; else curl -fsSL 'https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/setup.sh?t=${Date.now()}' | sudo VF_NONINTERACTIVE=1 VF_DOMAIN=$D bash; fi`;
+  // always the newest setup from GitHub (an old copy on the server could be outdated)
+  if (cmd === "@setup") cmd = `curl -fsSL 'https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/setup.sh?t=${Date.now()}' | sudo VF_NONINTERACTIVE=1 VF_DOMAIN=${S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, "")} bash`;
   const id = "c" + Date.now();
   conRun = { id, busy: true, text: `$ ${cmd}\n` };
   const hist = JSON.parse(store.get("vfa_hist") || "[]").filter((h) => h !== cmd);
@@ -608,7 +609,6 @@ async function fullBackups() {
 }
 
 function start() {
-  APP_URL = S.base + "/VigilfallAdmin.apk";
   try { window.VFAApp?.setServer?.(S.base); } catch (e) {} $("#login").classList.add("hide"); $("#app").classList.remove("hide"); go("dash"); }
 (async () => {
   if (!S.base || !S.pw) return showLogin();
