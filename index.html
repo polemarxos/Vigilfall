@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.20.1</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.20.2</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,9 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.20.1";
+  X.VERSION = "1.20.2";
   X.CHANGELOG = {
+    "1.20.2": ["Phones: skill icons fill the whole round button."],
     "1.20.1": [
       "Phones: the attack and skill buttons show each skill's own icon with its key and a cooldown sweep (instead of ⚔, 🛡, Q, E, R); press and hold a button to see the skill's name, cooldown, cost and what it does.",
       "Phones: the talent reminder says ☰ → Talents instead of \"press N\". Greek: the time of day (Midday, Witching Hour) and the talent reminder are translated.",
@@ -48611,8 +48612,10 @@ X.EL.quests = {
     let built = null;
     const css = document.createElement("style");
     css.textContent = `#tbtns .tb.sk{position:relative;padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center}
-    #tbtns .tb.sk svg,#tbtns .tb.sk img{width:78%;height:78%;pointer-events:none}
-    #tbtns .tb.sk .tk{position:absolute;right:3px;bottom:1px;font:700 11px Georgia,serif;color:#fff1c2;text-shadow:0 1px 2px #000,0 0 3px #000;pointer-events:none}
+    #tbtns .tb.sk{padding:0!important}
+    #tbtns .tb.sk>.ico{position:absolute!important;inset:0;width:100%!important;height:100%!important;margin:0;display:block;pointer-events:none;border-radius:50%;overflow:hidden}
+    #tbtns .tb.sk>.ico svg,#tbtns .tb.sk>.ico img{position:absolute;left:50%;top:50%;width:132%!important;height:132%!important;transform:translate(-50%,-50%);pointer-events:none}
+    #tbtns .tb.sk .tk{position:absolute;left:0;right:0;bottom:3px;text-align:center;font:700 11px Georgia,serif;color:#fff1c2;text-shadow:0 1px 2px #000,0 0 4px #000;pointer-events:none}
     #tbtns .tb.sk .tcd{position:absolute;inset:0;border-radius:50%;pointer-events:none;background:conic-gradient(rgba(0,0,0,.68) var(--p,0%),transparent 0)}
     #tbtns .tb.sk .tct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 15px Georgia,serif;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none}
     #tbtns .tb.sk.nores{filter:grayscale(.7) brightness(.7)}
@@ -49627,6 +49630,7 @@ X.EL.msg = {
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.20.2"] && (X.CHANGELOG["1.20.2"] = ["Κινητά: τα εικονίδια δεξιοτήτων γεμίζουν όλο το στρογγυλό κουμπί."]);
       X.CHANGELOG && X.CHANGELOG["1.20.1"] && (X.CHANGELOG["1.20.1"] = [
         "Κινητά: τα κουμπιά επίθεσης και δεξιοτήτων δείχνουν το εικονίδιο της κάθε δεξιότητας με το πλήκτρο της και την αναμονή (αντί για ⚔, 🛡, Q, E, R)· κράτα πατημένο ένα κουμπί για να δεις όνομα, αναμονή, κόστος και τι κάνει η δεξιότητα.",
         "Κινητά: η υπενθύμιση ταλέντων λέει ☰ → Ταλέντα αντί για «πάτα N». Ελληνικά: η ώρα της μέρας (Μεσημέρι, Ώρα των Μαγισσών) και η υπενθύμιση ταλέντων μεταφράστηκαν.",
