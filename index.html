@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.20.2</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.20.3</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,12 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.20.2";
+  X.VERSION = "1.20.3";
   X.CHANGELOG = {
+    "1.20.3": [
+      "Skills that measured near zero now do real work: Sanguine Pact erupts for damage and heals the warden 30% before its buff; Tombstone Wall stuns and hurts enemies where it rises; Soothing Current heals 170 (was 70) and cuts damage taken by 15%; Ember Step burns enemies where you leave and land and its fire trail hurts more; Shadowstep gives +40% damage for 3 s.",
+      "Talents that did nothing were replaced: tanks' Deep Well (resource regeneration — Rage never regenerates) is now Fury, +10% Rage from every hit per rank; Unshaken is now −4% damage taken from bosses per rank; Apothecary's Friend gives +30% draught healing and every draught refills 15% resource; Light Feet −20% dodge recharge per rank.",
+    ],
     "1.20.2": ["Phones: skill icons fill the whole round button."],
     "1.20.1": [
       "Phones: the attack and skill buttons show each skill's own icon with its key and a cooldown sweep (instead of ⚔, 🛡, Q, E, R); press and hold a button to see the skill's name, cooldown, cost and what it does.",
@@ -48689,6 +48693,116 @@ X.EL.quests = {
   }
 }
 
+/* ---- FK_talents.js ---- */
+/* 1.20.3 — talents that did nothing (or almost nothing) are replaced:
+   - "Deep Well" (+% resource regeneration) did nothing for the four tanks: Rage does not regenerate, it decays. For Rage
+     heroes it is now "Fury": +10% Rage from every hit you deal or take, per rank.
+   - "Unshaken" (−12% Sanity loss) barely mattered: it is now −4% damage taken from bosses per rank (and still steadies
+     your Sanity).
+   - "Apothecary's Friend" (+20% draught healing): +30% per rank, and every draught also refills 15% of your resource.
+   - "Light Feet" (dodge recharge −12%): −20% per rank. */
+{
+  const GP = SC.prototype;
+  try {
+    Bd.resolve = ["Unshaken", "eye", "#a090ff", 4, (B) => `-${B}% damage taken from bosses`];
+    Bd.potion = ["Apothecary's Friend", "potion", "#ff5a7a", 30, (B) => `+${B}% healing from draughts; each draught also restores 15% resource`];
+    Bd.dodgeCd = ["Light Feet", "wind", "#d8f0ff", 20, (B) => `Dodge recharges ${B}% faster`];
+  } catch (e) {}
+  // Rage heroes: rename the regeneration talent where the trees are built
+  const Hg2 = Hg;
+  Hg = function (B) {
+    const trees = Hg2(B);
+    try {
+      if (B.res === "rage" && !trees._fury) {
+        trees._fury = 1;
+        for (const tr of trees)
+          for (const n of tr.nodes)
+            if (n.stat === "regenPct") { n.name = "Fury"; n.icon = "flame"; n.color = "#ff7a4a"; n.per = 10; n.text = (f) => `+${Math.round(10 * f)}% Rage from every hit you deal or take`; }
+      }
+    } catch (e) {}
+    return trees;
+  };
+  const rageBoost = (g, before) => {
+    const p = g.player, k = g.tal?.regenPct || 0;
+    if (!k || g.hero?.res !== "rage" || !(p.res > before)) return;
+    p.res = Math.min(p.maxRes, before + (p.res - before) * (1 + k / 100));
+  };
+  const he0 = GP.hitEnemy;
+  GP.hitEnemy = function (...a) { const b = this.player?.res; const r = he0.apply(this, a); try { rageBoost(this, b); } catch (e) {} return r; };
+  const hp0 = GP.hurtPlayer;
+  GP.hurtPlayer = function (A, i = {}) {
+    try {
+      const k = this.tal?.resolve || 0, src = i.enemy || this._actE;
+      if (k && typeof A === "number" && src?.def?.boss) A *= Math.max(0.5, 1 - k / 100);
+    } catch (e) {}
+    const b = this.player?.res;
+    const r = hp0.call(this, A, i);
+    try { rageBoost(this, b); } catch (e) {}
+    return r;
+  };
+  const dp0 = GP.drinkPotion;
+  GP.drinkPotion = function (...a) {
+    const n0 = this.hsave?.potions;
+    const r = dp0.apply(this, a);
+    try { this.tal?.potion && this.hsave.potions < n0 && (this.player.res = Math.min(this.player.maxRes, this.player.res + this.player.maxRes * 0.15)); } catch (e) {}
+    return r;
+  };
+}
+
+/* ---- FL_skills2.js ---- */
+/* 1.20.3 — the skills that still measured near zero in the 1.20 skill test get a real job:
+   Sanguine Pact (only a 10 s buff) now also erupts for damage around the warden and heals him 30%;
+   Tombstone Wall now stuns and hurts what it rises under; Soothing Current heals 170 instead of 70 (the Mystic's 1.2 s
+   Rejuvenate-class heal outdid her 16 s spell) and cuts damage taken by 15%; Ember Step burns enemies at both ends and
+   its fire trail hurts 60% more; Shadowstep gives +40% damage for 3 s after you land behind the target. */
+{
+  const wrap = (id, after) => {
+    const f0 = HC[id];
+    if (typeof f0 !== "function") return;
+    HC[id] = function (B, ...a) {
+      const p0 = B.player.pos.clone();
+      const r = f0.call(this, B, ...a);
+      if (r === !1) return r;
+      try { after(B, p0); } catch (e) {}
+      return r;
+    };
+  };
+  wrap("wd_pact", (B) => {
+    B.fx("nova", B.player.pos, { color: 16715808, r: 8 });
+    for (const e of B.enemiesInRadius(B.player.pos, 8)) B.hitEnemy(e, 60, { noCrit: !0 });
+    B.healSelf(B.player.maxHp * 0.3);
+  });
+  wrap("cl_tomb", (B) => {
+    const c = B.player.pos.clone().addScaledVector(B.flatFwd(), 4);
+    for (const e of B.enemiesInRadius(c, 5)) B.hitEnemy(e, 30, { stun: 1.2, noCrit: !0 });
+  });
+  wrap("wi_blink", (B, from) => {
+    for (const p of [from, B.player.pos])
+      for (const e of B.enemiesInRadius(p, 4)) B.hitEnemy(e, 30, { school: "fire", dot: { dps: 8, dur: 4, kind: "fire" } });
+    B.fx("burst", B.player.pos.clone().setY(B.player.pos.y + 1), { color: 16738842, n: 30 });
+    const z = B.zones?.[B.zones.length - 1];
+    if (z && z.kind === "fire" && z.onTick && !z._boost) {
+      z._boost = 1;
+      const t0 = z.onTick;
+      z.onTick = (I) => { for (const w of B.enemiesInRadius(I.pos, I.r)) B.hitEnemy(w, 6, { noCrit: !0, school: "fire" }); return t0(I); };
+    }
+  });
+  wrap("as_step", (B) => B.addBuff("shadowstrike", 3, { dmg: 0.4 }));
+  const mc0 = HC.my_current;
+  mc0 && (HC.my_current = (B) => {
+    B.audio.play("water", null, 1.2);
+    B.fx("nova", B.player.pos, { color: 9105632, r: 20 });
+    for (const A of B.alliesInRadius(B.player.pos, 20)) B.aidAlly(A, { hot: 170, hotDur: 6, of: 1, cleanse: !0, buff: ["current", 6, { speed: 0.2, dr: 0.15 }] });
+  });
+  const D = Object.fromEntries((X.D?.FI || FI).flatMap((h) => h.skills.map((s) => [s.id, s])));
+  const set = (id, d) => D[id] && (D[id].desc = d);
+  set("wd_pact", "Ultimate. Erupt in blood: 60 dmg to enemies in 8m and heal 30% of your max HP, then 40% lifesteal and +25% damage for 10s.");
+  set("cl_tomb", "Raise a wall of tombstones 4m ahead: enemies where it rises take 30 dmg and are stunned 1.2s; it blocks enemies and projectiles for 8s.");
+  set("my_current", "Allies within 20m: 170 HP over 6s, cleansed, +20% move speed and 15% less damage taken.");
+  set("wi_blink", "Teleport 12m forward: enemies where you leave and where you land take 30 dmg and burn; a fire trail stays behind.");
+  set("as_step", "Teleport behind the enemy you aim at. +40% damage for 3s.");
+}
+
 /* ---- FY_el_items.js ---- */
 /* 1.20.0 — Greek (ελληνικά): items and everything you own. Item names are stored in English in saves (and travel between
    players), so they are composed in Greek when shown: [adjectives] noun [of-phrase], with the adjectives agreeing with the
@@ -48890,7 +49004,7 @@ X.EL.heroes = {
       ["Αιματοφρουρά", "Ξόδεψε 8% ζωής για ασπίδα 25% της μέγιστης ζωής για 5s."],
       ["Άλικη Έφοδος", "Έφοδος 14m μπροστά, 40 ζημιά σε ό,τι βρεθεί."],
       ["Ουρλιαχτό Πρόκλησης", "Προκαλεί τους εχθρούς σε 12m. Δέχεσαι 30% λιγότερη ζημιά για 6s."],
-      ["Συμβόλαιο Αίματος", "Τελική. 40% απορρόφηση ζωής και +25% ζημιά για 10s."],
+      ["Συμβόλαιο Αίματος", "Τελική. Έκρηξη αίματος: 60 ζημιά στους εχθρούς σε 8m και θεραπεία 30% της μέγιστης ζωής σου, μετά 40% απορρόφηση ζωής και +25% ζημιά για 10s."],
     ],
     passives: [["Δίψα", "Θεραπεύεσαι 4% της μέγιστης ζωής σε κάθε σκοτωμό."], ["Ουλές", "Έως 30% μείωση ζημιάς όσο πέφτει η ζωή σου."]],
   },
@@ -48901,7 +49015,7 @@ X.EL.heroes = {
       ["Ρόπαλο του Τύμβου", "Συντριπτικό χτύπημα. 42 ζημιά, μεγάλη απώθηση."],
       ["Τρόμος του Τάφου", "Χτύπα τη γη: 30 ζημιά σε 6m, επιβράδυνση 40%."],
       ["Αλυσίδες των Καταραμένων", "Τράβα όλους τους εχθρούς σε 16m κοντά σου και προκάλεσέ τους."],
-      ["Τείχος από Ταφόπλακες", "Υψώνει τείχος από ταφόπλακες που σταματά εχθρούς και βλήματα για 8s."],
+      ["Τείχος από Ταφόπλακες", "Υψώνει τείχος από ταφόπλακες 4m μπροστά: οι εχθροί εκεί δέχονται 30 ζημιά και ζαλίζονται 1.2s· σταματά εχθρούς και βλήματα για 8s."],
       ["Αθάνατος", "Τελική. Δεν μπορείς να πεθάνεις για 6s· στο τέλος θεραπεύεσαι 50%."],
     ],
     passives: [["Άφθαρτο Δέρμα", "+25% μέγιστη ζωή."], ["Δεμένος με τον Τάφο", "Οι εχθροί σε 6m επιβραδύνονται 15% και σου κάνουν 10% λιγότερη ζημιά."]],
@@ -48949,7 +49063,7 @@ X.EL.heroes = {
       ["Πύρινο Βέλος", "Γρήγορο πύρινο βέλος. 36 ζημιά, μπορεί να ανάψει φωτιά."],
       ["Κύμα Φλόγας", "Κώνος φωτιάς. 55 ζημιά + φωτιά."],
       ["Πεφτάστερο", "Καλεί μετεωρίτη εκεί που σημαδεύεις: 140 ζημιά σε 6m μετά από 1s."],
-      ["Βήμα της Θράκας", "Τηλεμεταφορά 12m μπροστά, αφήνοντας φωτιά πίσω σου."],
+      ["Βήμα της Θράκας", "Τηλεμεταφορά 12m μπροστά: οι εχθροί εκεί που φεύγεις κι εκεί που φτάνεις δέχονται 30 ζημιά και καίγονται· μένει πίσω ένα ίχνος φωτιάς."],
       ["Ρέκβιεμ της Κόλασης", "Τελική. Για 6s, 4 πύρινες σφαίρες το δευτερόλεπτο πέφτουν σε εχθρούς σε 14m (15 ζημιά σε 3.5m η καθεμία)."],
     ],
     passives: [["Προσάναμμα", "Τα κρίσιμα χτυπήματα βάζουν φωτιά για 10 ζημιά/s (4s)."], ["Ψυχή της Πυράς", "+15% ζημιά ξορκιών."]],
@@ -48971,7 +49085,7 @@ X.EL.heroes = {
     lore: "Κανείς δεν θυμάται να την προσέλαβε. Κανείς δεν θυμάται το πρόσωπό της. Ο Σκοτεινός Άρχοντας θα τη θυμάται.",
     skills: [
       ["Δίδυμοι Κυνόδοντες", "Γρήγορα χτυπήματα με στιλέτο. 25 ζημιά στον εχθρό μπροστά, +60% από πίσω."],
-      ["Βήμα Σκιάς", "Τηλεμεταφορά πίσω από τον εχθρό που σημαδεύεις."],
+      ["Βήμα Σκιάς", "Τηλεμεταφορά πίσω από τον εχθρό που σημαδεύεις. +40% ζημιά για 3s."],
       ["Βεντάλια Μαχαιριών", "Μαχαίρια προς όλες τις κατευθύνσεις: 45 ζημιά + αιμορραγία."],
       ["Εξαφάνιση", "Γίνεσαι αόρατη για 5s. Το επόμενο χτύπημα κάνει x3."],
       ["Λωτός του Θανάτου", "Τελική. Δίνη από λεπίδες: 45 ζημιά κάθε 0.25s για 2s σε 7m."],
@@ -48997,7 +49111,7 @@ X.EL.heroes = {
       ["Μαστίγιο της Παλίρροιας", "Βέλος νερού, 26 ζημιά. Κάθε χτύπημα θεραπεύει τον πιο τραυματισμένο σύμμαχο σε 20m κατά 8."],
       ["Ανανεωτική Ομίχλη", "Σταδιακή θεραπεία: 100 ζωή σε 8s στον σύμμαχο που σημαδεύεις ή σε σένα. Στοιβάζεται."],
       ["Βροχή της Ζωής", "Βροχή εκεί που σημαδεύεις (7m, 8s): οι σύμμαχοι παίρνουν 16 ζωή/s· οι εχθροί 14 ζημιά/s και επιβράδυνση 25%."],
-      ["Γαλήνιο Ρεύμα", "Σύμμαχοι σε 20m: 70 ζωή σε 6s, καθαρισμός, +20% ταχύτητα κίνησης."],
+      ["Γαλήνιο Ρεύμα", "Σύμμαχοι σε 20m: 170 ζωή σε 6s, καθαρισμός, +20% ταχύτητα κίνησης και 15% λιγότερη ζημιά."],
       ["Αιώνια Άνοιξη", "Τελική. Οι σύμμαχοι σε 25m παίρνουν 420 ζωή σε 10s και δέχονται 25% λιγότερη ζημιά."],
     ],
     passives: [["Υπερχείλιση", "Οι σταδιακές θεραπείες σου κάνουν την περίσσεια θεραπεία ασπίδα (έως 15% της μέγιστης ζωής)."], ["Υπόρευμα", "Οι σύμμαχοι με σταδιακή θεραπεία σου δέχονται 10% λιγότερη ζημιά."]],
@@ -49569,7 +49683,7 @@ X.EL.msg = {
       Executioner: "Δήμιος", Overkill: "Υπερβολή", "Guardian Spirit": "Πνεύμα Φύλακας", Renewal: "Ανανέωση", "Second Wind": "Δεύτερη Πνοή", "Last Stand": "Τελευταία Αντίσταση", Flow: "Ροή", Momentum: "Ορμή",
       Mastery: "Μαεστρία", Haste: "Επιτάχυνση", Efficiency: "Αποδοτικότητα", Persistence: "Επιμονή", Reach: "Εμβέλεια", Compounding: "Συσσώρευση",
       Avenger: "Εκδικητής", Fortress: "Φρούριο", Rally: "Συσπείρωση", Lifebloom: "Άνθος Ζωής", Martyr: "Μάρτυρας", "Font of Light": "Πηγή Φωτός", "Executioner's Mark": "Σημάδι του Δήμιου",
-      Shadowmeld: "Σκιόσμιξη", Overclock: "Υπερχρονισμός",
+      Shadowmeld: "Σκιόσμιξη", Overclock: "Υπερχρονισμός", Fury: "Μανία",
       Wrath: "Οργή", Bulwark: "Προμαχώνας", Warcraft: "Πολεμική Τέχνη", Grace: "Χάρη", Resolve: "Αποφασιστικότητα", Communion: "Κοινωνία", Ruin: "Όλεθρος", Survival: "Επιβίωση",
     };
     const TALTX = {
@@ -49598,7 +49712,8 @@ X.EL.msg = {
       [/^Enemies that hit you in melee take ([\d.]+) damage$/, "Οι εχθροί που σε χτυπούν από κοντά δέχονται $1 ζημιά"], [/^\+([\d.]+)% healing$/, "+$1% θεραπεία"],
       [/^\+([\d.]+)% healing over time$/, "+$1% σταδιακή θεραπεία"], [/^\+([\d.]+)% resource regeneration$/, "+$1% αναγέννηση πόρου"], [/^\+([\d.]+) maximum resource$/, "+$1 μέγιστος πόρος"],
       [/^All skills cost ([\d.]+)% less$/, "Όλες οι δεξιότητες κοστίζουν $1% λιγότερο"], [/^\+([\d.]+)% max health$/, "+$1% μέγιστη ζωή"], [/^\+([\d.]+)% armor$/, "+$1% θωράκιση"],
-      [/^-([\d.]+)% Sanity loss$/, "-$1% απώλεια Λογικής"], [/^-([\d.]+)% damage taken$/, "-$1% ζημιά που δέχεσαι"], [/^-([\d.]+)% damage taken below 35% health$/, "-$1% ζημιά που δέχεσαι κάτω από 35% ζωή"],
+      [/^-([\d.]+)% Sanity loss$/, "-$1% απώλεια Λογικής"], [/^-([\d.]+)% damage taken from bosses$/, "-$1% ζημιά από αρχηγούς"], [/^\+([\d.]+)% Rage from every hit you deal or take$/, "+$1% Οργή από κάθε χτύπημα που δίνεις ή δέχεσαι"],
+      [/^\+([\d.]+)% healing from draughts; each draught also restores 15% resource$/, "+$1% θεραπεία από φίλτρα· κάθε φίλτρο επαναφέρει και 15% πόρο"], [/^-([\d.]+)% damage taken$/, "-$1% ζημιά που δέχεσαι"], [/^-([\d.]+)% damage taken below 35% health$/, "-$1% ζημιά που δέχεσαι κάτω από 35% ζωή"],
       [/^\+([\d.]+)% healing from draughts$/, "+$1% θεραπεία από φίλτρα"], [/^\+([\d.]+)% move speed$/, "+$1% ταχύτητα κίνησης"], [/^Dodge recharges ([\d.]+)% faster$/, "Η τούμπα επαναφορτίζει $1% γρηγορότερα"],
       [/^(.+) is ([\d.]+)% stronger \(damage, healing and shields\)$/, "$1: $2% ισχυρότερο (ζημιά, θεραπεία και ασπίδες)"], [/^(.+) recharges ([\d.]+)% faster$/, "$1: επαναφορτίζει $2% γρηγορότερα"],
       [/^(.+) costs ([\d.]+)% less$/, "$1: κοστίζει $2% λιγότερο"], [/^(.+) effects last ([\d.]+)% longer$/, "$1: τα αποτελέσματα κρατούν $2% περισσότερο"],
@@ -49630,6 +49745,10 @@ X.EL.msg = {
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.20.3"] && (X.CHANGELOG["1.20.3"] = [
+        "Δεξιότητες που μετρούσαν σχεδόν μηδέν κάνουν πλέον πραγματική δουλειά: το Συμβόλαιο Αίματος εκρήγνυται με ζημιά και θεραπεύει τον φύλακα 30% πριν την ενίσχυσή του· το Τείχος από Ταφόπλακες ζαλίζει και πληγώνει όσους βρίσκονται εκεί που υψώνεται· το Γαλήνιο Ρεύμα θεραπεύει 170 (ήταν 70) και μειώνει τη ζημιά κατά 15%· το Βήμα της Θράκας καίει τους εχθρούς εκεί που φεύγεις κι εκεί που φτάνεις και το ίχνος φωτιάς πονάει περισσότερο· το Βήμα Σκιάς δίνει +40% ζημιά για 3s.",
+        "Ταλέντα που δεν έκαναν τίποτα αντικαταστάθηκαν: το Βαθύ Πηγάδι των αμυντικών (αναγέννηση πόρου — η Οργή δεν αναγεννάται) είναι πλέον Μανία, +10% Οργή από κάθε χτύπημα ανά βαθμό· ο Ακλόνητος δίνει −4% ζημιά από αρχηγούς ανά βαθμό· ο Φίλος του Φαρμακοποιού δίνει +30% θεραπεία από φίλτρα και κάθε φίλτρο επαναφέρει 15% πόρο· τα Ελαφριά Πόδια −20% επαναφόρτιση τούμπας ανά βαθμό.",
+      ]);
       X.CHANGELOG && X.CHANGELOG["1.20.2"] && (X.CHANGELOG["1.20.2"] = ["Κινητά: τα εικονίδια δεξιοτήτων γεμίζουν όλο το στρογγυλό κουμπί."]);
       X.CHANGELOG && X.CHANGELOG["1.20.1"] && (X.CHANGELOG["1.20.1"] = [
         "Κινητά: τα κουμπιά επίθεσης και δεξιοτήτων δείχνουν το εικονίδιο της κάθε δεξιότητας με το πλήκτρο της και την αναμονή (αντί για ⚔, 🛡, Q, E, R)· κράτα πατημένο ένα κουμπί για να δεις όνομα, αναμονή, κόστος και τι κάνει η δεξιότητα.",
