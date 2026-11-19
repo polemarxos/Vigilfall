@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.19.2</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.19.3</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33726,8 +33726,12 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.19.2";
+  X.VERSION = "1.19.3";
   X.CHANGELOG = {
+    "1.19.3": [
+      "Android app: phones on Android get a Download Android app (APK) button in the main menu — a real app that opens Vigilfall full screen and updates itself with the game.",
+      "Phones: the main menu scrolls when it does not fit the screen, and Install as app sits right under the first buttons (it was below the bottom of a phone held sideways).",
+    ],
     "1.19.2": [
       "Pop-ups are no longer hidden behind open windows: the yes/no question (Salvage all, party invites, trades), the short messages at the bottom of the screen and the Dungeon Finder box now always show above the inventory, shops and the pause menu.",
     ],
@@ -48128,7 +48132,9 @@ X.EL.quests = {
    appeared when Chrome had already offered it — it is now always there on the website, with the steps when the
    browser has no ready prompt. */
 {
-  const U = XC.prototype, GP = SC.prototype, EL = X.lang === "el";
+  const U = XC.prototype, GP = SC.prototype;
+  let EL = !1; // X.lang is set by FZ_el, which loads later: read it when needed
+  const lang = () => (EL = X.lang === "el");
   const touch = () => X.isTouch || matchMedia("(pointer:coarse)").matches;
   // keep body.pause-open in step with the pause menu, whoever opens or closes it
   const sync = () => document.body.classList.toggle("pause-open", !!document.querySelector("#pause.on"));
@@ -48140,10 +48146,13 @@ X.EL.quests = {
   U.heroSelect = function (...a) { const r = hs0.apply(this, a); sync(); return r; };
   // phones: no desktop key list under the menu; splash text that fits a portrait screen
   const css = document.createElement("style");
-  css.textContent = `@media (pointer:coarse){#menu .foot{display:none!important}}
+  css.textContent = `#menu{overflow-y:auto;justify-content:safe center;-webkit-overflow-scrolling:touch}#menu .menu-col{flex:none}
+  #menu [data-a=install]{border-color:var(--gold,#c9a96a)}
+  @media (pointer:coarse){#menu .foot{display:none!important}}
   @media (max-width:600px){#splash .press{letter-spacing:.12em;font-size:15px;padding:0 12px;text-align:center}#splash .warn{padding:0 14px;text-align:center}}`;
   document.head.appendChild(css);
   const fixSplash = () => {
+    lang();
     const p = document.querySelector("#splash .press");
     p && touch() && (p.textContent = EL ? "Πάτα για να ξεκινήσεις" : "Tap to begin");
   };
@@ -48154,10 +48163,40 @@ X.EL.quests = {
   const mm0 = U.mainMenu;
   U.mainMenu = function (...a) {
     const r = mm0.apply(this, a);
+    lang();
     try {
+      const inApp = /VigilfallApp/.test(navigator.userAgent);
       const b = document.querySelector("#menu [data-a=install]");
-      if (b && web && !PWA?.installed) {
+      inApp && b && (b.style.display = "none");
+      // Android browsers also get the real app (APK) download
+      if (web && !inApp && /Android/i.test(navigator.userAgent) && !document.querySelector("#menu [data-a=apk]")) {
+        const col = document.querySelector("#menu .menu-col");
+        if (col) {
+          const k = document.createElement("button");
+          k.dataset.a = "apk";
+          k.textContent = EL ? "Λήψη εφαρμογής Android (APK)" : "Download Android app (APK)";
+          k.onclick = () => {
+            this.click?.();
+            const a = document.createElement("a");
+            a.href = "Vigilfall.apk"; a.download = "Vigilfall.apk"; document.body.appendChild(a); a.click(); a.remove();
+            this.openModal(`<div class="lore"><div class="lore-t">${EL ? "Εφαρμογή Android" : "Android app"}</div><div class="lore-x"><p>${EL
+              ? "Η λήψη του <b>Vigilfall.apk</b> ξεκίνησε. Άνοιξέ το από τις Λήψεις και πάτα <b>Εγκατάσταση</b>. Αν το Android ρωτήσει, επίτρεψε στο Chrome να εγκαθιστά άγνωστες εφαρμογές (μόνο αυτή τη φορά)."
+              : "<b>Vigilfall.apk</b> is downloading. Open it from Downloads and tap <b>Install</b>. If Android asks, allow Chrome to install unknown apps (just this once)."}</p><p>${EL
+              ? "Η εφαρμογή ανοίγει το παιχνίδι σε πλήρη οθόνη και παίρνει κάθε ενημέρωση μόνη της. Το πίσω κουμπί ανοίγει το μενού· δύο φορές γρήγορα βγαίνεις."
+              : "The app opens the game full screen and gets every update by itself. The back button opens the menu; press it twice quickly to leave."}</p></div><button class="close">${EL ? "Κλείσιμο" : "Close"}</button></div>`);
+          };
+          let a = col.querySelectorAll("button")[1];
+          while (a && a.parentElement !== col) a = a.parentElement;
+          a ? a.after(k) : col.appendChild(k);
+        }
+      }
+      if (b && web && !PWA?.installed && !inApp) {
         b.style.display = "";
+        // right under the first two buttons, where a phone shows it without scrolling
+        const col = b.parentElement;
+        let a = col && col.querySelectorAll("button")[1];
+        while (a && a.parentElement !== col) a = a.parentElement;
+        a && a !== b && a.after(b);
         const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
         b.onclick = async () => {
           this.click?.();
@@ -48914,6 +48953,10 @@ X.EL.msg = {
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.19.3"] && (X.CHANGELOG["1.19.3"] = [
+        "Εφαρμογή Android: τα κινητά Android έχουν κουμπί Λήψη εφαρμογής Android (APK) στο κύριο μενού — πραγματική εφαρμογή που ανοίγει το Vigilfall σε πλήρη οθόνη και ενημερώνεται μαζί με το παιχνίδι.",
+        "Κινητά: το κύριο μενού κυλάει όταν δεν χωράει στην οθόνη, και η Εγκατάσταση ως εφαρμογή είναι ακριβώς κάτω από τα πρώτα κουμπιά (ήταν κάτω από το όριο της οθόνης σε οριζόντιο κινητό).",
+      ]);
       X.CHANGELOG && X.CHANGELOG["1.19.2"] && (X.CHANGELOG["1.19.2"] = [
         "Τα αναδυόμενα δεν κρύβονται πια πίσω από ανοιχτά παράθυρα: η ερώτηση ναι/όχι (Διάλυση όλων, προσκλήσεις, εμπόριο), τα σύντομα μηνύματα στο κάτω μέρος της οθόνης και το πλαίσιο της Αναζήτησης Μπουντρουμιού φαίνονται πάντα πάνω από τα αντικείμενα, τα μαγαζιά και το μενού παύσης.",
       ]);
