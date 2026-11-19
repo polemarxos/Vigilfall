@@ -27,7 +27,7 @@ public class MainActivity extends Activity {
         s.setSupportZoom(false);
         s.setBuiltInZoomControls(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        s.setUserAgentString(s.getUserAgentString() + " VigilfallAdmin/1.0");
+        s.setUserAgentString(s.getUserAgentString() + " VigilfallAdmin/1.1");
         web.setOverScrollMode(WebView.OVER_SCROLL_NEVER);
         web.setWebViewClient(new WebViewClient() {
             @Override

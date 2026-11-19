@@ -304,14 +304,18 @@ async function server() {
     <div class="card"><h2>Realm</h2>
       <label>Realm name</label><input id="sname" maxlength="40" value="${esc(s.name)}">
       <label>Most players at once</label><input id="smax" type="number" min="1" max="300" value="${s.maxPlayers}">
-      <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input id="sauto" type="checkbox" style="width:auto" ${s.autoUpdate ? "checked" : ""}> Install new game versions automatically (checks every 10 minutes)</label>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input id="sauto" type="checkbox" style="width:auto" ${s.autoUpdate ? "checked" : ""}> Install new game versions automatically</label>
+      <label>Check for new versions every (minutes)</label>
+      <div class="row"><input id="smin" type="number" min="1" max="1440" value="${s.updateMinutes || 10}" style="flex:1"><button class="b s" data-m="5">5</button><button class="b s" data-m="10">10</button><button class="b s" data-m="60">60</button><button class="b s" data-m="1440">1 day</button></div>
+      <p class="muted">${s.autoUpdate ? `Last check ${s.lastCheck ? ago(s.lastCheck) : "not yet"} · next ${s.nextCheck ? "in " + Math.max(1, Math.round((s.nextCheck - Date.now()) / 60000)) + " min" : "—"}` : "Automatic updates are off."}</p>
       <div class="row" style="margin-top:10px"><button class="b p" id="ssave">Save</button></div></div>
     <div class="card"><h2>Game version</h2><p class="muted">Server has <b>${esc(s.gameVersion || "?")}</b>, the world runs <b>${esc(s.hostVersion || "?")}</b>.</p>
       <div class="row"><button class="b" id="supd">Check for update now</button><button class="b d" id="srst">Restart world now</button></div></div>
     <div class="card"><h2>Admin password</h2><input id="spw" type="password" placeholder="new password (8+ characters)"><div class="row" style="margin-top:8px"><button class="b" id="spws">Change password</button></div></div>
     <div class="card"><h2>Server log</h2><div class="row" style="margin-bottom:8px"><button class="b s" id="slog">Refresh</button></div><div class="log" id="log">…</div></div>
     <p class="muted" style="text-align:center">Server up ${dur(s.uptime)} · ${esc(S.base.replace(/^https?:\/\//, ""))}</p>`;
-  $("#ssave").onclick = async () => { try { await call("config", "POST", { name: $("#sname").value, maxPlayers: +$("#smax").value, autoUpdate: $("#sauto").checked }); toast("Saved"); } catch (e) { fail(e); } };
+  $("#ssave").onclick = async () => { try { await call("config", "POST", { name: $("#sname").value, maxPlayers: +$("#smax").value, autoUpdate: $("#sauto").checked, updateMinutes: +$("#smin").value }); toast("Saved"); server(); } catch (e) { fail(e); } };
+  M().querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => ($("#smin").value = b.dataset.m)));
   $("#supd").onclick = async () => { toast("Checking…"); try { const r = await call("update", "POST"); toast(r.changed ? `Downloaded ${r.ver} — world restarts in 60 s` : r.ok ? `Already up to date (${r.ver})` : "Update failed: " + r.why); } catch (e) { fail(e); } };
   $("#srst").onclick = async () => { if (!confirm("Restart the world now? Everyone is disconnected for about a minute.")) return; try { await call("restart", "POST", { delay: 0 }); toast("Restarting…"); } catch (e) { fail(e); } };
   $("#spws").onclick = async () => { const v = $("#spw").value; if (v.length < 8) return toast("At least 8 characters"); try { await call("config", "POST", { newPassword: v }); S.pw = v; store.set("vfa_pw", v); toast("Password changed"); $("#spw").value = ""; } catch (e) { fail(e); } };

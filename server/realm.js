@@ -33,6 +33,7 @@ cfg = Object.assign(
     hostToken: rnd(24),
     gameUrl: "https://polemarxos.github.io/Vigilfall/",
     autoUpdate: true,
+    updateMinutes: 10,
     range: 140,
   },
   cfg,
@@ -185,7 +186,19 @@ async function updateAndRestart(manual) {
   }
   return r;
 }
-setInterval(() => cfg.autoUpdate && updateAndRestart(false), 10 * 60e3);
+// automatic update checks, every cfg.updateMinutes (changeable from the admin app)
+let updTimer = null, lastCheck = 0, nextCheck = 0;
+const scheduleUpdates = () => {
+  clearTimeout(updTimer);
+  if (!cfg.autoUpdate) return (nextCheck = 0);
+  const ms = Math.max(1, Math.min(1440, +cfg.updateMinutes || 10)) * 60e3;
+  nextCheck = Date.now() + ms;
+  updTimer = setTimeout(async () => {
+    lastCheck = Date.now();
+    try { await updateAndRestart(false); } catch (e) {}
+    scheduleUpdates();
+  }, ms);
+};
 
 // ---------------- clients ----------------
 const clients = new Map(); // id (vigilfall peer id) -> client
@@ -307,7 +320,7 @@ async function api(req, res, url) {
   if (p[0] === "status" && M === "GET") {
     const mem = process.memoryUsage();
     return json(res, 200, {
-      name: cfg.name, motd: cfg.motd, maxPlayers: cfg.maxPlayers, autoUpdate: cfg.autoUpdate, gameUrl: cfg.gameUrl,
+      name: cfg.name, motd: cfg.motd, maxPlayers: cfg.maxPlayers, autoUpdate: cfg.autoUpdate, updateMinutes: cfg.updateMinutes, lastCheck, nextCheck, gameUrl: cfg.gameUrl,
       gameVersion: gameVer, hostVersion: H.ver, hostUp: !!H.child, hostReady: H.ready, hostSince: H.startedAt, restarts: H.restarts,
       world: H.stat, uptime: Math.round(process.uptime()), load: os.loadavg(), cpus: os.cpus().length,
       mem: { total: os.totalmem(), free: os.freemem(), server: mem.rss }, players: recs.size, online: onlineList(),
@@ -423,11 +436,13 @@ async function api(req, res, url) {
     if (typeof b.motd === "string") cfg.motd = b.motd.slice(0, 200);
     if (b.maxPlayers) cfg.maxPlayers = Math.max(1, Math.min(300, +b.maxPlayers | 0));
     if (typeof b.autoUpdate === "boolean") cfg.autoUpdate = b.autoUpdate;
+    if (b.updateMinutes !== undefined) cfg.updateMinutes = Math.max(1, Math.min(1440, Math.round(+b.updateMinutes) || 10));
     if (typeof b.newPassword === "string") {
       if (b.newPassword.length < 8) return json(res, 400, { error: "Password must be at least 8 characters." });
       cfg.adminPassword = b.newPassword;
     }
     saveCfg();
+    scheduleUpdates();
     log("config changed");
     return json(res, 200, { ok: true });
   }
@@ -438,7 +453,7 @@ async function api(req, res, url) {
     setTimeout(() => restartHost("admin"), delay * 1000);
     return json(res, 200, { ok: true });
   }
-  if (p[0] === "update" && M === "POST") return json(res, 200, await updateAndRestart(true));
+  if (p[0] === "update" && M === "POST") return (lastCheck = Date.now()), json(res, 200, await updateAndRestart(true));
   if (p[0] === "log" && M === "GET") return json(res, 200, { lines: LOG.slice(-300) });
   return json(res, 404, { error: "unknown call" });
 }
@@ -545,7 +560,8 @@ server.listen(cfg.port, cfg.bind, () => {
   log(`Vigilfall Realm listening on ${cfg.bind}:${cfg.port}`);
   log(`Admin password is in ${CFG_FILE}`);
   if (process.env.VF_NOHOST !== "1") startHost();
-  cfg.autoUpdate && setTimeout(() => updateAndRestart(false), 20e3);
+  cfg.autoUpdate && setTimeout(() => ((lastCheck = Date.now()), updateAndRestart(false)), 20e3);
+  scheduleUpdates();
 });
 const bye = () => {
   H.wantStop = true;
