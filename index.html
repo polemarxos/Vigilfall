@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.19.1</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.19.2</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33726,8 +33726,11 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.19.1";
+  X.VERSION = "1.19.2";
   X.CHANGELOG = {
+    "1.19.2": [
+      "Pop-ups are no longer hidden behind open windows: the yes/no question (Salvage all, party invites, trades), the short messages at the bottom of the screen and the Dungeon Finder box now always show above the inventory, shops and the pause menu.",
+    ],
     "1.19.1": [
       "Phones: the on-screen controls no longer disappear after Change Hero; the desktop key list no longer covers the main menu; the start screen fits a phone held upright.",
       "Install as app is always in the main menu on the website; when the browser has no ready install prompt it shows the steps (Android: Chrome ⋮ → Install app).",
@@ -48173,6 +48176,40 @@ X.EL.quests = {
   };
 }
 
+/* ---- FF_layers.js ---- */
+/* 1.19.2 — popups above menus. The HUD is its own layer underneath every menu window, so anything placed in it — the
+   yes/no question (Salvage all, invites, trades), toasts ("Salvaged 12 items…", "Not enough shards") and the Dungeon
+   Finder box — was hidden behind an open inventory, shop or pause menu. They now live above the menus (below tooltips). */
+{
+  const css = document.createElement("style");
+  css.textContent = `#vf-ask{position:fixed!important;z-index:46!important}
+  body>#toasts{z-index:45!important}
+  body>#lfg-box{z-index:44!important}
+  body>#aggro-warn{z-index:43!important}`;
+  document.head.appendChild(css);
+  const LIFT = ["vf-ask", "toasts", "lfg-box", "aggro-warn"];
+  const hud = () => document.getElementById("hud");
+  const lift = () => {
+    for (const id of LIFT) {
+      const el = document.getElementById(id);
+      el && el.parentElement !== document.body && document.body.appendChild(el);
+    }
+  };
+  // toasts / Dungeon Finder box / aggro warning follow the HUD's visibility (photo mode, main menu); the question never hides
+  const follow = () => {
+    const h = hud();
+    if (!h) return;
+    const cs = getComputedStyle(h), hidden = cs.display === "none" || cs.visibility === "hidden" || +cs.opacity === 0;
+    for (const id of ["toasts", "lfg-box", "aggro-warn"]) {
+      const el = document.getElementById(id);
+      el && el.parentElement === document.body && (el.style.visibility = hidden ? "hidden" : "");
+    }
+  };
+  new MutationObserver(lift).observe(document.body, { childList: !0, subtree: !0 });
+  lift();
+  setInterval(follow, 250);
+}
+
 /* ---- FY_el_text.js ---- */
 /* 1.19.0 — Greek (ελληνικά): heroes, people, places, foes, deeds, help */
 X.EL = X.EL || {};
@@ -48683,6 +48720,7 @@ X.EL.ui = {
 };
 // exact one-off messages (toasts, banners, prompts)
 X.EL.msg = {
+  "Accept (Y)": "Αποδοχή (Y)", "Decline (N)": "Άρνηση (N)",
   "Not enough Soul Shards": "Δεν έχεις αρκετά Θραύσματα Ψυχής", "Not enough shards": "Δεν έχεις αρκετά θραύσματα", "Not enough materials": "Δεν έχεις αρκετά υλικά", "Not enough ingredients": "Δεν έχεις αρκετά υλικά",
   "Inventory full": "Η τσάντα είναι γεμάτη", "Your bag is full": "Η τσάντα σου είναι γεμάτη", "Inventory full! [I] to salvage items": "Η τσάντα γέμισε! [I] για διάλυση αντικειμένων", "Your stash is full": "Η αποθήκη σου είναι γεμάτη",
   "No target": "Κανένας στόχος", "Not while in danger": "Όχι όσο κινδυνεύεις", "Too steep to climb.": "Πολύ απότομο για σκαρφάλωμα.", "Only tanks can taunt": "Μόνο οι αμυντικοί προκαλούν", "No enemy to taunt in range": "Κανένας εχθρός για πρόκληση κοντά",
@@ -48876,6 +48914,9 @@ X.EL.msg = {
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.19.2"] && (X.CHANGELOG["1.19.2"] = [
+        "Τα αναδυόμενα δεν κρύβονται πια πίσω από ανοιχτά παράθυρα: η ερώτηση ναι/όχι (Διάλυση όλων, προσκλήσεις, εμπόριο), τα σύντομα μηνύματα στο κάτω μέρος της οθόνης και το πλαίσιο της Αναζήτησης Μπουντρουμιού φαίνονται πάντα πάνω από τα αντικείμενα, τα μαγαζιά και το μενού παύσης.",
+      ]);
       X.CHANGELOG && X.CHANGELOG["1.19.1"] && (X.CHANGELOG["1.19.1"] = [
         "Κινητά: τα χειριστήρια οθόνης δεν εξαφανίζονται πια μετά την Αλλαγή Ήρωα· η λίστα πλήκτρων υπολογιστή δεν σκεπάζει το κύριο μενού· η αρχική οθόνη χωράει σε όρθιο κινητό.",
         "Η Εγκατάσταση ως εφαρμογή υπάρχει πάντα στο κύριο μενού του ιστότοπου· όταν ο browser δεν έχει έτοιμη πρόταση εγκατάστασης δείχνει τα βήματα (Android: Chrome ⋮ → Εγκατάσταση εφαρμογής).",
