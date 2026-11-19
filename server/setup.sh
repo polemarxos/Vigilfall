@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Vigilfall Realm — one-time setup (and later updates) for an Ubuntu server, e.g. Oracle Cloud Always Free (Arm or x86).
 #   curl -fsSL https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/setup.sh | sudo bash
+# Without questions:  ... | sudo VF_DOMAIN=myrealm.duckdns.org VF_DUCKDNS_TOKEN=xxxx bash
 # Run it again any time to update the server code; your players and settings are kept.
 set -euo pipefail
 
@@ -95,11 +96,11 @@ say "Address of your Realm"
 CUR=""; [ -f /etc/caddy/Caddyfile ] && CUR=$(grep -oE '^[a-z0-9.-]+\.[a-z]{2,}' /etc/caddy/Caddyfile | head -1 || true)
 echo "Players need a name for your server so the game can use a secure connection (https/wss)."
 echo "Free option: make a subdomain at https://www.duckdns.org (sign in, type a name, press 'add domain')."
-DOMAIN=$(ask "Domain [${CUR:-myrealm.duckdns.org}]: " "$CUR")
+DOMAIN=${VF_DOMAIN:-$(ask "Domain [${CUR:-myrealm.duckdns.org}]: " "$CUR")}
 DOMAIN=$(echo "$DOMAIN" | sed -E 's#^https?://##; s#/.*##' | tr 'A-Z' 'a-z')
 [ -n "$DOMAIN" ] || { echo "A domain is required."; exit 1; }
 if [[ "$DOMAIN" == *.duckdns.org ]]; then
-  TOKEN=$(ask "DuckDNS token (top of the duckdns.org page; Enter to skip): " "")
+  TOKEN=${VF_DUCKDNS_TOKEN:-$(ask "DuckDNS token (top of the duckdns.org page; Enter to skip): " "")}
   if [ -n "$TOKEN" ]; then
     SUB=${DOMAIN%.duckdns.org}
     cat > /etc/cron.d/duckdns <<EOF
