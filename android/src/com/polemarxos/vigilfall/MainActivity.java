@@ -40,8 +40,8 @@ import java.util.Map;
 public class MainActivity extends Activity {
     static final String HOST = "polemarxos.github.io";
     static final String BASE = "https://" + HOST + "/Vigilfall/";
-    // new versions come from the Realm server (the GitHub repository is private); the page keeps its old address so saves stay
-    static final String UPD = "https://vigilfall.duckdns.org/";
+    // new versions come from the GitHub page (the user keeps playing from the GitHub link)
+    static final String UPD = BASE;
     WebView web;
     PermissionRequest pending;
     long lastBack;
