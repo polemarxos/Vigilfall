@@ -84,6 +84,14 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
+// the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
+const PAGE_VERSION = "1.2";
+const APP_LATEST = "1.2";
+const APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
+const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
+const older = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
+let pendingReload = false;
+window.VFA_updated = () => { if (!stack.length && (tab === "dash" || !$("#app") || $("#app").classList.contains("hide"))) location.reload(); else { pendingReload = true; toast("Admin update downloaded — it applies on the Dashboard"); } };
 let S = { base: store.get("vfa_srv") || (!IN_APP && location.protocol.startsWith("http") ? location.origin : ""), pw: store.get("vfa_pw") || "" };
 
 async function call(path, method = "GET", body) {
@@ -112,6 +120,7 @@ $("#hout").onclick = () => { if (confirm("Sign out of this server?")) { store.de
 // ---------------- navigation ----------------
 let tab = "dash", timer = null, stack = [];
 function go(t) {
+  if (pendingReload && t === "dash") return location.reload();
   tab = t; stack = [];
   document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("sel", b.dataset.t === t));
   render();
@@ -140,7 +149,7 @@ async function dash() {
     $("#htitle").textContent = s.name; $("#hdot").className = "dot " + (s.hostReady ? "on" : "off");
     const w = s.world || {};
     const memUsed = s.mem.total - s.mem.free;
-    M().innerHTML = `
+    M().innerHTML = `${IN_APP && APP_VER && older(APP_VER, APP_LATEST) ? `<div class="card" style="border-color:var(--gold)"><b>New Vigilfall Admin app ${APP_LATEST}</b><p class="muted">You have ${APP_VER}. Install the new version once (it keeps your login).</p><a class="b p" style="display:inline-block;text-decoration:none" href="${APP_URL}">Download</a></div>` : ""}
       <div class="card"><h2>World</h2><div class="grid">
         <div class="stat"><div class="v" style="color:${s.hostReady ? "var(--good)" : "var(--bad)"}">${s.hostReady ? "Online" : s.hostUp ? "Starting…" : "Down"}</div><div class="k">${s.hostReady ? "running " + dur((Date.now() - s.hostSince) / 1000) : "world host"}</div></div>
         <div class="stat"><div class="v">${s.online.length}<span class="muted"> / ${s.maxPlayers}</span></div><div class="k">players online</div></div>
@@ -313,7 +322,7 @@ async function server() {
       <div class="row"><button class="b" id="supd">Check for update now</button><button class="b d" id="srst">Restart world now</button></div></div>
     <div class="card"><h2>Admin password</h2><input id="spw" type="password" placeholder="new password (8+ characters)"><div class="row" style="margin-top:8px"><button class="b" id="spws">Change password</button></div></div>
     <div class="card"><h2>Server log</h2><div class="row" style="margin-bottom:8px"><button class="b s" id="slog">Refresh</button></div><div class="log" id="log">…</div></div>
-    <p class="muted" style="text-align:center">Server up ${dur(s.uptime)} · ${esc(S.base.replace(/^https?:\/\//, ""))}</p>`;
+    <p class="muted" style="text-align:center">Server up ${dur(s.uptime)} · ${esc(S.base.replace(/^https?:\/\//, ""))}<br>Admin ${IN_APP ? "app " + esc(APP_VER) + " · " : ""}page ${PAGE_VERSION} · updates itself</p>`;
   $("#ssave").onclick = async () => { try { await call("config", "POST", { name: $("#sname").value, maxPlayers: +$("#smax").value, autoUpdate: $("#sauto").checked, updateMinutes: +$("#smin").value }); toast("Saved"); server(); } catch (e) { fail(e); } };
   M().querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => ($("#smin").value = b.dataset.m)));
   $("#supd").onclick = async () => { toast("Checking…"); try { const r = await call("update", "POST"); toast(r.changed ? `Downloaded ${r.ver} — world restarts in 60 s` : r.ok ? `Already up to date (${r.ver})` : "Update failed: " + r.why); } catch (e) { fail(e); } };
