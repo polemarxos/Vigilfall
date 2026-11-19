@@ -94,7 +94,8 @@ if [ "$MEM_MB" -lt 6000 ] && ! swapon --show | grep -q .; then
 fi
 
 say "Address of your Realm"
-CUR=""; [ -f /etc/caddy/Caddyfile ] && CUR=$(grep -oE '^[a-z0-9.-]+\.[a-z]{2,}' /etc/caddy/Caddyfile | head -1 || true)
+# only our own site file is read and written: other sites on this server (e.g. another game) are never touched
+CUR=""; [ -f /etc/caddy/vigilfall.caddy ] && CUR=$(grep -oE '^[a-z0-9.-]+\.[a-z]{2,}' /etc/caddy/vigilfall.caddy | head -1 || true)
 echo "Players need a name for your server so the game can use a secure connection (https/wss)."
 echo "Free option: make a subdomain at https://www.duckdns.org (sign in, type a name, press 'add domain')."
 DOMAIN=${VF_DOMAIN:-$(ask "Domain [${CUR:-myrealm.duckdns.org}]: " "$CUR")}
@@ -104,19 +105,39 @@ if [[ "$DOMAIN" == *.duckdns.org ]]; then
   TOKEN=${VF_DUCKDNS_TOKEN:-$(ask "DuckDNS token (top of the duckdns.org page; Enter to skip): " "")}
   if [ -n "$TOKEN" ]; then
     SUB=${DOMAIN%.duckdns.org}
-    cat > /etc/cron.d/duckdns <<EOF
+    cat > /etc/cron.d/vigilfall-duckdns <<EOF
 */5 * * * * root curl -fsS -m 20 "https://www.duckdns.org/update?domains=$SUB&token=$TOKEN&ip=" >/dev/null 2>&1
 EOF
     echo "Updating DuckDNS..."; curl -fsS -m 20 "https://www.duckdns.org/update?domains=$SUB&token=$TOKEN&ip=" && echo " (DuckDNS updated)" || echo "DuckDNS did not answer (the 5-minute updater will retry)"
   fi
 fi
 
-cat > /etc/caddy/Caddyfile <<EOF
+# a free local port for the Realm (8787 unless something else already uses it)
+PORT=""
+[ -f "$APP/data/config.json" ] && PORT=$(node -p "require('$APP/data/config.json').port||''" 2>/dev/null || true)
+if [ -z "$PORT" ]; then
+  PORT=8787
+  while ss -ltn "sport = :$PORT" | grep -q LISTEN; do PORT=$((PORT+1)); done
+  echo "{\"port\": $PORT}" > "$APP/data/config.json"; chown vigilfall:vigilfall "$APP/data/config.json"
+fi
+echo "Realm port: $PORT"
+
+cat > /etc/caddy/vigilfall.caddy <<EOF
 $DOMAIN {
 	encode gzip
-	reverse_proxy 127.0.0.1:8787
+	reverse_proxy 127.0.0.1:$PORT
 }
 EOF
+touch /etc/caddy/Caddyfile
+cp /etc/caddy/Caddyfile "/etc/caddy/Caddyfile.bak-$(date +%Y%m%d-%H%M%S)"
+# remove a "$DOMAIN { ... }" block that an older version of this script wrote into the main file; keep everything else
+awk -v d="$DOMAIN {" 'BEGIN{skip=0} { if(!skip && $0==d){skip=1; depth=1; next} if(skip){ n=gsub(/[{]/,"{"); m=gsub(/[}]/,"}"); depth+=n-m; if(depth<=0){skip=0}; next } print }' /etc/caddy/Caddyfile > /tmp/Caddyfile.new && cat /tmp/Caddyfile.new > /etc/caddy/Caddyfile
+grep -q '^import /etc/caddy/vigilfall.caddy' /etc/caddy/Caddyfile || printf '\nimport /etc/caddy/vigilfall.caddy\n' >> /etc/caddy/Caddyfile
+if ! caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+  echo "The web server settings are not valid (your previous file is kept as /etc/caddy/Caddyfile.bak-*):"
+  caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile || true
+  exit 1
+fi
 
 say "Firewall (ports 80 and 443)"
 for p in 80 443; do
@@ -148,7 +169,8 @@ EOF
 systemctl daemon-reload
 systemctl enable $SVC >/dev/null
 systemctl restart $SVC
-systemctl restart caddy
+systemctl enable caddy >/dev/null 2>&1 || true
+systemctl reload caddy 2>/dev/null || systemctl restart caddy
 
 for i in $(seq 1 20); do [ -f "$APP/data/config.json" ] && break; sleep 1; done
 PW=$(node -p "require('$APP/data/config.json').adminPassword" 2>/dev/null || echo "(see $APP/data/config.json)")
