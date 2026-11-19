@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.20.3</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.21.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,14 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.20.3";
+  X.VERSION = "1.21.0";
   X.CHANGELOG = {
+    "1.21.0": [
+      "Android app 1.1: the game is inside the app — it opens in seconds instead of downloading 10 MB each time, plays solo without internet, and quietly downloads new versions in the background (they start the next time you open it). Your saves stay where they were.",
+      "Graphics are picked for your phone on the first start (strong, mid-range or older phone, from its graphics chip). Change them any time in Settings. PCs are not affected.",
+      "App polish: a splash screen while it starts, no accidental zoom, text selection or long-press menus, and the screen may sleep when you are in menus or paused.",
+      "Controller support on PC and phones (Xbox, PlayStation, Bluetooth pads): left stick moves, right stick looks, RT attacks, LT blocks, A jump, B dodge, X/Y/RB skills, LB interact, Menu pause; in menus a cursor follows the stick (A click, B back). Full layout in Help.",
+    ],
     "1.20.3": [
       "Skills that measured near zero now do real work: Sanguine Pact erupts for damage and heals the warden 30% before its buff; Tombstone Wall stuns and hurts enemies where it rises; Soothing Current heals 170 (was 70) and cuts damage taken by 15%; Ember Step burns enemies where you leave and land and its fire trail hurts more; Shadowstep gives +40% damage for 3 s.",
       "Talents that did nothing were replaced: tanks' Deep Well (resource regeneration — Rage never regenerates) is now Fury, +10% Rage from every hit per rank; Unshaken is now −4% damage taken from bosses per rank; Apothecary's Friend gives +30% draught healing and every draught refills 15% resource; Light Feet −20% dodge recharge per rank.",
@@ -47032,7 +47038,10 @@ body.pause-open #touch-ui,body.pause-open #tleft,body.pause-open #tdeco{display:
     meta("apple-mobile-web-app-title", "Vigilfall");
     PWA.installed = matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches || navigator.standalone === !0;
     const secure = location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1";
-    if (secure && "serviceWorker" in navigator) {
+    // inside the Android app the game is served from the app's own copy (faster, works offline): no service worker there
+    const inApp = /VigilfallApp/.test(navigator.userAgent);
+    inApp && navigator.serviceWorker?.getRegistrations?.().then((rs) => rs.forEach((r) => r.unregister())).catch(() => {});
+    if (secure && !inApp && "serviceWorker" in navigator) {
       navigator.serviceWorker
         .register("sw.js")
         .then((reg) => {
@@ -48803,6 +48812,208 @@ X.EL.quests = {
   set("as_step", "Teleport behind the enemy you aim at. +40% damage for 3s.");
 }
 
+/* ---- FM_gamepad.js ---- */
+/* 1.21.0 — controller support (Xbox / PlayStation / most Bluetooth pads, through the browser's Gamepad API), on PC
+   and phones. In the world: left stick moves (click it to sprint), right stick looks, RT attacks, LT blocks / secondary,
+   A jump, B dodge, X / Y / RB skills Q / E / R, LB interact, R3 taunt, d-pad potion / mount / bag / quests,
+   View = map, Menu = pause. In menus a cursor appears: left stick moves it, A clicks, B goes back, right stick scrolls.
+   The phone's touch buttons hide while the controller is in use and come back on the next touch. */
+{
+  const AP = bE.prototype;
+  const app = () => window.__app;
+  const DZ = 0.18;
+  const st = { prev: [], move: {}, sprint: !1, active: !1, cursor: null, cx: innerWidth / 2, cy: innerHeight / 2, last: 0, hint: !1 };
+  X.pad = st;
+  const key = (code, down) => {
+    try { window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { code, key: code === "Escape" ? "Escape" : code.replace(/^Key/, "").toLowerCase(), bubbles: !0 })); } catch (e) {}
+  };
+  const menuOpen = () => {
+    const a = app();
+    if (!a) return !0;
+    if (!a.game?.running) return !0;
+    return !!(a.ui?.panelOpen || a.paused || document.querySelector("#pause.on") || document.querySelector("#vf-ask.on"));
+  };
+  const cursorEl = () => {
+    if (st.cursor) return st.cursor;
+    const c = document.createElement("div");
+    c.id = "gp-cursor";
+    document.body.appendChild(c);
+    const css = document.createElement("style");
+    css.textContent = `#gp-cursor{position:fixed;z-index:80;width:22px;height:22px;margin:-11px 0 0 -11px;border:2px solid #ffd070;border-radius:50%;box-shadow:0 0 10px #ffd070,inset 0 0 6px #ffd07088;pointer-events:none;display:none}
+      body.gamepad #touch-ui,body.gamepad #tleft,body.gamepad #tdeco{display:none!important}
+      .gp-hover{outline:2px solid #ffd070!important;outline-offset:2px}`;
+    document.head.appendChild(css);
+    return (st.cursor = c);
+  };
+  let hoverEl = null;
+  const hover = (el) => {
+    if (hoverEl === el) return;
+    hoverEl?.classList?.remove("gp-hover");
+    hoverEl = el && el.closest?.("button,[data-tal],[data-i],[data-sw],[data-tm],.cell,.hcard,.tab,a,label,select,input,.recipe,.shop-i,.gslot,.cos");
+    hoverEl?.classList?.add("gp-hover");
+    if (hoverEl) try { hoverEl.dispatchEvent(new MouseEvent("mouseover", { bubbles: !0 })); } catch (e) {}
+  };
+  const clickAt = (x, y) => {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return;
+    const t = el.closest?.("button,[data-tal],[data-i],[data-sw],[data-tm],.cell,.hcard,.tab,a,label,select,input,.recipe,.shop-i,.gslot,.cos") || el;
+    try {
+      for (const type of ["mousedown", "mouseup"]) t.dispatchEvent(new MouseEvent(type, { bubbles: !0, clientX: x, clientY: y, button: 0 }));
+      t.click();
+      if (t.tagName === "INPUT" && t.type === "checkbox") t.dispatchEvent(new Event("input", { bubbles: !0 }));
+    } catch (e) {}
+  };
+  const scrollAt = (x, y, dy) => {
+    let el = document.elementFromPoint(x, y);
+    while (el && el !== document.body) {
+      const cs = getComputedStyle(el);
+      if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 2) { el.scrollTop += dy; return; }
+      el = el.parentElement;
+    }
+    document.getElementById("modal")?.scrollBy?.(0, dy);
+  };
+  const ax = (v) => (Math.abs(v) < DZ ? 0 : Math.sign(v) * ((Math.abs(v) - DZ) / (1 - DZ)));
+  const MAP = { 0: "Space", 1: "KeyC", 2: "KeyQ", 3: "KeyE", 5: "KeyR", 4: "KeyF", 11: "KeyT", 12: "KeyH", 13: "KeyZ", 14: "KeyI", 15: "KeyJ", 8: "KeyM" };
+  const tick = (t) => {
+    requestAnimationFrame(tick);
+    const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : [];
+    const p = pads.find((q) => q.connected && q.mapping === "standard") || pads[0];
+    if (!p) { st.prev = []; return; }
+    const dt = Math.min(0.05, (t - (st.last || t)) / 1000 || 0.016);
+    st.last = t;
+    const b = p.buttons.map((x) => x.pressed || x.value > 0.4), was = st.prev;
+    const pressed = (i) => b[i] && !was[i], released = (i) => !b[i] && was[i];
+    const lx = ax(p.axes[0] || 0), ly = ax(p.axes[1] || 0), rx = ax(p.axes[2] || 0), ry = ax(p.axes[3] || 0);
+    const any = b.some(Boolean) || lx || ly || rx || ry;
+    if (any && !st.active) { st.active = !0; document.body.classList.add("gamepad"); }
+    if (any && !st.hint) {
+      st.hint = !0;
+      app()?.game?.toast?.("Controller connected — RT attack · LT block · A jump · B dodge · X Y RB skills · LB interact · Menu pause", "#ffd070");
+    }
+    const a = app(), g = a?.game, inMenu = menuOpen();
+    const c = cursorEl();
+    if (inMenu) {
+      // release anything held in the world
+      for (const k of ["KeyW", "KeyA", "KeyS", "KeyD"]) st.move[k] && (key(k, !1), (st.move[k] = !1));
+      st.sprint && (key("ShiftLeft", !1), (st.sprint = !1));
+      if (lx || ly) {
+        st.cx = Math.max(4, Math.min(innerWidth - 4, st.cx + lx * 900 * dt));
+        st.cy = Math.max(4, Math.min(innerHeight - 4, st.cy + ly * 900 * dt));
+      }
+      c.style.display = st.active ? "block" : "none";
+      c.style.left = st.cx + "px";
+      c.style.top = st.cy + "px";
+      (lx || ly) && hover(document.elementFromPoint(st.cx, st.cy));
+      ry && scrollAt(st.cx, st.cy, ry * 900 * dt);
+      if (pressed(0)) clickAt(st.cx, st.cy);
+      if (pressed(1) || pressed(9)) {
+        if (a?.ui?.panelOpen) a.ui.closeModal();
+        else if (document.querySelector("#vf-ask.on")) X.social?.answer?.(!1);
+        else if (a?.paused && g?.running) a.resume?.();
+        else key("Escape", !0), key("Escape", !1);
+      }
+      // d-pad / shoulder shortcuts still open panels
+      for (const i of [14, 15, 8]) pressed(i) && (key(MAP[i], !0), key(MAP[i], !1));
+    } else if (g?.running) {
+      c.style.display = "none";
+      hover(null);
+      // movement
+      const want = { KeyW: ly < -0.35, KeyS: ly > 0.35, KeyA: lx < -0.35, KeyD: lx > 0.35 };
+      for (const k in want) if (want[k] !== !!st.move[k]) { key(k, want[k]); st.move[k] = want[k]; }
+      if (pressed(10)) { st.sprint = !st.sprint; key("ShiftLeft", st.sprint); }
+      if (st.sprint && !lx && !ly) { st.sprint = !1; key("ShiftLeft", !1); }
+      // look
+      if (rx || ry) {
+        const sens = (a.settings?.sens || 1) * 760;
+        g.onLook(rx * Math.abs(rx) * sens * dt * 1.4, ry * Math.abs(ry) * sens * dt);
+      }
+      // triggers: attack / block
+      if (pressed(7)) g.onMouse(0, !0);
+      if (released(7)) g.onMouse(0, !1);
+      if (pressed(6)) g.onMouse(2, !0);
+      if (released(6)) g.onMouse(2, !1);
+      for (const i in MAP) { if (pressed(+i)) key(MAP[i], !0); if (released(+i)) key(MAP[i], !1); }
+      if (pressed(9)) { a.paused = !0; a.ui.pause(!0); }
+    }
+    st.prev = b;
+  };
+  requestAnimationFrame(tick);
+  addEventListener("gamepadconnected", () => { st.hint = !1; });
+  addEventListener("touchstart", () => { if (st.active) { st.active = !1; document.body.classList.remove("gamepad"); st.cursor && (st.cursor.style.display = "none"); } }, { passive: !0 });
+  addEventListener("mousemove", (e) => { if (st.active && Math.abs(e.movementX) + Math.abs(e.movementY) > 3 && menuOpen()) { st.cursor && (st.cursor.style.display = "none"); } }, { passive: !0 });
+  X.HELP?.systems?.push(["Controller", "Plug in or pair an Xbox, PlayStation or Bluetooth controller. Left stick moves (click to sprint), right stick looks, RT attacks, LT blocks or uses your secondary, A jumps, B dodges, X / Y / RB cast Q / E / R, LB talks and gathers, R3 taunts, d-pad: up potion, down mount, left bag, right quests; View opens the map, Menu pauses. In menus a gold cursor follows the left stick: A clicks, B goes back, the right stick scrolls."]);
+}
+
+/* ---- FN_app.js ---- */
+/* 1.21.0 — phones and the Android app:
+   - automatic graphics per phone: on the first start (or while the old phone defaults are untouched) the GPU is read
+     and settings are picked for it (strong / mid-range / older phones). PCs are not touched;
+   - inside the Android app the screen may sleep again whenever you are not actually playing (menus, pause, background);
+   - no accidental zoom, text selection or long-press menus on phones. */
+{
+  const touch = () => X.isTouch || matchMedia("(pointer:coarse)").matches;
+  const AP = bE.prototype;
+  const tierOf = (gpu, mem) => {
+    const s = gpu || "";
+    if (/Adreno \(TM\) ([2-5]\d\d)\b|Mali-(T\d|G31|G51|G52|4\d0)|PowerVR|SGX|Vivante|Mali-G57 MC1\b/i.test(s) || (mem && mem <= 3)) return "low";
+    if (/Adreno \(TM\) (7\d\d|8\d\d|6[6-9]\d)|Mali-G(7[1-9]|7\d\d|6[1-9]\d|9\d\d)|Immortalis|Xclipse|Apple GPU|Apple M\d/i.test(s)) return "high";
+    return "mid";
+  };
+  X.phoneTier = tierOf;
+  const PRESET = {
+    high: { quality: "medium", renderScale: 0.8, view: 1.5, fpsCap: 60, ao: !1, bloom: !1 },
+    mid: { quality: "low", renderScale: 0.65, view: 1, fpsCap: 60, ao: !1, bloom: !1 },
+    low: { quality: "low", renderScale: 0.5, view: 1, fpsCap: 30, ao: !1, bloom: !1 },
+  };
+  const bt0 = AP.boot;
+  AP.boot = function (...a) {
+    try {
+      const S = this.settings;
+      const untouched = !S.mobileInit || (S.quality === "low" && S.renderScale === 0.6 && (S.view ?? 1) === 1);
+      if (touch() && !S.autoQ && untouched) {
+        let gpu = "";
+        try {
+          const gl = this.renderer.getContext(), ext = gl.getExtension("WEBGL_debug_renderer_info");
+          gpu = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER);
+        } catch (e) {}
+        const tier = tierOf(gpu, navigator.deviceMemory);
+        Object.assign(S, { mobileInit: !0, grain: !1, fov: S.fov || 72, fps: !1 }, PRESET[tier], { autoQ: tier, gpu: String(gpu).slice(0, 60) });
+        try { localStorage.setItem(Md, JSON.stringify(S)); } catch (e) {}
+        X._autoQNote = tier;
+      }
+    } catch (e) {}
+    return bt0.apply(this, a);
+  };
+  const GP = SC.prototype, st0 = GP.start;
+  GP.start = function (...a) {
+    const r = st0.apply(this, a);
+    if (X._autoQNote) {
+      const t = X._autoQNote;
+      X._autoQNote = null;
+      setTimeout(() => this.toast?.(`Graphics set for your phone (${{ high: "strong", mid: "mid-range", low: "older" }[t]} — you can change it in Settings)`, "#ffd070"), 4000);
+    }
+    return r;
+  };
+  // Android app: keep the screen awake only while playing
+  if (window.VigilfallApp?.keepAwake) {
+    setInterval(() => {
+      try {
+        const app = window.__app, g = app?.game;
+        window.VigilfallApp.keepAwake(!!(g?.running && !app.paused && !document.hidden));
+      } catch (e) {}
+    }, 2000);
+  }
+  // phones: no zoom, no selection, no long-press callouts on the game
+  if (touch()) {
+    const css = document.createElement("style");
+    css.textContent = `html,body{touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+      input,textarea,select{-webkit-user-select:text;user-select:text}`;
+    document.head.appendChild(css);
+    document.addEventListener("contextmenu", (e) => e.target.closest?.("input,textarea") || e.preventDefault());
+    document.addEventListener("gesturestart", (e) => e.preventDefault());
+  }
+}
+
 /* ---- FY_el_items.js ---- */
 /* 1.20.0 — Greek (ελληνικά): items and everything you own. Item names are stored in English in saves (and travel between
    players), so they are composed in Greek when shown: [adjectives] noun [of-phrase], with the adjectives agreeing with the
@@ -49245,6 +49456,7 @@ X.EL.help = {
   "Reforge, temper, Grandmaster": ["Αναχύτευση, βαφή, Αρχιμάστορας", "Σε αμόνι (κοντά σε σιδερά ή στο Αρχοντικό σου) το βιβλίο Επαγγελμάτων (B → Σιδηρουργία) σου επιτρέπει να αλλάξεις ένα χαρακτηριστικό οποιουδήποτε αντικειμένου σε άλλο με δεξιότητα 200, και να βάψεις ένα αντικείμενο (+2 επίπεδο, τρεις φορές) με 250 και Οψιδιανούς Σβώλους από μπουντρούμια. Από 275, οι συνταγές Αρχιμάστορα κάνουν υλικά Τεχνίτη και Αβυσσαλέους Πυρήνες (επιδρομές, Μυθικό+5, διαλυμένα θρυλικά) θρυλικό εξοπλισμό επιπέδου 60 και τις ισχυρότερες μαγείες. Η Ντουλάπα αποθηκεύει τρία σύνολα ανά ήρωα."],
   "Install as an app": ["Εγκατάσταση ως εφαρμογή", "Όταν το Vigilfall ανοίγει από ιστότοπο (https), το κύριο μενού προσφέρει Εγκατάσταση ως εφαρμογή (Chrome, Edge, Android). Σε iPhone και iPad χρησιμοποίησε στο Safari Κοινοποίηση → Προσθήκη στην οθόνη Αφετηρίας. Η εφαρμογή ανοίγει σε πλήρη οθόνη, κρατά το εικονίδιό της και ενημερώνεται μόνη της στην επόμενη εκκίνηση."],
   "Enemy level": ["Επίπεδο εχθρού", "Ένας εχθρός πάνω από το επίπεδό σου χτυπά πιο δυνατά και δέχεται λιγότερη ζημιά — επικίνδυνος στο +2, θανάσιμος στο +4, αδύνατος πιο πάνω. Το χρώμα του επιπέδου στο πλαίσιο στόχου σε προειδοποιεί· ☠ σημαίνει 5 ή περισσότερα επίπεδα πάνω από σένα."],
+  Controller: ["Χειριστήριο", "Σύνδεσε ή ζεύξε ένα χειριστήριο Xbox, PlayStation ή Bluetooth. Αριστερός μοχλός: κίνηση (πάτημα για τρέξιμο), δεξιός μοχλός: κοίταγμα, RT επίθεση, LT άμυνα ή δεύτερη επίθεση, A άλμα, B τούμπα, X / Y / RB δεξιότητες Q / E / R, LB ομιλία και συλλογή, R3 πρόκληση, σταυρός: πάνω φίλτρο, κάτω άλογο, αριστερά τσάντα, δεξιά αποστολές· View ο χάρτης, Menu παύση. Στα μενού ένας χρυσός κέρσορας ακολουθεί τον αριστερό μοχλό: A κλικ, B πίσω, ο δεξιός μοχλός κυλά."],
   Language: ["Γλώσσα", "Ρυθμίσεις → Γλώσσα αλλάζει ανάμεσα σε Αγγλικά και Ελληνικά. Τα ονόματα αντικειμένων, διακοσμητικών και υλικών μένουν στα αγγλικά."],
 };
 X.EL.tut = [
@@ -49745,6 +49957,12 @@ X.EL.msg = {
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.21.0"] && (X.CHANGELOG["1.21.0"] = [
+        "Εφαρμογή Android 1.1: το παιχνίδι είναι μέσα στην εφαρμογή — ανοίγει σε δευτερόλεπτα αντί να κατεβάζει 10 MB κάθε φορά, παίζεται μόνος χωρίς ίντερνετ και κατεβάζει αθόρυβα τις νέες εκδόσεις (ξεκινούν την επόμενη φορά που θα το ανοίξεις). Οι αποθηκεύσεις σου μένουν όπως ήταν.",
+        "Τα γραφικά επιλέγονται για το κινητό σου στην πρώτη εκκίνηση (ισχυρό, μεσαίο ή παλαιότερο κινητό, από το τσιπ γραφικών του). Άλλαξέ τα όποτε θέλεις στις Ρυθμίσεις. Οι υπολογιστές δεν επηρεάζονται.",
+        "Βελτιώσεις εφαρμογής: οθόνη εκκίνησης, χωρίς κατά λάθος ζουμ, επιλογή κειμένου ή μενού παρατεταμένου πατήματος, και η οθόνη μπορεί να σβήσει όταν είσαι σε μενού ή σε παύση.",
+        "Υποστήριξη χειριστηρίου σε υπολογιστή και κινητό (Xbox, PlayStation, Bluetooth): αριστερός μοχλός κίνηση, δεξιός κοίταγμα, RT επίθεση, LT άμυνα, A άλμα, B τούμπα, X/Y/RB δεξιότητες, LB αλληλεπίδραση, Menu παύση· στα μενού ένας κέρσορας ακολουθεί τον μοχλό (A κλικ, B πίσω). Όλη η διάταξη στη Βοήθεια.",
+      ]);
       X.CHANGELOG && X.CHANGELOG["1.20.3"] && (X.CHANGELOG["1.20.3"] = [
         "Δεξιότητες που μετρούσαν σχεδόν μηδέν κάνουν πλέον πραγματική δουλειά: το Συμβόλαιο Αίματος εκρήγνυται με ζημιά και θεραπεύει τον φύλακα 30% πριν την ενίσχυσή του· το Τείχος από Ταφόπλακες ζαλίζει και πληγώνει όσους βρίσκονται εκεί που υψώνεται· το Γαλήνιο Ρεύμα θεραπεύει 170 (ήταν 70) και μειώνει τη ζημιά κατά 15%· το Βήμα της Θράκας καίει τους εχθρούς εκεί που φεύγεις κι εκεί που φτάνεις και το ίχνος φωτιάς πονάει περισσότερο· το Βήμα Σκιάς δίνει +40% ζημιά για 3s.",
         "Ταλέντα που δεν έκαναν τίποτα αντικαταστάθηκαν: το Βαθύ Πηγάδι των αμυντικών (αναγέννηση πόρου — η Οργή δεν αναγεννάται) είναι πλέον Μανία, +10% Οργή από κάθε χτύπημα ανά βαθμό· ο Ακλόνητος δίνει −4% ζημιά από αρχηγούς ανά βαθμό· ο Φίλος του Φαρμακοποιού δίνει +30% θεραπεία από φίλτρα και κάθε φίλτρο επαναφέρει 15% πόρο· τα Ελαφριά Πόδια −20% επαναφόρτιση τούμπας ανά βαθμό.",
@@ -49881,6 +50099,9 @@ X.EL.msg = {
       [/^You get (\d+) Soul Shards · equipped and locked items are kept · \[Y\] yes · \[N\] no$/, (m, a) => `Παίρνεις ${a} Θραύσματα Ψυχής · τα φορεμένα και κλειδωμένα μένουν · [Y] ναι · [N] όχι`],
       [/^(.+) set \((\d)\/4\)$/, (m, a, n) => `Σετ ${EL.SETS?.[a] || a} (${n}/4)`],
       [/^(\d+) talent points? to spend — (press N|☰ → Talents)$/, (m, n, w) => `${n} ${n > 1 ? "πόντοι ταλέντων" : "πόντος ταλέντου"} για ξόδεμα — ${w === "press N" ? "πάτα N" : "☰ → Ταλέντα"}`],
+      [/^Graphics set for your phone \((strong|mid-range|older) — you can change it in Settings\)$/, (m, t) => `Τα γραφικά ρυθμίστηκαν για το κινητό σου (${{ strong: "ισχυρό", "mid-range": "μεσαίο", older: "παλαιότερο" }[t]} — μπορείς να τα αλλάξεις στις Ρυθμίσεις)`],
+      [/^A new version of Vigilfall is ready — it starts next time you open the app$/, () => "Μια νέα έκδοση του Vigilfall είναι έτοιμη — ξεκινά την επόμενη φορά που θα ανοίξεις την εφαρμογή"],
+      [/^Controller connected — RT attack · LT block · A jump · B dodge · X Y RB skills · LB interact · Menu pause$/, () => "Χειριστήριο συνδέθηκε — RT επίθεση · LT άμυνα · A άλμα · B τούμπα · X Y RB δεξιότητες · LB αλληλεπίδραση · Menu παύση"],
       [/^Level (\d+)$/, (m, n) => lvl(n)],
       [/^LEVEL (\d+)$/, (m, n) => `ΕΠΙΠΕΔΟ ${n}`],
       [/^Lv (\d+)$/, (m, n) => `Επ. ${n}`],
