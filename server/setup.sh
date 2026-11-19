@@ -105,9 +105,9 @@ if [[ "$DOMAIN" == *.duckdns.org ]]; then
   if [ -n "$TOKEN" ]; then
     SUB=${DOMAIN%.duckdns.org}
     cat > /etc/cron.d/duckdns <<EOF
-*/5 * * * * root curl -fsS "https://www.duckdns.org/update?domains=$SUB&token=$TOKEN&ip=" >/dev/null 2>&1
+*/5 * * * * root curl -fsS -m 20 "https://www.duckdns.org/update?domains=$SUB&token=$TOKEN&ip=" >/dev/null 2>&1
 EOF
-    curl -fsS "https://www.duckdns.org/update?domains=$SUB&token=$TOKEN&ip=" && echo " (DuckDNS updated)"
+    echo "Updating DuckDNS..."; curl -fsS -m 20 "https://www.duckdns.org/update?domains=$SUB&token=$TOKEN&ip=" && echo " (DuckDNS updated)" || echo "DuckDNS did not answer (the 5-minute updater will retry)"
   fi
 fi
 
