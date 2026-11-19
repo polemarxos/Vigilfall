@@ -92,7 +92,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.9";
+const PAGE_VERSION = "1.10";
 const APP_LATEST = "1.7";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
@@ -557,7 +557,8 @@ async function fullBackups() {
     <div class="card"><h2>Server backups</h2><p class="muted">A server backup holds every player's save and save backups plus the Realm settings (admin password included). Use it to undo mistakes or to move to a new server: download it, then upload and restore it there.</p>
       <div class="row"><button class="b p" id="fbnow">Back up now</button><button class="b" id="fbup">Upload a backup…</button><input id="fbfile" type="file" accept=".tgz,.gz,application/gzip" class="hide"></div></div>
     <div class="card"><h2>Automatic backups</h2>
-      <div class="row" style="gap:10px"><div style="flex:1"><label>Every (hours, 0 = off)</label><input id="fbh" type="number" min="0" max="168" value="${r.autoBackupHours}"></div><div style="flex:1"><label>Keep the last</label><input id="fbk" type="number" min="1" max="100" value="${r.autoBackupKeep}"></div></div>
+      <p class="muted">${r.autoBackupHours > 0 ? `<b>Next automatic backup ${r.nextAutoBackup ? "in " + dur((r.nextAutoBackup - Date.now()) / 1000) : "in about " + r.autoBackupHours + " h"}</b>${g?.repo && g?.hasToken && g?.auto ? " — it is also copied to GitHub right after." : "."}` : "<b>Automatic backups are off.</b>"} Change how often here; the GitHub copy follows the same schedule.</p>
+      <div class="row" style="gap:10px"><div style="flex:1"><label>Back up every (hours, 0 = off)</label><input id="fbh" type="number" min="0" max="168" value="${r.autoBackupHours}"></div><div style="flex:1"><label>Keep the last</label><input id="fbk" type="number" min="1" max="100" value="${r.autoBackupKeep}"></div></div>
       <p class="muted">Automatic backups only replace older automatic ones. Manual and uploaded backups stay until you delete them.${r.lastAutoBackup ? " Last automatic backup " + ago(r.lastAutoBackup) + "." : ""}</p>
       <button class="b" id="fbsave">Save</button></div>
     ${g ? `<div class="card"><h2>Copies on GitHub</h2>

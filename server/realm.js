@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.5.0";
+const SERVER_VERSION = "1.5.1";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -443,11 +443,19 @@ const ghAuto = (file) => {
     log("GitHub copy failed", e.message);
   });
 };
-let backupTimer = null;
+let backupTimer = null, nextAutoBackup = 0;
 const scheduleBackups = () => {
   clearInterval(backupTimer);
   const h = +cfg.autoBackupHours || 0;
-  if (h > 0) backupTimer = setInterval(() => makeFull("auto").catch((e) => log("auto backup failed", e.message)), Math.max(1, h) * 3600e3);
+  nextAutoBackup = 0;
+  if (h > 0) {
+    const ms = Math.max(1, h) * 3600e3;
+    nextAutoBackup = Date.now() + ms;
+    backupTimer = setInterval(() => {
+      nextAutoBackup = Date.now() + ms;
+      makeFull("auto").catch((e) => log("auto backup failed", e.message));
+    }, ms);
+  }
 };
 async function restoreFull(file) {
   if (!okFull(file)) throw new Error("No such backup.");
@@ -691,7 +699,7 @@ async function api(req, res, url) {
     return json(res, 200, { ok: true });
   }
   if (p[0] === "fullbackups") {
-    if (!p[1] && M === "GET") return json(res, 200, { backups: listFull(), autoBackupHours: cfg.autoBackupHours, autoBackupKeep: cfg.autoBackupKeep, lastAutoBackup });
+    if (!p[1] && M === "GET") return json(res, 200, { backups: listFull(), autoBackupHours: cfg.autoBackupHours, autoBackupKeep: cfg.autoBackupKeep, lastAutoBackup, nextAutoBackup });
     if (!p[1] && M === "POST") return json(res, 200, { ok: true, file: await makeFull("manual") });
     if (p[1] === "upload" && M === "POST") {
       const name = `${Date.now()}-uploaded.tgz`, dst = path.join(FULL, name);
