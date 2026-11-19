@@ -2,6 +2,11 @@ package com.polemarxos.vigilfall;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import android.content.pm.PackageInstaller;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -38,6 +43,84 @@ import java.util.Map;
    opens in seconds, works offline, and keeps the same saves as before. On every start the app asks the website for
    version.txt (a few bytes); when a newer game exists it downloads it in the background and uses it from then on. */
 public class MainActivity extends Activity {
+    // ---------- the app updates itself: new APKs from the GitHub page, installed when you are not in a fight ----------
+    static final String ACTION_INSTALLED = "com.polemarxos.vigilfall.INSTALLED";
+    long lastApkCheck = 0;
+    volatile int apkSession = -1;
+    volatile boolean apkBusy = false;
+    String apkName = "";
+
+    int myCode() {
+        try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionCode; } catch (Exception e) { return 0; }
+    }
+
+    void checkApk() {
+        if (apkBusy || apkSession >= 0 || System.currentTimeMillis() - lastApkCheck < 30 * 60000) return;
+        lastApkCheck = System.currentTimeMillis();
+        apkBusy = true;
+        new Thread(new Runnable() { public void run() {
+            try {
+                HttpURLConnection c = (HttpURLConnection) new URL(BASE + "Vigilfall.json?t=" + System.currentTimeMillis()).openConnection();
+                c.setConnectTimeout(10000); c.setReadTimeout(20000); c.setUseCaches(false);
+                if (c.getResponseCode() != 200) return;
+                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"));
+                StringBuilder sb = new StringBuilder(); String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                org.json.JSONObject j = new org.json.JSONObject(sb.toString());
+                if (j.optInt("versionCode", 0) <= myCode()) return;
+                String url = j.optString("apk", BASE + "Vigilfall.apk");
+                HttpURLConnection d = (HttpURLConnection) new URL(url + "?t=" + System.currentTimeMillis()).openConnection();
+                d.setConnectTimeout(10000); d.setReadTimeout(120000); d.setUseCaches(false);
+                if (d.getResponseCode() != 200) return;
+                PackageInstaller pi = getPackageManager().getPackageInstaller();
+                PackageInstaller.SessionParams sp = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+                sp.setAppPackageName(getPackageName());
+                if (Build.VERSION.SDK_INT >= 31) sp.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
+                int id = pi.createSession(sp);
+                PackageInstaller.Session ses = pi.openSession(id);
+                OutputStream out = ses.openWrite("app.apk", 0, -1);
+                InputStream in = d.getInputStream();
+                byte[] b = new byte[65536]; int n;
+                while ((n = in.read(b)) > 0) out.write(b, 0, n);
+                in.close();
+                ses.fsync(out);
+                out.close();
+                ses.close();
+                apkName = j.optString("versionName", "");
+                apkSession = id;
+                runOnUiThread(new Runnable() { public void run() { commitApk(); } });
+            } catch (Exception e) {
+            } finally { apkBusy = false; }
+        }}).start();
+    }
+
+    // installs only while you are in menus (never in the middle of play)
+    void commitApk() {
+        if (apkSession < 0 || awake) return;
+        try {
+            PackageInstaller.Session ses = getPackageManager().getPackageInstaller().openSession(apkSession);
+            Intent cb = new Intent(ACTION_INSTALLED).setPackage(getPackageName());
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? 33554432 /* FLAG_MUTABLE */ : 0);
+            ses.commit(PendingIntent.getBroadcast(this, apkSession, cb, flags).getIntentSender());
+            ses.close();
+            Toast.makeText(this, "Updating the Vigilfall app" + (apkName.isEmpty() ? "" : " to " + apkName) + "…", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {}
+        apkSession = -1;
+    }
+
+    final BroadcastReceiver installResult = new BroadcastReceiver() {
+        @Override public void onReceive(Context ctx, Intent i) {
+            int st = i.getIntExtra(PackageInstaller.EXTRA_STATUS, -999);
+            if (st == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);
+                if (confirm != null) { confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); try { startActivity(confirm); } catch (Exception e) {} }
+            } else if (st != PackageInstaller.STATUS_SUCCESS) {
+                lastApkCheck = 0;
+            }
+        }
+    };
+
     static final String HOST = "polemarxos.github.io";
     static final String BASE = "https://" + HOST + "/Vigilfall/";
     // new versions come from the GitHub page (the user keeps playing from the GitHub link)
@@ -116,18 +199,21 @@ public class MainActivity extends Activity {
         @JavascriptInterface public void keepAwake(final boolean on) {
             if (on == awake) return;
             awake = on;
+            if (!on) runOnUiThread(new Runnable() { public void run() { commitApk(); } });
             runOnUiThread(new Runnable() { public void run() {
                 if (on) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
                 else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             }});
         }
         @JavascriptInterface public String version() { return currentVersion(); }
-        @JavascriptInterface public String appVersion() { return "1.1"; }
+        @JavascriptInterface public String appVersion() { return "1.4"; }
     }
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(installResult, new IntentFilter(ACTION_INSTALLED), 4 /* RECEIVER_NOT_EXPORTED */);
+        else registerReceiver(installResult, new IntentFilter(ACTION_INSTALLED));
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (Build.VERSION.SDK_INT >= 28) getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         web = new WebView(this);
@@ -219,6 +305,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onPause() { super.onPause(); web.onPause(); }
-    @Override protected void onResume() { super.onResume(); web.onResume(); immersive(); checkUpdate(); }
+    @Override protected void onResume() { super.onResume(); web.onResume(); immersive(); checkUpdate(); checkApk(); commitApk(); }
+    @Override protected void onDestroy() { try { unregisterReceiver(installResult); } catch (Exception e) {} super.onDestroy(); }
     @Override protected void onSaveInstanceState(Bundle o) { super.onSaveInstanceState(o); web.saveState(o); }
 }
