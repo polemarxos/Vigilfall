@@ -143,7 +143,9 @@ const restartHost = (why) => {
 };
 // a stuck world (no stats for 90 s) gets restarted
 setInterval(() => {
-  if (H.child && Date.now() - H.statAt > 90e3 && Date.now() - H.startedAt > 240e3) restartHost("no heartbeat");
+  // a running world that stops reporting is stuck; a world that is still building gets 20 minutes (slow servers)
+  if (H.child && H.ready && Date.now() - H.statAt > 90e3) restartHost("no heartbeat");
+  else if (H.child && !H.ready && Date.now() - H.startedAt > 20 * 60e3) restartHost("world did not start in 20 minutes");
 }, 15e3);
 
 // ---------------- game updates from GitHub Pages ----------------
@@ -517,8 +519,9 @@ function onHost(ws) {
       const c = clients.get(f.id);
       c && setTimeout(() => { try { c.ws.close(); } catch (e) {} }, 300);
     } else if (f.o === "ready") {
-      if (f.ok && !H.ready) log("world ready", f.ver);
+      if (f.ok && !H.ready) log("world ready after " + Math.round((Date.now() - H.startedAt) / 1000) + " s", f.ver);
       H.ready = !!f.ok;
+      if (H.ready) H.statAt = Date.now();
       H.ver = f.ver || H.ver;
     } else if (f.o === "stat") {
       H.stat = f;
