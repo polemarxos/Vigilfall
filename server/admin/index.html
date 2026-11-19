@@ -15,7 +15,7 @@ header h1{font-size:17px;margin:0;color:var(--gold);letter-spacing:.5px;flex:1;w
 .dot{width:10px;height:10px;border-radius:50%;background:var(--dim);flex:0 0 auto}.dot.on{background:var(--good);box-shadow:0 0 8px var(--good)}.dot.off{background:var(--bad)}
 main{padding:12px;max-width:820px;margin:0 auto}
 nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#100d0a;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:6}
-nav button{flex:1;background:none;border:0;color:var(--dim);padding:9px 0 8px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px}
+nav button{flex:1;background:none;border:0;color:var(--dim);padding:9px 0 8px;font-size:11px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px}
 nav button b{font-size:20px;font-weight:400;line-height:1}
 nav button.sel{color:var(--gold)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
@@ -50,6 +50,8 @@ button.s{padding:6px 10px;font-size:13px}
 .vw table{width:100%;border-collapse:collapse;font-size:13px}.vw td,.vw th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.vw th{color:var(--dim);font-weight:500}
 .r-common{color:#c8c0b0}.r-uncommon{color:#7ccf8a}.r-rare{color:#6fb0ff}.r-epic{color:#c58cff}.r-legendary{color:#ffa94a}.r-relic{color:#ffa94a}.r-cursed{color:#ff6a5a}
 .warn{border-color:#8a2f25!important;background:#2a1612}
+.term{font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;background:#0b0907;color:#d8f0c8;padding:10px;border-radius:8px;min-height:180px;max-height:55vh;overflow:auto}
+.qgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}.qgrid .b{text-align:left;font-size:13px}
 </style>
 </head>
 <body>
@@ -70,6 +72,7 @@ button.s{padding:6px 10px;font-size:13px}
     <button data-t="players"><b>☺</b>Players</button>
     <button data-t="msg"><b>✉</b>Message</button>
     <button data-t="backup"><b>⛁</b>Backups</button>
+    <button data-t="con"><b>›_</b>Console</button>
     <button data-t="server"><b>⚙</b>Server</button>
   </nav>
 </div>
@@ -89,8 +92,8 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.4";
-const APP_LATEST = "1.4";
+const PAGE_VERSION = "1.5";
+const APP_LATEST = "1.5";
 const APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
 const older = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
@@ -106,6 +109,7 @@ const updText = () => ({
   "": "A new version is available.", starting: "Starting the download…", downloading: `Downloading… ${updDetail}%`,
   installing: `Android will ask you to tap <b>Install</b> (version ${esc(updDetail)}).`,
   permission: "Allow <b>Install unknown apps</b> for Vigilfall Admin in the screen that opened, then come back — the update continues by itself.",
+  confirm: "Tap <b>Update</b> in Android's window to finish.",
   failed: `The update did not work: ${esc(updDetail)}. Try again or use Download.`, current: "You already have the newest app.",
 })[updState] || "";
 function updCard() {
@@ -155,7 +159,7 @@ function back() { stack.pop(); stack.length ? stack[stack.length - 1]() : render
 window.VFA_back = () => { if (stack.length) { back(); return true; } if (tab !== "dash") { go("dash"); return true; } return false; };
 function render() {
   clearInterval(timer); $("#hback").classList.add("hide");
-  ({ dash, players, msg, backup: fullBackups, server })[tab]();
+  ({ dash, players, msg, backup: fullBackups, con: consoleTab, server })[tab]();
 }
 const M = () => $("#main");
 const fail = (e) => { if (e.code === 401) return showLogin("The password changed — sign in again."); toast("⚠ " + e.message); };
@@ -400,7 +404,8 @@ async function server() {
     <div class="card"><h2>Server program</h2><p class="muted" id="sver">Version ${esc(s.serverVersion || "1.0 (old)")} · checking GitHub…</p><div class="row"><button class="b" id="sself" disabled>Update server program</button></div></div>
     <div class="card"><h2>Admin password</h2><input id="spw" type="password" placeholder="new password (8+ characters)"><div class="row" style="margin-top:8px"><button class="b" id="spws">Change password</button></div></div>
     <div class="card"><h2>Server log</h2><div class="row" style="margin-bottom:8px"><button class="b s" id="slog">Refresh</button></div><div class="log" id="log">…</div></div>
-    <p class="muted" style="text-align:center">Server up ${dur(s.uptime)} · ${esc(S.base.replace(/^https?:\/\//, ""))}<br>Admin ${IN_APP ? "app " + esc(APP_VER) + " · " : ""}page ${PAGE_VERSION} · updates itself</p>`;
+    <p class="muted" style="text-align:center">Server up ${dur(s.uptime)} · ${esc(S.base.replace(/^https?:\/\//, ""))}<br>Admin ${IN_APP ? "app " + esc(APP_VER) + " · " : ""}page ${PAGE_VERSION} · updates itself${window.VFAApp?.updateApp ? ' · <a href="#" id="appchk" style="color:var(--gold)">check for app update</a>' : ""}</p>`;
+  $("#appchk") && ($("#appchk").onclick = (e) => { e.preventDefault(); toast("Checking…"); VFAApp.updateApp(); });
   $("#ssave").onclick = async () => { try { await call("config", "POST", { name: $("#sname").value, maxPlayers: +$("#smax").value, autoUpdate: $("#sauto").checked, updateMinutes: +$("#smin").value }); toast("Saved"); server(); } catch (e) { fail(e); } };
   M().querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => ($("#smin").value = b.dataset.m)));
   $("#supd").onclick = async () => { toast("Checking…"); try { const r = await call("update", "POST"); toast(r.changed ? `Downloaded ${r.ver} — world restarts in 60 s` : r.ok ? `Already up to date (${r.ver})` : "Update failed: " + r.why); } catch (e) { fail(e); } };
@@ -415,6 +420,96 @@ async function server() {
   $("#sself").onclick = async () => { if (!confirm("Update the server program now? Everyone is disconnected for about a minute.")) return; try { const r = await call("server/update", "POST"); toast(`Updating ${r.from} → ${r.to}; back in about a minute`); } catch (e) { fail(e); } };
   const loadLog = async () => { try { const r = await call("log"); const L = $("#log"); if (L) { L.textContent = r.lines.slice().reverse().join("\n"); } } catch (e) { fail(e); } };
   $("#slog").onclick = loadLog; loadLog();
+}
+
+// ---------------- app self-update (Android installer) ----------------
+window.VFA_appState = (st, info) => {
+  const t = { confirm: "Tap Update in Android's window to finish the app update", current: "The app is up to date", failed: "App update failed: " + info }[st];
+  t && toast(t);
+};
+
+// ---------------- SSH console (inside the app; uses your own SSH key) ----------------
+const QUICK = [
+  ["Realm status", "sudo systemctl status vigilfall-realm --no-pager | head -25"],
+  ["Realm log", "sudo journalctl -u vigilfall-realm -n 80 --no-pager"],
+  ["Restart Realm", "sudo systemctl restart vigilfall-realm && echo 'Realm restarted'", "Restart the Realm? Everyone is disconnected for about a minute."],
+  ["Memory, disk, load", "free -m; echo; df -h /; echo; uptime"],
+  ["Ports in use", "sudo ss -ltnp | grep LISTEN"],
+  ["Web settings (Caddy)", "sudo cat /etc/caddy/Caddyfile; echo '---'; sudo cat /etc/caddy/vigilfall.caddy 2>/dev/null"],
+  ["Warhammer broker", "sudo systemctl status mosquitto --no-pager | head -15"],
+  ["Copy data to home folder", "sudo tar czf ~/vigilfall-data-$(date +%Y%m%d-%H%M).tgz -C /opt/vigilfall-realm data && ls -lh ~/vigilfall-data-*.tgz | tail -5"],
+  ["Run the Realm setup", "@setup", "Run the Realm setup again (updates the server setup, keeps players and settings)? It takes a few minutes."],
+  ["Ubuntu updates", "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade", "Install Ubuntu updates now? This can take several minutes."],
+  ["Reboot server", "sudo reboot", "Reboot the whole server? Both games are offline for 2–3 minutes."],
+];
+let conRun = null;
+const conHost = () => store.get("vfa_sshhost") || S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, "");
+const conUser = () => store.get("vfa_sshuser") || "ubuntu";
+window.VFA_sshOut = (id, chunk) => {
+  if (!conRun || conRun.id !== id) return;
+  conRun.text = (conRun.text + chunk).slice(-200000);
+  const o = $("#cout");
+  if (o) { o.textContent = conRun.text; o.scrollTop = o.scrollHeight; }
+};
+window.VFA_sshDone = (id, code) => {
+  if (!conRun || conRun.id !== id) return;
+  VFA_sshOut(id, `\n— finished${code >= 0 ? " (exit " + code + ")" : ""} —\n`);
+  conRun.busy = false;
+  const b = $("#crun"), x = $("#cstop"); b && (b.disabled = false); x && x.classList.add("hide");
+};
+function conExec(cmd, ask) {
+  if (!window.VFAApp) return;
+  if (ask && !confirm(ask)) return;
+  if (conRun?.busy) return toast("A command is still running — Stop it first");
+  if (!VFAApp.hasKey()) return toast("Choose your SSH key first");
+  if (cmd === "@setup") cmd = `curl -fsSL 'https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/setup.sh?t=${Date.now()}' | sudo VF_NONINTERACTIVE=1 VF_DOMAIN=${S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, "")} bash`;
+  const id = "c" + Date.now();
+  conRun = { id, busy: true, text: `$ ${cmd}\n` };
+  const hist = JSON.parse(store.get("vfa_hist") || "[]").filter((h) => h !== cmd);
+  hist.unshift(cmd); store.set("vfa_hist", JSON.stringify(hist.slice(0, 20)));
+  const o = $("#cout"); o && (o.textContent = conRun.text);
+  const b = $("#crun"), x = $("#cstop"); b && (b.disabled = true); x && x.classList.remove("hide");
+  VFAApp.exec(id, conHost(), conUser(), cmd);
+}
+function consoleTab() {
+  $("#htitle").textContent = "Console";
+  if (!window.VFAApp?.exec) {
+    M().innerHTML = `<div class="card"><h2>Console</h2><p class="muted">The console runs server commands with your SSH key. It works inside the Vigilfall Admin app on your phone (version 1.4 or later), not in a web browser.</p></div>`;
+    return;
+  }
+  const has = VFAApp.hasKey();
+  const hist = JSON.parse(store.get("vfa_hist") || "[]");
+  M().innerHTML = `
+    <div class="card"><h2>Connection</h2>
+      <div class="row" style="gap:10px"><div style="flex:2"><label>Server</label><input id="chost" value="${esc(conHost())}" autocapitalize="off" autocorrect="off"></div><div style="flex:1"><label>User</label><input id="cuser" value="${esc(conUser())}" autocapitalize="off" autocorrect="off"></div></div>
+      <p class="muted">${has ? "✓ SSH key saved in this app (only on this phone)." : "No SSH key yet: choose the private key file you downloaded from Oracle (the same one Termux uses)."}</p>
+      <div class="row"><button class="b ${has ? "" : "p"}" id="ckey">${has ? "Replace key…" : "Choose key file…"}</button>${has ? '<button class="b d s" id="cdel">Remove key</button>' : ""}<button class="b s" id="cforget" title="After moving to a new server">Forget server</button><input id="ckeyf" type="file" class="hide"></div></div>
+    <div class="card"><h2>Quick commands</h2><div class="qgrid">${QUICK.map((q, i) => `<button class="b" data-q="${i}">${esc(q[0])}</button>`).join("")}</div></div>
+    <div class="card"><h2>Command</h2>
+      <input id="ccmd" placeholder="e.g. df -h" autocapitalize="off" autocorrect="off" spellcheck="false">
+      ${hist.length ? `<select id="chist" style="margin-top:8px"><option value="">Recent commands…</option>${hist.map((h) => `<option>${esc(h)}</option>`).join("")}</select>` : ""}
+      <div class="row" style="margin-top:8px"><button class="b p" id="crun">Run</button><button class="b d hide" id="cstop">Stop</button><button class="b s" id="cclr">Clear</button></div>
+      <p class="muted">Runs as one command on the server (sudo works). Programs that need a full screen or ask questions (nano, top, y/n prompts) do not work here — add -y or use Termux for those.</p>
+      <div class="term" id="cout">${esc(conRun?.text || "")}</div></div>`;
+  const save = () => { store.set("vfa_sshhost", $("#chost").value.trim()); store.set("vfa_sshuser", $("#cuser").value.trim() || "ubuntu"); };
+  $("#chost").onchange = save; $("#cuser").onchange = save;
+  $("#ckey").onclick = () => $("#ckeyf").click();
+  $("#ckeyf").onchange = () => {
+    const f = $("#ckeyf").files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => { const err = VFAApp.setKey(String(r.result || "")); err ? toast("⚠ " + err) : (toast("SSH key saved"), consoleTab()); };
+    r.readAsText(f);
+  };
+  $("#cdel") && ($("#cdel").onclick = () => { if (confirm("Remove the SSH key from this app?")) { VFAApp.removeKey(); consoleTab(); } });
+  $("#cforget").onclick = () => { if (confirm("Forget the servers this app has connected to? Use this after moving to a new server.")) { VFAApp.forgetServers(); toast("Done"); } };
+  M().querySelectorAll("[data-q]").forEach((b) => (b.onclick = () => { save(); const q = QUICK[+b.dataset.q]; conExec(q[1], q[2]); }));
+  $("#crun").onclick = () => { save(); const c = $("#ccmd").value.trim(); c && conExec(c); };
+  $("#ccmd").onkeydown = (e) => e.key === "Enter" && $("#crun").click();
+  $("#chist") && ($("#chist").onchange = (e) => { $("#ccmd").value = e.target.value; });
+  $("#cstop").onclick = () => { conRun && VFAApp.cancel(conRun.id); };
+  $("#cclr").onclick = () => { if (conRun) conRun.text = ""; $("#cout").textContent = ""; };
+  if (conRun?.busy) { $("#crun").disabled = true; $("#cstop").classList.remove("hide"); }
+  const o = $("#cout"); o.scrollTop = o.scrollHeight;
 }
 
 // ---------------- whole-server backups ----------------

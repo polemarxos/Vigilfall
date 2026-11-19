@@ -2,14 +2,16 @@ package com.polemarxos.vigilfall.admin;
 
 import android.app.Activity;
 import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageInstaller;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -18,6 +20,9 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import com.jcraft.jsch.ChannelExec;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.Session;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -27,18 +32,27 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+import org.json.JSONObject;
 
 public class MainActivity extends Activity {
     static final String HOST = "vigilfall-admin.app";
-    static final String LATEST = "https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/admin/index.html";
-    static final String VERSION = "1.4";
-    static final String ACT_INSTALL = "com.polemarxos.vigilfall.admin.INSTALLED";
+    static final String REPO = "https://raw.githubusercontent.com/polemarxos/Vigilfall/main/";
+    static final String LATEST = REPO + "server/admin/index.html";
+    static final String APP_INFO = REPO + "VigilfallAdmin.json";
+    static final String VERSION = "1.5";
+    static final String ACTION_INSTALLED = "com.polemarxos.vigilfall.admin.INSTALLED";
     static final int PICK = 42;
     WebView web;
     ValueCallback<Uri[]> fileCb;
-    volatile boolean updating = false;
+    long lastAppCheck = 0;
+    boolean installing = false;
+    final Map<String, Session> running = new HashMap<>();
 
     File cached() { return new File(getFilesDir(), "admin.html"); }
+    File keyFile() { return new File(getFilesDir(), "ssh.key"); }
 
     InputStream page() throws Exception {
         File f = cached();
@@ -54,128 +68,228 @@ public class MainActivity extends Activity {
         return o.toByteArray();
     }
 
+    static HttpURLConnection open(String url) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        c.setConnectTimeout(10000);
+        c.setReadTimeout(30000);
+        c.setUseCaches(false);
+        c.setInstanceFollowRedirects(true);
+        return c;
+    }
+
+    void state(String st, String detail) {
+        String a = JSONObject.quote(st) + "," + JSONObject.quote(detail == null ? "" : detail);
+        js("window.VFA_updateState && VFA_updateState(" + a + "); window.VFA_appState && VFA_appState(" + a + ")");
+    }
+
     void js(final String code) {
         runOnUiThread(new Runnable() { public void run() { if (web != null) web.evaluateJavascript(code, null); } });
     }
 
-    static String q(String s) { return "'" + String.valueOf(s).replace("\\", "\\\\").replace("'", "\\'").replace("\n", " ") + "'"; }
+    int myVersionCode() {
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return pi.versionCode;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
 
-    void state(String st, String detail) { js("window.VFA_updateState && window.VFA_updateState(" + q(st) + "," + q(detail) + ")"); }
-
-    // the admin page updates itself: the newest one is downloaded from GitHub and used from then on
-    void checkUpdate() {
+    // ---------- the admin page updates itself from GitHub ----------
+    void checkPage() {
         new Thread(new Runnable() {
             public void run() {
                 try {
-                    HttpURLConnection c = (HttpURLConnection) new URL(LATEST + "?t=" + System.currentTimeMillis()).openConnection();
-                    c.setConnectTimeout(10000);
-                    c.setReadTimeout(20000);
-                    c.setUseCaches(false);
+                    HttpURLConnection c = open(LATEST + "?t=" + System.currentTimeMillis());
                     if (c.getResponseCode() != 200) return;
                     byte[] neu = readAll(c.getInputStream());
                     String s = new String(neu, "UTF-8");
                     if (neu.length < 5000 || !s.contains("Vigilfall Admin") || !s.contains("</html>")) return;
-                    byte[] cur = readAll(page());
-                    if (Arrays.equals(cur, neu)) return;
+                    if (Arrays.equals(readAll(page()), neu)) return;
                     File tmp = new File(getFilesDir(), "admin.html.tmp");
                     FileOutputStream out = new FileOutputStream(tmp);
                     out.write(neu);
                     out.close();
-                    if (!tmp.renameTo(cached())) return;
-                    js("window.VFA_updated && window.VFA_updated()");
+                    if (tmp.renameTo(cached())) js("window.VFA_updated && window.VFA_updated()");
                 } catch (Exception e) {
                 }
             }
         }).start();
     }
 
-    // the app itself: download the new APK and hand it to Android's installer (Android always asks for one tap)
-    void selfUpdate(final String url) {
-        if (updating) return;
-        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
-            state("permission", "");
-            try {
-                startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getPackageName())));
-            } catch (Exception e) {}
-            return;
-        }
-        updating = true;
+    // ---------- the app updates itself: download the new APK and hand it to Android's installer ----------
+    void checkApp(final boolean manual) {
+        if (installing) return;
+        if (!manual && System.currentTimeMillis() - lastAppCheck < 30 * 60000) return;
+        lastAppCheck = System.currentTimeMillis();
         new Thread(new Runnable() {
             public void run() {
                 try {
+                    HttpURLConnection c = open(APP_INFO + "?t=" + System.currentTimeMillis());
+                    if (c.getResponseCode() != 200) return;
+                    JSONObject j = new JSONObject(new String(readAll(c.getInputStream()), "UTF-8"));
+                    int code = j.optInt("versionCode", 0);
+                    if (code <= myVersionCode()) {
+                        if (manual) state("current", "");
+                        return;
+                    }
+                    installing = true;
                     state("downloading", "0");
-                    HttpURLConnection c = (HttpURLConnection) new URL(url + (url.contains("?") ? "&" : "?") + "t=" + System.currentTimeMillis()).openConnection();
-                    c.setInstanceFollowRedirects(true);
-                    c.setConnectTimeout(15000);
-                    c.setReadTimeout(30000);
-                    if (c.getResponseCode() != 200) throw new Exception("download failed (" + c.getResponseCode() + ")");
-                    int total = c.getContentLength();
-                    File apk = new File(getCacheDir(), "update.apk");
-                    InputStream in = c.getInputStream();
-                    FileOutputStream out = new FileOutputStream(apk);
+                    HttpURLConnection d = open(j.getString("apk") + "?t=" + System.currentTimeMillis());
+                    d.setReadTimeout(120000);
+                    if (d.getResponseCode() != 200) throw new Exception("download " + d.getResponseCode());
+                    PackageInstaller pi = getPackageManager().getPackageInstaller();
+                    PackageInstaller.SessionParams sp = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+                    sp.setAppPackageName(getPackageName());
+                    if (Build.VERSION.SDK_INT >= 31) sp.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
+                    int id = pi.createSession(sp);
+                    PackageInstaller.Session s = pi.openSession(id);
+                    OutputStream out = s.openWrite("app.apk", 0, -1);
+                    InputStream in = d.getInputStream();
                     byte[] b = new byte[65536];
-                    int n, got = 0, last = -1;
+                    int n;
+                    long total = d.getContentLength(), got = 0;
+                    int lastPct = -1;
                     while ((n = in.read(b)) > 0) {
                         out.write(b, 0, n);
                         got += n;
-                        int pct = total > 0 ? got * 100 / total : 0;
-                        if (pct / 10 != last) { last = pct / 10; state("downloading", String.valueOf(pct)); }
+                        int pct = total > 0 ? (int) (got * 100 / total) : 0;
+                        if (pct >= lastPct + 10) { lastPct = pct; state("downloading", String.valueOf(pct)); }
                     }
-                    out.close();
                     in.close();
-                    PackageInfo mine = getPackageManager().getPackageInfo(getPackageName(), 0);
-                    PackageInfo neu = getPackageManager().getPackageArchiveInfo(apk.getPath(), 0);
-                    if (neu == null || !getPackageName().equals(neu.packageName)) throw new Exception("the downloaded file is not the Vigilfall Admin app");
-                    if (neu.versionCode <= mine.versionCode) { state("current", neu.versionName); return; }
-                    state("installing", neu.versionName);
-                    PackageInstaller pi = getPackageManager().getPackageInstaller();
-                    PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
-                    params.setAppPackageName(getPackageName());
-                    int id = pi.createSession(params);
-                    PackageInstaller.Session s = pi.openSession(id);
-                    OutputStream os = s.openWrite("vigilfall-admin", 0, apk.length());
-                    InputStream fin = new FileInputStream(apk);
-                    while ((n = fin.read(b)) > 0) os.write(b, 0, n);
-                    fin.close();
-                    s.fsync(os);
-                    os.close();
-                    Intent done = new Intent(MainActivity.this, MainActivity.class).setAction(ACT_INSTALL);
-                    int fl = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0);
-                    PendingIntent p = PendingIntent.getActivity(MainActivity.this, 7, done, fl);
+                    s.fsync(out);
+                    out.close();
+                    Intent cb = new Intent(ACTION_INSTALLED).setPackage(getPackageName());
+                    int flags = PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? 33554432 /* FLAG_MUTABLE */ : 0);
+                    PendingIntent p = PendingIntent.getBroadcast(MainActivity.this, id, cb, flags);
                     s.commit(p.getIntentSender());
                     s.close();
+                    state("installing", j.optString("versionName"));
                 } catch (Exception e) {
-                    state("failed", e.getMessage());
-                } finally {
-                    updating = false;
+                    installing = false;
+                    state("failed", String.valueOf(e.getMessage()));
                 }
             }
         }).start();
     }
 
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        if (intent != null && ACT_INSTALL.equals(intent.getAction())) {
-            int st = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+    final BroadcastReceiver installResult = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context ctx, Intent i) {
+            int st = i.getIntExtra(PackageInstaller.EXTRA_STATUS, -999);
             if (st == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-                Intent confirm = (Intent) intent.getParcelableExtra(Intent.EXTRA_INTENT);
-                if (confirm != null) { confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(confirm); }
-            } else if (st != PackageInstaller.STATUS_SUCCESS) {
-                state("failed", intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE));
+                // Android asks once: "Do you want to update this app?" (and the first time: allow installs from this app)
+                Intent confirm = i.getParcelableExtra(Intent.EXTRA_INTENT);
+                if (confirm != null) {
+                    confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try { startActivity(confirm); } catch (Exception e) {}
+                }
+                state("confirm", "");
+            } else if (st == PackageInstaller.STATUS_SUCCESS) {
+                installing = false;
+            } else {
+                installing = false;
+                state("failed", String.valueOf(i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)));
             }
+        }
+    };
+
+    // ---------- bridge for the page: app updates and the SSH console ----------
+    class Bridge {
+        @JavascriptInterface public String version() { return VERSION; }
+        @JavascriptInterface public void updateApp() { checkApp(true); }
+        @JavascriptInterface public boolean canSelfUpdate() { return true; }
+        @JavascriptInterface public void selfUpdate(String url) { checkApp(true); }
+        @JavascriptInterface public boolean hasKey() { return keyFile().exists() && keyFile().length() > 100; }
+        @JavascriptInterface public String setKey(String pem) {
+            try {
+                if (pem == null || !pem.contains("PRIVATE KEY")) return "That file is not a private SSH key.";
+                FileOutputStream o = new FileOutputStream(keyFile());
+                o.write(pem.trim().concat("\n").getBytes("UTF-8"));
+                o.close();
+                return "";
+            } catch (Exception e) {
+                return String.valueOf(e.getMessage());
+            }
+        }
+        @JavascriptInterface public void removeKey() { keyFile().delete(); }
+        @JavascriptInterface public void forgetServers() {
+            File[] fs = getFilesDir().listFiles();
+            if (fs != null) for (File f : fs) if (f.getName().startsWith("host_")) f.delete();
+        }
+        @JavascriptInterface public void cancel(String id) {
+            Session s;
+            synchronized (running) { s = running.remove(id); }
+            if (s != null) try { s.disconnect(); } catch (Exception e) {}
+        }
+        @JavascriptInterface public void exec(final String id, final String host, final String user, final String cmd) {
+            new Thread(new Runnable() {
+                public void run() { runSsh(id, host, user, cmd); }
+            }).start();
         }
     }
 
-    public class Bridge {
-        @JavascriptInterface public String version() { return VERSION; }
-        @JavascriptInterface public void selfUpdate(String url) { MainActivity.this.selfUpdate(url); }
-        @JavascriptInterface public boolean canSelfUpdate() { return true; }
+    void runSsh(String id, String host, String user, String cmd) {
+        String q = JSONObject.quote(id);
+        Session s = null;
+        int exit = -1;
+        try {
+            if (!keyFile().exists()) throw new Exception("No SSH key on this phone yet.");
+            JSch j = new JSch();
+            j.addIdentity(keyFile().getAbsolutePath());
+            s = j.getSession(user, host, 22);
+            Properties cfg = new Properties();
+            cfg.put("StrictHostKeyChecking", "no"); // checked below: the server's key is remembered on first use
+            cfg.put("PreferredAuthentications", "publickey");
+            s.setConfig(cfg);
+            s.setServerAliveInterval(20000);
+            s.connect(15000);
+            // trust on first use: remember this server's key; a different key later means another machine answers
+            String fp = s.getHostKey().getFingerPrint(j);
+            File fpf = new File(getFilesDir(), "host_" + host.replaceAll("[^A-Za-z0-9.-]", "_") + ".fp");
+            if (!fpf.exists()) {
+                FileOutputStream o = new FileOutputStream(fpf);
+                o.write(fp.getBytes("UTF-8"));
+                o.close();
+            } else if (!new String(readAll(new FileInputStream(fpf)), "UTF-8").trim().equals(fp)) {
+                throw new Exception("This server's identity changed (a new server at this address?). If you moved the Realm, tap Forget server in the console and try again.");
+            }
+            synchronized (running) { running.put(id, s); }
+            ChannelExec ch = (ChannelExec) s.openChannel("exec");
+            ch.setCommand(cmd);
+            ch.setInputStream(null);
+            ch.setErrStream(null);
+            InputStream out = ch.getInputStream();
+            InputStream err = ch.getErrStream();
+            ch.connect(15000);
+            byte[] b = new byte[8192];
+            while (true) {
+                boolean any = false;
+                while (out.available() > 0) { int n = out.read(b); if (n < 0) break; any = true; js("VFA_sshOut(" + q + "," + JSONObject.quote(new String(b, 0, n, "UTF-8")) + ")"); }
+                while (err.available() > 0) { int n = err.read(b); if (n < 0) break; any = true; js("VFA_sshOut(" + q + "," + JSONObject.quote(new String(b, 0, n, "UTF-8")) + ")"); }
+                if (ch.isClosed()) {
+                    if (out.available() > 0 || err.available() > 0) continue;
+                    exit = ch.getExitStatus();
+                    break;
+                }
+                if (!s.isConnected()) break;
+                if (!any) Thread.sleep(80);
+            }
+            ch.disconnect();
+        } catch (Exception e) {
+            js("VFA_sshOut(" + q + "," + JSONObject.quote("\n⚠ " + e.getMessage() + "\n") + ")");
+        } finally {
+            synchronized (running) { running.remove(id); }
+            if (s != null) try { s.disconnect(); } catch (Exception e) {}
+            js("VFA_sshDone(" + q + "," + exit + ")");
+        }
     }
 
     @Override
     protected void onCreate(Bundle b) {
         super.onCreate(b);
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(installResult, new IntentFilter(ACTION_INSTALLED), 4 /* RECEIVER_NOT_EXPORTED */);
+        else registerReceiver(installResult, new IntentFilter(ACTION_INSTALLED));
         web = new WebView(this);
         web.setBackgroundColor(Color.rgb(20, 17, 13));
         WebSettings s = web.getSettings();
@@ -203,7 +317,6 @@ public class MainActivity extends Activity {
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
-                // links to other sites (downloads) open in the browser
                 if (!HOST.equals(r.getUrl().getHost())) {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, r.getUrl())); } catch (Exception e) {}
                     return true;
@@ -211,7 +324,6 @@ public class MainActivity extends Activity {
                 return false;
             }
         });
-        // "Upload a backup…" opens the phone's file picker
         web.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams params) {
@@ -221,7 +333,7 @@ public class MainActivity extends Activity {
                 i.addCategory(Intent.CATEGORY_OPENABLE);
                 i.setType("*/*");
                 try {
-                    startActivityForResult(Intent.createChooser(i, "Choose a Realm backup (.tgz)"), PICK);
+                    startActivityForResult(Intent.createChooser(i, "Choose a file"), PICK);
                 } catch (Exception e) {
                     fileCb = null;
                     return false;
@@ -232,13 +344,19 @@ public class MainActivity extends Activity {
         setContentView(web);
         if (b != null) web.restoreState(b);
         else web.loadUrl("https://" + HOST + "/");
-        checkUpdate();
+        checkPage();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        if (web != null) web.postDelayed(new Runnable() { public void run() { checkUpdate(); js("window.VFA_resume && window.VFA_resume()"); } }, 1500);
+        if (web != null) web.postDelayed(new Runnable() { public void run() { checkPage(); checkApp(false); js("window.VFA_resume && VFA_resume()"); } }, 1500);
+    }
+
+    @Override
+    protected void onDestroy() {
+        try { unregisterReceiver(installResult); } catch (Exception e) {}
+        super.onDestroy();
     }
 
     @Override
