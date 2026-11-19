@@ -89,12 +89,31 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.3";
-const APP_LATEST = "1.3";
+const PAGE_VERSION = "1.4";
+const APP_LATEST = "1.4";
 const APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
 const older = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 let pendingReload = false;
+// app self-update (app 1.4+): downloads the new APK and opens Android's installer by itself
+const SELF = !!(window.VFAApp && window.VFAApp.canSelfUpdate);
+let updState = "", updDetail = "";
+const needsApp = () => IN_APP && APP_VER && older(APP_VER, APP_LATEST);
+const startAppUpdate = () => { if (!SELF) return; updState = "starting"; updDetail = ""; try { window.VFAApp.selfUpdate(APP_URL); } catch (e) { updState = "failed"; updDetail = String(e); } drawUpd(); };
+window.VFA_updateState = (st, d) => { updState = st; updDetail = d || ""; drawUpd(); };
+window.VFA_resume = () => { if (updState === "permission" && needsApp()) startAppUpdate(); };
+const updText = () => ({
+  "": "A new version is available.", starting: "Starting the download…", downloading: `Downloading… ${updDetail}%`,
+  installing: `Android will ask you to tap <b>Install</b> (version ${esc(updDetail)}).`,
+  permission: "Allow <b>Install unknown apps</b> for Vigilfall Admin in the screen that opened, then come back — the update continues by itself.",
+  failed: `The update did not work: ${esc(updDetail)}. Try again or use Download.`, current: "You already have the newest app.",
+})[updState] || "";
+function updCard() {
+  if (!needsApp()) return "";
+  return `<div class="card" id="updcard" style="border-color:var(--gold)"><b>New Vigilfall Admin app ${APP_LATEST}</b><p class="muted" id="updtxt">You have ${esc(APP_VER)}. ${SELF ? updText() : "Install the new version once (it keeps your login); from then on the app updates itself."}</p><div class="row">${SELF ? '<button class="b p" id="updgo">Update now</button>' : ""}<a class="b ${SELF ? "" : "p"}" style="display:inline-block;text-decoration:none" href="${APP_URL}">Download</a></div></div>`;
+}
+function drawUpd() { const t = document.getElementById("updtxt"); if (t) t.innerHTML = `You have ${esc(APP_VER)}. ${updText()}`; }
+let updAuto = false;
 window.VFA_updated = () => { if (!stack.length && (tab === "dash" || !$("#app") || $("#app").classList.contains("hide"))) location.reload(); else { pendingReload = true; toast("Admin update downloaded — it applies on the Dashboard"); } };
 let S = { base: store.get("vfa_srv") || (!IN_APP && location.protocol.startsWith("http") ? location.origin : ""), pw: store.get("vfa_pw") || "" };
 
@@ -153,7 +172,7 @@ async function dash() {
     $("#htitle").textContent = s.name; $("#hdot").className = "dot " + (s.hostReady ? "on" : "off");
     const w = s.world || {};
     const memUsed = s.mem.total - s.mem.free;
-    M().innerHTML = `${IN_APP && APP_VER && older(APP_VER, APP_LATEST) ? `<div class="card" style="border-color:var(--gold)"><b>New Vigilfall Admin app ${APP_LATEST}</b><p class="muted">You have ${APP_VER}. Install the new version once (it keeps your login).</p><a class="b p" style="display:inline-block;text-decoration:none" href="${APP_URL}">Download</a></div>` : ""}
+    M().innerHTML = `${updCard()}
 ${s.maintenance ? `<div class="card warn"><b>Maintenance mode is ON</b><p class="muted">Nobody can enter the Realm. Turn it off under Message.</p></div>` : ""}
       <div class="card"><h2>World</h2><div class="grid">
         <div class="stat"><div class="v" style="color:${s.hostReady ? "var(--good)" : "var(--bad)"}">${s.hostReady ? "Online" : s.hostUp ? "Starting…" : "Down"}</div><div class="k">${s.hostReady ? "running " + dur((Date.now() - s.hostSince) / 1000) : "world host"}</div></div>
@@ -166,6 +185,8 @@ ${s.maintenance ? `<div class="card warn"><b>Maintenance mode is ON</b><p class=
         <div class="stat"><div class="v" style="font-size:16px">${esc(s.hostVersion || s.gameVersion || "?")}</div><div class="k">game version${s.restarts ? " · " + s.restarts + " restart(s)" : ""}</div></div>
       </div></div>
       <div class="card"><h2>Online now</h2><div class="list" id="onl">${s.online.length ? "" : '<div class="muted">Nobody is online.</div>'}</div></div>`;
+    $("#updgo") && ($("#updgo").onclick = startAppUpdate);
+    if (SELF && needsApp() && !updAuto) { updAuto = true; startAppUpdate(); }
     const L = $("#onl");
     for (const o of s.online) {
       const d = document.createElement("div"); d.className = "it tap";
