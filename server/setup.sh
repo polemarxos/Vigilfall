@@ -35,7 +35,10 @@ fi
 
 say "Realm server code"
 id vigilfall >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/vigilfall --shell /usr/sbin/nologin vigilfall
-if [ -d "$SRC/.git" ]; then git -C "$SRC" fetch --depth 1 origin main && git -C "$SRC" reset --hard origin/main; else rm -rf "$SRC"; git clone --depth 1 --filter=blob:none --sparse "$REPO" "$SRC" && git -C "$SRC" sparse-checkout set server; fi
+# fresh shallow copy of the repository every time (older git versions break on sparse clones)
+rm -rf "$SRC"
+git clone --depth 1 "$REPO" "$SRC"
+[ -f "$SRC/server/realm.js" ] || { echo "Could not download the server code from $REPO"; exit 1; }
 mkdir -p "$APP"
 cp -r "$SRC/server/." "$APP/"
 mkdir -p "$APP/data" "$APP/game"
