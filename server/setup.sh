@@ -13,6 +13,7 @@ say() { printf '\n\033[1;33m== %s\033[0m\n' "$*"; }
 
 [ "$(id -u)" = 0 ] || { echo "Run with sudo:  sudo bash setup.sh"; exit 1; }
 . /etc/os-release
+echo "System: $PRETTY_NAME · $(uname -m) · $(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo) MB memory · $(nproc) CPU(s)"
 case "$ID" in ubuntu|debian) ;; *) echo "This script supports Ubuntu (recommended: Ubuntu 22.04 or 24.04). You have $PRETTY_NAME."; exit 1;; esac
 
 say "System packages"
@@ -46,8 +47,36 @@ chown -R vigilfall:vigilfall "$APP"
 cd "$APP"
 sudo -u vigilfall -H npm install --omit=dev --no-audit --no-fund
 say "Headless browser for the world (this takes a few minutes the first time)"
-npx --yes playwright install-deps chromium
-sudo -u vigilfall -H npx --yes playwright install chromium
+ARCH=$(uname -m)
+CHROME=""
+if [ "$ARCH" = "x86_64" ]; then
+  # Google Chrome works on every 64-bit Ubuntu/Debian, also versions Playwright does not know yet
+  if ! command -v google-chrome >/dev/null; then
+    curl -fsSL -o /tmp/google-chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+    apt-get install -y /tmp/google-chrome.deb
+    rm -f /tmp/google-chrome.deb
+  fi
+  CHROME=$(command -v google-chrome)
+else
+  if npx --yes playwright install-deps chromium && sudo -u vigilfall -H npx --yes playwright install chromium; then
+    CHROME=""
+  else
+    echo "Playwright's browser is not available for this system; using the distribution's Chromium."
+    apt-get install -y chromium || apt-get install -y chromium-browser
+    CHROME=$(command -v chromium || command -v chromium-browser || true)
+    [ -n "$CHROME" ] || { echo "Could not install a browser. Please use Ubuntu 22.04 or 24.04."; exit 1; }
+  fi
+fi
+echo "Browser: ${CHROME:-Playwright Chromium}"
+
+# small servers: add swap so the world never runs out of memory
+MEM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+if [ "$MEM_MB" -lt 6000 ] && ! swapon --show | grep -q .; then
+  say "Adding 4 GB swap (this server has ${MEM_MB} MB memory)"
+  fallocate -l 4G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=4096
+  chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
 
 say "Address of your Realm"
 CUR=""; [ -f /etc/caddy/Caddyfile ] && CUR=$(grep -oE '^[a-z0-9.-]+\.[a-z]{2,}' /etc/caddy/Caddyfile | head -1 || true)
@@ -94,6 +123,7 @@ ExecStart=/usr/bin/node $APP/realm.js
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
+Environment=CHROME_PATH=$CHROME
 LimitNOFILE=65535
 
 [Install]
