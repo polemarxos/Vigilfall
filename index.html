@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.21.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.22.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,13 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.21.0";
+  X.VERSION = "1.22.0";
   X.CHANGELOG = {
+    "1.22.0": [
+      "The Realm: one shared online world that runs on a dedicated server. Enter the Realm on the main menu puts you in the same world as everyone who is online; you see the players and monsters near you. Your own world (solo and with friends) is still there.",
+      "Dungeons, raids and the Dungeon Finder take your group into the leader's world as before and bring everyone back to the Realm afterwards. Friends, groups, chat and voice work in the Realm too.",
+      "Your save is copied to the Realm server every minute. If the server goes down you keep playing in your own world and return when it is back.",
+    ],
     "1.21.0": [
       "Android app 1.1: the game is inside the app — it opens in seconds instead of downloading 10 MB each time, plays solo without internet, and quietly downloads new versions in the background (they start the next time you open it). Your saves stay where they were.",
       "Graphics are picked for your phone on the first start (strong, mid-range or older phone, from its graphics chip). Change them any time in Settings. PCs are not affected.",
@@ -49014,6 +49019,577 @@ X.EL.quests = {
   }
 }
 
+/* ---- FO_realm.js ---- */
+/* 1.22.0 — the Realm: one shared online world on a dedicated server.
+   Client side:  "Enter the Realm" on the main menu joins the server's world over a WebSocket (wss). Everything else
+                 (groups, Dungeon Finder, friends, voice) keeps working; dungeons still run in the leader's own world
+                 and everyone returns to the Realm afterwards. Saves are kept on the server too (cloud copy) and an
+                 admin edit from the Vigilfall Admin app replaces the local save.
+   Server side:  the same index.html opened with ?realmhost=<ws url>&token=… inside a headless browser becomes the
+                 Realm host: no player of its own, no rendering, 20 simulation ticks a second, nearby-only updates. */
+{
+  const RH = "@realm-host";
+  const Q = new URLSearchParams(location.search);
+  const SERVER = !!Q.get("realmhost");
+  X.realmServer = SERVER;
+  const app = () => window.__app;
+
+  // ---------------- address of the Realm ----------------
+  X.REALM_DEFAULT = "";
+  const norm = (s) => {
+    s = String(s || "").trim();
+    if (!s) return "";
+    if (!/^wss?:\/\//i.test(s)) s = "wss://" + s.replace(/^https?:\/\//i, "");
+    s = s.replace(/^https:/i, "wss:").replace(/^http:/i, "ws:");
+    if (!/\/realm\/?$/.test(s)) s = s.replace(/\/+$/, "") + "/realm";
+    return s;
+  };
+  X.realmUrl = () => norm(localStorage.getItem("vf_realm") || X.REALM_DEFAULT);
+  X.realmHttp = () => X.realmUrl().replace(/^wss:/, "https:").replace(/^ws:/, "http:").replace(/\/realm\/?$/, "");
+  if (!SERVER) {
+    // realm.json next to the game (GitHub Pages) holds the official address; a typed address wins
+    try {
+      if (/^https?:/.test(location.protocol))
+        fetch("realm.json", { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => j?.url && (X.REALM_DEFAULT = j.url))
+          .catch(() => {});
+      else X.REALM_DEFAULT ||= "";
+    } catch (e) {}
+  }
+  X.realmStatus = async () => {
+    const h = X.realmHttp();
+    if (!h) return null;
+    try {
+      const c = new AbortController(), t = setTimeout(() => c.abort(), 5000);
+      const r = await fetch(h + "/health", { signal: c.signal, cache: "no-store" });
+      clearTimeout(t);
+      return r.ok ? await r.json() : null;
+    } catch (e) {
+      return null;
+    }
+  };
+  X.cloudKey = (ap) => {
+    const p = ap.profile;
+    if (!p.ckey || p.ckey.length < 16) (p.ckey = X.randCode(24)), ap.saveProfile();
+    return p.ckey;
+  };
+
+  const NP = X.Net.prototype;
+
+  // ================= CLIENT =================
+  if (!SERVER) {
+    const join0 = NP.join;
+    NP.join = function (hostPid) {
+      return hostPid === "@realm" ? this._joinRealm() : join0.call(this, hostPid);
+    };
+    NP._joinRealm = function () {
+      return new Promise((res, rej) => {
+        const url = X.realmUrl();
+        if (!url) return rej(Object.assign(new Error("No Realm server is set yet."), { stop: !0 }));
+        const ap = this.app;
+        let ws, done = !1;
+        try {
+          ws = new WebSocket(url);
+        } catch (e) {
+          return rej(new Error("Bad Realm address."));
+        }
+        const to = setTimeout(() => {
+          if (done) return;
+          done = !0;
+          try { ws.close(); } catch (e) {}
+          rej(new Error("The Realm server did not answer."));
+        }, 15e3);
+        const hs = {};
+        const c = {
+          peer: RH,
+          open: !1,
+          meta: { realm: !0 },
+          send: (m) => {
+            try { ws.readyState === 1 && ws.send(JSON.stringify(m)); } catch (e) {}
+          },
+          close: () => {
+            try { ws.close(); } catch (e) {}
+          },
+          on: (ev, f) => ((hs[ev] ||= []).push(f), c),
+        };
+        ws.onopen = () => {
+          c.open = !0;
+          const p = ap.profile;
+          ws.send(JSON.stringify({ t: "auth", pid: this.pid || X.pid(ap), key: X.cloudKey(ap), name: p.name, ver: X.VERSION, rev: p.adminRev || 0, lv: ap.game?.hsave?.level || 0, hero: ap.game?.hero?.id || p.lastHero }));
+        };
+        ws.onmessage = (ev) => {
+          let m;
+          try { m = JSON.parse(ev.data); } catch (e) { return; }
+          if (!m) return;
+          if (m.t === "cloud" || m.t === "announce" || m.t === "kicked" || m.t === "_info") return X.realmMsg(m);
+          if (!done) {
+            if (m.t === "hello") {
+              done = !0;
+              clearTimeout(to);
+              this.isHost = !1;
+              this.hostPid = "@realm";
+              this.code = "@realm";
+              this.id = X.peerOf(this.pid);
+              this.offline = !1;
+              this.host_ = c;
+              this.conns.set(c.peer, c);
+              this.remoteRoster = m.roster || [];
+              this.realm = c;
+              X._kicked = null;
+              res();
+              setTimeout(() => X.realmSave("join"), 3000);
+              return;
+            }
+            if (m.t === "denied") {
+              done = !0;
+              clearTimeout(to);
+              return rej(Object.assign(new Error(m.why || "The Realm refused the connection."), { retry: !!m.retry, stop: !m.retry }));
+            }
+            if (m.t === "full") return ((done = !0), clearTimeout(to), rej(Object.assign(new Error("The Realm is full right now."), { retry: !0 })));
+            return;
+          }
+          this._emit(m.from || c.peer, m);
+        };
+        ws.onclose = () => {
+          c.open = !1;
+          if (done) {
+            if (this.host_ === c) {
+              this.host_ = null;
+              this.conns.delete(c.peer);
+              this.realm = null;
+              this._emit(c.peer, { t: "hostgone" });
+            }
+          } else {
+            done = !0;
+            clearTimeout(to);
+            rej(Object.assign(new Error("Could not reach the Realm server."), { retry: !0 }));
+          }
+        };
+        ws.onerror = () => {};
+      });
+    };
+    X.inRealm = () => app()?.net?.hostPid === "@realm" && !!app()?.net?.realm;
+
+    // cloud copy of the save (the server keeps the newest one; an admin edit comes back down)
+    X.realmSave = (why) => {
+      const ap = app(), n = ap?.net;
+      if (!n?.realm?.open || n.hostPid !== "@realm") return;
+      try {
+        ap.profile.savedAt = Date.now();
+        n.realm.send({ t: "_save", p: ap.profile, why });
+      } catch (e) {}
+    };
+    setInterval(() => X.realmSave("auto"), 60e3);
+    addEventListener("pagehide", () => X.realmSave("exit"));
+    document.addEventListener("visibilitychange", () => document.hidden && X.realmSave("hide"));
+
+    X.realmMsg = (m) => {
+      const ap = app(), g = ap?.game;
+      if (m.t === "_info") {
+        X._realmInfo = m;
+        m.motd && setTimeout(() => g?.running && g.ui.banner("THE REALM", m.motd, "#9ad0ff"), 5000);
+        m.ver && X.VERSION && m.ver !== X.VERSION && setTimeout(() => g?.toast?.(`The Realm runs ${m.ver}; you have ${X.VERSION}. Reload to update.`, "#ffb060"), 9000);
+        return;
+      }
+      if (m.t === "announce") {
+        g?.running && g.ui.banner("ANNOUNCEMENT", m.text, "#ffd070");
+        g?.ui?.chatLine?.("⚑ " + (m.from || "Realm"), m.text);
+        return;
+      }
+      if (m.t === "kicked") {
+        X._kicked = m.why || "Removed by an admin";
+        return;
+      }
+      if (m.t === "cloud" && m.p && m.p.heroes) {
+        // an admin changed this save: store it and restart into the menu
+        try {
+          const p = m.p;
+          p.adminRev = m.rev || p.adminRev || 0;
+          p.ckey = ap.profile.ckey;
+          p.pid = ap.profile.pid;
+          localStorage.setItem($C(ap.slot), $M(p));
+          ap._noSave = !0;
+          sessionStorage.setItem("vf_quick", "{}");
+          sessionStorage.setItem("vf_cloudnote", "1");
+          try { ap.net?.close(); } catch (e) {}
+          setTimeout(() => location.reload(), 300);
+        } catch (e) {
+          console.error("cloud apply", e);
+        }
+      }
+    };
+
+    // the Realm going away: reconnect patiently (server restarts take a minute), play solo meanwhile
+    const mg0 = X.migrate;
+    X.migrate = async function (ap) {
+      const net = ap.net, g = ap.game;
+      if (net?.hostPid !== "@realm") return mg0(ap);
+      if (!g?.running || g.migrating || X._reconnecting) return;
+      X._reconnecting = !0;
+      try {
+        if (X._kicked) {
+          await X.switchSession(ap, null);
+          g.ui.banner("REMOVED FROM THE REALM", X._kicked, "#ff6a5a");
+          return;
+        }
+        g.ui.banner("THE REALM IS UNREACHABLE", "You keep playing in your own world. Reconnecting…", "#ffb060");
+        await X.switchSession(ap, null);
+        for (let i = 0; i < 40 && g.running; i++) {
+          await new Promise((r) => setTimeout(r, i < 4 ? 4000 : 8000));
+          if (!g.running || g.inst || X._lfgBusy || ap.net.hostPid === "@realm") break;
+          if (g.remotes.size) break; // friends joined our own world meanwhile: stay
+          const r = await X.switchSession(ap, "@realm");
+          if (r === !0) {
+            g.ui.banner("BACK IN THE REALM", "", "#9ad0ff");
+            break;
+          }
+          if (r?.stop) {
+            g.toast(r.message, "#ff6a5a");
+            break;
+          }
+        }
+      } finally {
+        X._reconnecting = !1;
+      }
+    };
+
+    // starting: mode "realm" = join the Realm with the chosen hero
+    const AP = bE.prototype, sg0 = AP.startGame;
+    AP.startGame = async function (hero, mode, code) {
+      if (mode !== "realm") return sg0.call(this, hero, mode, code);
+      X._realmStart = !0;
+      // the Realm does not need PeerJS: open it in the background (friends, voice, Dungeon Finder) and go on at once
+      const net = this.net && !this.net.peer?.destroyed ? this.net : new X.Net(this);
+      this.net = net;
+      if (!net.peer) {
+        const o = net.open;
+        net.open = function (pid) {
+          delete net.open;
+          this.pid = pid;
+          this.code = pid;
+          o.call(this, pid).then(() => ((this.offline = !1), this.hostPid === "@realm" && (this.id = X.peerOf(this.pid)))).catch(() => {});
+          return Promise.resolve(pid);
+        };
+      }
+      try {
+        return await sg0.call(this, hero, "join", "@realm");
+      } finally {
+        X._realmStart = !1;
+      }
+    };
+    // leaving the Realm for a dungeon or a friend: push the save first
+    const sw0 = X.switchSession;
+    X.switchSession = async function (ap, hostPid, opts) {
+      ap?.net?.hostPid === "@realm" && hostPid !== "@realm" && X.realmSave("leave");
+      return sw0.call(this, ap, hostPid, opts);
+    };
+    const q0 = AP.quit;
+    AP.quit = function (...a) {
+      X.realmSave("quit");
+      return q0.apply(this, a);
+    };
+
+    // ---- menus ----
+    const UP = XC.prototype;
+    const T = (s) => (X.EL?.T && X.lang === "el" ? X.EL.T(s) : s);
+    UP.realmDialog = function (after) {
+      const cur = localStorage.getItem("vf_realm") || X.REALM_DEFAULT || "";
+      this.show("menu");
+      const M = kA("#menu");
+      M.innerHTML = `<div class="dialog"><h2>Realm server</h2><p>The address of the Vigilfall Realm, for example <b>myrealm.duckdns.org</b>.</p>
+        <input id="realmaddr" placeholder="myrealm.duckdns.org" value="${cur.replace(/"/g, "")}" style="text-transform:none">
+        <div class="row"><button id="rsave" class="big">Save</button><button id="rback">Back</button></div>
+        <p class="small" id="rstat">${X.REALM_DEFAULT ? "Leave empty to use the official Realm." : ""}</p></div>`;
+      kA("#rback").onclick = () => this.mainMenu();
+      kA("#rsave").onclick = async () => {
+        const v = kA("#realmaddr").value.trim();
+        v ? localStorage.setItem("vf_realm", v) : localStorage.removeItem("vf_realm");
+        const st = kA("#rstat");
+        st.textContent = "Checking…";
+        const s = await X.realmStatus();
+        st.textContent = s ? `Online · ${s.online} player(s) · ${s.ver || ""}` : "Could not reach that server (saved anyway).";
+        setTimeout(() => (after ? after() : this.mainMenu()), s ? 900 : 1800);
+      };
+    };
+    const mm0 = UP.mainMenu;
+    UP.mainMenu = function (...a) {
+      const r = mm0.apply(this, a);
+      try {
+        const col = document.querySelector("#menu .menu-col");
+        if (col && !col.querySelector("[data-a=realm]")) {
+          const wrap = document.createElement("div");
+          wrap.className = "row realm-row";
+          wrap.innerHTML = `<button data-a="realm" class="big" style="flex:1">🌐 ${T("Enter the Realm")}</button><button data-a="realmset" class="ghost" title="Realm server" style="flex:0 0 auto;min-width:44px">⚙</button>`;
+          const play = col.querySelector("[data-a=play]");
+          play ? play.before(wrap) : col.prepend(wrap);
+          play && (play.textContent = "⚔ " + T("Own world (solo & friends)"));
+          const line = document.createElement("div");
+          line.className = "small realm-line";
+          line.style.cssText = "text-align:center;opacity:.8;margin:-4px 0 4px;font-size:13px";
+          wrap.after(line);
+          const upd = async () => {
+            if (!X.realmUrl()) return (line.textContent = T("No Realm server set — tap ⚙"));
+            line.textContent = T("Checking the Realm…");
+            const s = await X.realmStatus();
+            line.isConnected && (line.textContent = s ? `${s.online} ${T("online")} · ${s.name || ""}`.replace(/ · $/, "") : T("The Realm is offline right now"));
+          };
+          setTimeout(upd, X.REALM_DEFAULT || localStorage.getItem("vf_realm") ? 0 : 1500);
+          wrap.querySelector("[data-a=realm]").onclick = (e) => {
+            e.stopPropagation();
+            this.click?.();
+            X.realmUrl() ? this.heroSelect("realm") : this.realmDialog(() => this.heroSelect("realm"));
+          };
+          wrap.querySelector("[data-a=realmset]").onclick = (e) => {
+            e.stopPropagation();
+            this.click?.();
+            this.realmDialog();
+          };
+        }
+        if (sessionStorage.getItem("vf_cloudnote")) {
+          sessionStorage.removeItem("vf_cloudnote");
+          setTimeout(() => {
+            const s = T("Your save was updated by the Realm admin.");
+            this.toastMenu ? this.toastMenu(s) : alert(s);
+          }, 400);
+        }
+      } catch (e) {}
+      return r;
+    };
+    const hs0 = UP.heroSelect;
+    UP.heroSelect = function (A, i) {
+      hs0.call(this, A, i);
+      if (A !== "realm") return;
+      const fix = () => {
+        const b = kA("#start");
+        const want = T("Enter the Realm");
+        b && b.textContent !== want && (b.textContent = want);
+      };
+      fix();
+      const o = new MutationObserver(() => (this._selMode === "realm" ? fix() : o.disconnect()));
+      this._selMode = "realm";
+      o.observe(kA("#menu"), { childList: !0, subtree: !0 });
+    };
+    // pause menu line
+    const pz0 = UP.pause;
+    UP.pause = function (A) {
+      pz0.call(this, A);
+      if (!A) return;
+      const r = kA("#pause .room"), net = this.app.net;
+      r && net?.hostPid === "@realm" && (r.innerHTML = `🌐 ${T("The Realm")} · ${this.app.game.remotes.size + 1} ${T("nearby")} · ${T("Friend code")}: <b>${net.pid}</b>`);
+    };
+    X.HELP?.systems?.push?.([
+      "The Realm",
+      "Enter the Realm (main menu) joins the shared online world that runs on the Vigilfall server: everyone who is online plays in the same world. You only see players and monsters near you. Dungeons, raids and the Dungeon Finder take your group into the leader's own world and bring you back to the Realm afterwards. Your save is copied to the server every minute; if the server admin changes it, the game restarts into the menu with the new save. ⚙ next to the button changes the server address.",
+    ]);
+  }
+
+  // ================= SERVER (headless Realm host) =================
+  if (SERVER) {
+    const WSURL = Q.get("realmhost"), TOKEN = Q.get("token") || "";
+    const RANGE = +Q.get("range") || 140, PRANGE = +Q.get("prange") || 170;
+    X.MAXP = +Q.get("max") || 80;
+    let hws = null, ready = !1;
+    const fakes = new Map();
+    const hsend = (f) => {
+      try { hws && hws.readyState === 1 && hws.send(JSON.stringify(f)); } catch (e) {}
+    };
+    // no PeerJS on the server: the relay carries every connection
+    NP.open = function (pid) {
+      this.pid = pid;
+      this.code = pid;
+      this.id = RH;
+      this.peer = { destroyed: !1, destroy() {}, connect() { throw new Error("no p2p on the realm host"); }, on() {} };
+      return Promise.resolve(RH);
+    };
+    NP.request = () => Promise.resolve(null);
+    const posOf = (m) => {
+      const a = m.t === "kill" ? m.pos : m.t === "proj" ? m.f : m.t === "fx" || m.t === "zone" ? m.p : m.t === "tele" && m.p ? [m.p[0], 0, m.p[1]] : null;
+      return a && a.length >= 3 ? a : null;
+    };
+    const near = (rp, a, R) => rp && Math.abs(rp.x - a[0]) < R && Math.abs(rp.z - a[2]) < R && (rp.x - a[0]) ** 2 + (rp.z - a[2]) ** 2 < R * R;
+    NP.broadcast = function (m, ex) {
+      const g = this.app.game;
+      if (m.t === "snap") {
+        // nearby-only snapshots: monsters within RANGE, players within PRANGE of each receiver
+        const ps = m.ps || {};
+        delete ps.host;
+        const pl = Object.entries(ps).map(([id, raw]) => [id, raw, raw?.p]);
+        for (const [id, c] of this.conns) {
+          if (id === ex || !c.open) continue;
+          const rp = g.remotes.get(id)?.pos;
+          if (!rp) continue;
+          const e = m.e.filter((r) => near(rp, [r[2], 0, r[4]], RANGE));
+          const pp = {};
+          for (const [pid, raw, p] of pl) if (pid === id || (p && near(rp, p, PRANGE))) pp[pid] = raw;
+          hsend({ o: "to", id, m: { ...m, e, ps: pp } });
+        }
+        return;
+      }
+      const a = posOf(m);
+      if (a) {
+        for (const [id, c] of this.conns) {
+          if (id === ex || !c.open) continue;
+          const rp = g?.remotes.get(id)?.pos;
+          (near(rp, a, RANGE) || (m.t === "kill" && m.by === id)) && hsend({ o: "to", id, m });
+        }
+        return;
+      }
+      hsend({ o: "all", m, ex });
+    };
+    const mkFake = (id, pid, name) => {
+      const hs = {};
+      const c = {
+        peer: id,
+        open: !0,
+        meta: { pid, name },
+        send: (m) => c.open && hsend({ o: "to", id, m }),
+        close: () => {
+          c.open && hsend({ o: "kick", id });
+          fire("close");
+        },
+        on: (ev, f) => ((hs[ev] ||= []).push(f), c),
+      };
+      const fire = (ev, v) => {
+        if (ev === "close") {
+          if (!c.open) return;
+          c.open = !1;
+        }
+        for (const f of hs[ev] || []) try { f(v); } catch (e) { console.error(e); }
+      };
+      c._fire = fire;
+      return c;
+    };
+    const connect = () => {
+      try {
+        hws = new WebSocket(WSURL + (WSURL.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(TOKEN));
+      } catch (e) {
+        return setTimeout(connect, 3000);
+      }
+      hws.onopen = () => hsend({ o: "ready", ok: ready, ver: X.VERSION });
+      hws.onmessage = (ev) => {
+        let f;
+        try { f = JSON.parse(ev.data); } catch (e) { return; }
+        const net = app()?.net;
+        if (!net) return;
+        if (f.o === "open") {
+          const old = fakes.get(f.id);
+          old && old._fire("close");
+          const c = mkFake(f.id, f.pid, f.name);
+          fakes.set(f.id, c);
+          net._incoming(c);
+          c._fire("data", { t: "join", pid: f.pid, name: f.name });
+        } else if (f.o === "msg") {
+          fakes.get(f.id)?._fire("data", f.m);
+        } else if (f.o === "close") {
+          const c = fakes.get(f.id);
+          fakes.delete(f.id);
+          c?._fire("close");
+        } else if (f.o === "say") {
+          const g = app()?.game;
+          g?.ui?.chatLine?.("⚑ Realm", f.text);
+        }
+      };
+      hws.onclose = () => {
+        for (const c of fakes.values()) c._fire("close");
+        fakes.clear();
+        setTimeout(connect, 2000);
+      };
+      hws.onerror = () => {};
+    };
+
+    // boot: start a world as soon as the app is ready, then switch to server ticking
+    const boot = setInterval(async () => {
+      const ap = app();
+      if (!ap?.game?.world || ap.game.running || ap._realmBooting) return;
+      clearInterval(boot);
+      ap._realmBooting = !0;
+      try {
+        Object.assign(ap.settings, { quality: "low", renderScale: 0.25, view: 1, ao: !1, bloom: !1, grain: !1, vol: { master: 0, music: 0, sfx: 0 } });
+        const p = ap.profile;
+        Object.assign(p, { tutorialDone: !0, seenPrologue: !0, name: "Realm" });
+        p.pid = "REALMHST";
+        ap.audio.init = () => {};
+        await ap.startGame("templar", "host");
+        const g = ap.game;
+        g.endTutorial?.();
+        g.tut = null;
+        g.isHost = !0;
+        ap.net.id = RH;
+        ap.net.offline = !1;
+        serverize(ap, g);
+        ready = !0;
+        hsend({ o: "ready", ok: !0, ver: X.VERSION });
+        console.log("[realm] world running");
+      } catch (e) {
+        console.error("[realm] boot failed", e);
+        hsend({ o: "fatal", why: String(e?.message || e) });
+      }
+    }, 500);
+    connect();
+
+    function serverize(ap, g) {
+      const P = g.player;
+      // the host has no body: invisible, untargetable, unhurt, never in snapshots
+      try { g.playerModel && (g.playerModel.visible = !1); } catch (e) {}
+      g.hurtPlayer = () => {};
+      g.playerTargets = function () {
+        const A = [];
+        for (const I of this.remotes.values()) !I.downed && !I.dead && A.push({ id: I.id, pos: I.pos, stealth: I.stealth, dark: !I.lantern });
+        return A;
+      };
+      g.saveHero = g.saveHero || (() => {});
+      // the host "camera body" follows real players in turn, so the director, rares and events happen where people are
+      let focusI = 0, focusT = 0;
+      const follow = (dt) => {
+        const rs = [...g.remotes.values()].filter((r) => !r.bot);
+        focusT -= dt;
+        if (focusT <= 0) (focusI++, (focusT = 20));
+        if (!rs.length) return;
+        const r = rs[focusI % rs.length];
+        P.pos.set(r.pos.x, r.pos.y, r.pos.z);
+        P.vel.set(0, 0, 0);
+        P.hp = P.maxHp;
+        P.dead = !1;
+        P.downed = !1;
+      };
+      const dir0 = g.director.bind(g);
+      g.director = function (...a) {
+        // nobody online: nothing to direct (keeps the world quiet and cheap)
+        if (!this.remotes.size) return;
+        return dir0(...a);
+      };
+      // stop drawing: one simulation tick every 50 ms, no rendering at all
+      ap.loop = () => {};
+      try { ap.renderer.setAnimationLoop?.(null); } catch (e) {}
+      let last = performance.now(), acc = 0, n = 0, worst = 0;
+      setInterval(() => {
+        const now = performance.now();
+        let dt = Math.min(0.1, (now - last) / 1000);
+        last = now;
+        const t0 = performance.now();
+        try {
+          follow(dt);
+          g.running && g.update(Math.min(0.05, dt));
+        } catch (e) {
+          console.error("[realm] tick", e);
+        }
+        const ms = performance.now() - t0;
+        acc += ms;
+        n++;
+        worst = Math.max(worst, ms);
+      }, 50);
+      setInterval(() => {
+        hsend({ o: "stat", players: g.remotes.size, enemies: g.enemies.size, tick: n ? +(acc / n).toFixed(1) : 0, worst: +worst.toFixed(1), blood: !!g.env?.bloodActive, tod: g.env?.tod });
+        acc = n = worst = 0;
+      }, 5000);
+      setInterval(() => {
+        try { ap.saveProfile(); } catch (e) {}
+      }, 60e3);
+    }
+  }
+}
+
 /* ---- FY_el_items.js ---- */
 /* 1.20.0 — Greek (ελληνικά): items and everything you own. Item names are stored in English in saves (and travel between
    players), so they are composed in Greek when shown: [adjectives] noun [of-phrase], with the adjectives agreeing with the
@@ -49479,6 +50055,9 @@ X.EL.tutTouch = [
   "Το κουμπί <b>🎒</b> ανοίγει τα αντικείμενα: πάτα σε λάφυρο για να το φορέσεις. Τα ταλέντα είναι στο <b>☰ μενού</b> — παίρνεις έναν πόντο σε κάθε επίπεδο.",
   "Το φανάρι καίει <b>Oil</b> (κάτω αριστερά) — τάιζέ το και πρόσεχε τη <b>Λογική</b> σου: το σκοτάδι σε τρελαίνει. Ο Μπράνοκ και η Γριά Μάρτα στο Χωριό θα κάνουν εμπόριο μαζί σου. Καλό κυνήγι.",
 ];
+Object.assign(X.EL.help, {
+  "The Realm": ["Το Βασίλειο", "Η Είσοδος στο Βασίλειο (κύριο μενού) σε βάζει στον κοινό διαδικτυακό κόσμο που τρέχει στον διακομιστή του Vigilfall: όλοι όσοι είναι συνδεδεμένοι παίζουν στον ίδιο κόσμο. Βλέπεις μόνο παίκτες και τέρατα κοντά σου. Τα μπουντρούμια, οι επιδρομές και η Αναζήτηση Μπουντρουμιών πηγαίνουν την ομάδα σου στον κόσμο του αρχηγού και σας φέρνουν πίσω στο Βασίλειο μετά. Η αποθήκευσή σου αντιγράφεται στον διακομιστή κάθε λεπτό· αν ο διαχειριστής την αλλάξει, το παιχνίδι ξεκινά ξανά στο μενού με τη νέα αποθήκευση. Το ⚙ δίπλα στο κουμπί αλλάζει τη διεύθυνση του διακομιστή."],
+});
 
 /* ---- FY_el_ui.js ---- */
 /* 1.19.0 — Greek (ελληνικά): achievements, interface words, messages */
@@ -49743,6 +50322,22 @@ X.EL.msg = {
   "Your house stands east of the square (the plot by the stable). Walk to its door and press F; it is marked on the map.": "Το σπίτι σου είναι ανατολικά της πλατείας (το οικόπεδο δίπλα στον στάβλο). Πήγαινε στην πόρτα και πάτα F· είναι σημειωμένο στον χάρτη.",
   "You have no talents to reset": "Δεν έχεις ταλέντα για επαναφορά", "Something from the deep surfaces: a Mythic relic.": "Κάτι αναδύεται από τα βάθη: ένα Μυθικό κειμήλιο.",
 };
+// 1.22.0 — the Realm
+Object.assign(X.EL.ui, {
+  "Enter the Realm": "Είσοδος στο Βασίλειο", "Own world (solo & friends)": "Δικός σου κόσμος (μόνος & φίλοι)", "No Realm server set — tap ⚙": "Δεν έχει οριστεί διακομιστής Βασιλείου — πάτα ⚙",
+  "Checking the Realm…": "Έλεγχος του Βασιλείου…", online: "συνδεδεμένοι", "The Realm is offline right now": "Το Βασίλειο είναι εκτός σύνδεσης αυτή τη στιγμή",
+  "Your save was updated by the Realm admin.": "Η αποθήκευσή σου ενημερώθηκε από τον διαχειριστή του Βασιλείου.", "The Realm": "Το Βασίλειο", nearby: "κοντά", "Friend code": "Κωδικός φίλου",
+  "Realm server": "Διακομιστής Βασιλείου", Save: "Αποθήκευση", "Checking…": "Έλεγχος…", "Leave empty to use the official Realm.": "Άφησέ το κενό για το επίσημο Βασίλειο.",
+  "Could not reach that server (saved anyway).": "Δεν βρέθηκε αυτός ο διακομιστής (αποθηκεύτηκε πάντως).",
+});
+Object.assign(X.EL.msg, {
+  "THE REALM": "ΤΟ ΒΑΣΙΛΕΙΟ", ANNOUNCEMENT: "ΑΝΑΚΟΙΝΩΣΗ", "REMOVED FROM THE REALM": "ΑΠΟΜΑΚΡΥΝΣΗ ΑΠΟ ΤΟ ΒΑΣΙΛΕΙΟ", "THE REALM IS UNREACHABLE": "ΤΟ ΒΑΣΙΛΕΙΟ ΔΕΝ ΑΠΑΝΤΑ",
+  "You keep playing in your own world. Reconnecting…": "Συνεχίζεις στον δικό σου κόσμο. Επανασύνδεση…", "BACK IN THE REALM": "ΠΙΣΩ ΣΤΟ ΒΑΣΙΛΕΙΟ",
+  "Removed by an admin": "Απομακρύνθηκες από διαχειριστή", "Removed by an admin.": "Απομακρύνθηκες από διαχειριστή.", "You logged in somewhere else.": "Συνδέθηκες από αλλού.",
+  "The Realm is starting. Try again in a minute.": "Το Βασίλειο ξεκινά. Δοκίμασε ξανά σε ένα λεπτό.", "The Realm is full right now.": "Το Βασίλειο είναι γεμάτο αυτή τη στιγμή.",
+  "No Realm server is set yet.": "Δεν έχει οριστεί διακομιστής Βασιλείου.", "The Realm server did not answer.": "Ο διακομιστής του Βασιλείου δεν απάντησε.", "Could not reach the Realm server.": "Δεν ήταν δυνατή η σύνδεση με τον διακομιστή του Βασιλείου.",
+  "This character is linked to another device. Ask the Realm admin to reset it.": "Αυτός ο χαρακτήρας είναι συνδεδεμένος με άλλη συσκευή. Ζήτα από τον διαχειριστή να τον επαναφέρει.",
+});
 
 /* ---- FZ_el.js ---- */
 /* 1.19.0 — language: English / Ελληνικά. Settings → Language (reloads). Greek replaces the game's own text tables at load
@@ -49957,6 +50552,11 @@ X.EL.msg = {
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.22.0"] && (X.CHANGELOG["1.22.0"] = [
+        "Το Βασίλειο: ένας κοινός διαδικτυακός κόσμος που τρέχει σε δικό του διακομιστή. Η Είσοδος στο Βασίλειο στο κύριο μενού σε βάζει στον ίδιο κόσμο με όλους όσους είναι συνδεδεμένοι· βλέπεις τους παίκτες και τα τέρατα κοντά σου. Ο δικός σου κόσμος (μόνος και με φίλους) υπάρχει ακόμη.",
+        "Τα μπουντρούμια, οι επιδρομές και η Αναζήτηση Μπουντρουμιών πηγαίνουν την ομάδα σου στον κόσμο του αρχηγού όπως πριν και φέρνουν όλους πίσω στο Βασίλειο μετά. Φίλοι, ομάδες, συνομιλία και φωνή λειτουργούν και στο Βασίλειο.",
+        "Η αποθήκευσή σου αντιγράφεται στον διακομιστή του Βασιλείου κάθε λεπτό. Αν ο διακομιστής πέσει, συνεχίζεις στον δικό σου κόσμο και επιστρέφεις όταν ξανανοίξει.",
+      ]);
       X.CHANGELOG && X.CHANGELOG["1.21.0"] && (X.CHANGELOG["1.21.0"] = [
         "Εφαρμογή Android 1.1: το παιχνίδι είναι μέσα στην εφαρμογή — ανοίγει σε δευτερόλεπτα αντί να κατεβάζει 10 MB κάθε φορά, παίζεται μόνος χωρίς ίντερνετ και κατεβάζει αθόρυβα τις νέες εκδόσεις (ξεκινούν την επόμενη φορά που θα το ανοίξεις). Οι αποθηκεύσεις σου μένουν όπως ήταν.",
         "Τα γραφικά επιλέγονται για το κινητό σου στην πρώτη εκκίνηση (ισχυρό, μεσαίο ή παλαιότερο κινητό, από το τσιπ γραφικών του). Άλλαξέ τα όποτε θέλεις στις Ρυθμίσεις. Οι υπολογιστές δεν επηρεάζονται.",

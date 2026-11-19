@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#14110d">
+<title>Vigilfall Admin</title>
+<style>
+:root{--bg:#14110d;--panel:#1f1a14;--panel2:#2a231a;--line:#3d3324;--text:#eadfc8;--dim:#a99878;--gold:#e8b85a;--good:#7ccf8a;--bad:#ff6a5a;--blue:#8fc4ff}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+header{position:sticky;top:0;z-index:5;background:linear-gradient(#1c1711,#14110d);border-bottom:1px solid var(--line);padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;color:var(--gold);letter-spacing:.5px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--dim);flex:0 0 auto}.dot.on{background:var(--good);box-shadow:0 0 8px var(--good)}.dot.off{background:var(--bad)}
+main{padding:12px;max-width:820px;margin:0 auto}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#100d0a;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav button{flex:1;background:none;border:0;color:var(--dim);padding:9px 0 8px;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px}
+nav button b{font-size:20px;font-weight:400;line-height:1}
+nav button.sel{color:var(--gold)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+.card h2{font-size:14px;margin:0 0 10px;color:var(--gold);text-transform:uppercase;letter-spacing:1px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.stat{background:var(--panel2);border-radius:10px;padding:10px}.stat .v{font-size:22px;font-weight:600}.stat .k{color:var(--dim);font-size:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.list .it{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line)}
+.list .it:last-child{border-bottom:0}
+.it .nm{flex:1;min-width:0}.it .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.it .nm span{color:var(--dim);font-size:12px}
+.tap{cursor:pointer}.tap:active{background:var(--panel2)}
+input,textarea,select{width:100%;background:#0f0c09;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit}
+textarea{font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;min-height:50vh}
+label{display:block;color:var(--dim);font-size:12px;margin:8px 0 4px}
+button.b{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:10px 14px;font:inherit;cursor:pointer}
+button.b:active{transform:translateY(1px)}
+button.p{background:var(--gold);color:#1a1208;border-color:var(--gold);font-weight:600}
+button.d{border-color:#6a2a22;color:#ffb0a6}
+button.s{padding:6px 10px;font-size:13px}
+.pill{font-size:11px;padding:2px 7px;border-radius:20px;background:var(--panel2);color:var(--dim);white-space:nowrap}
+.pill.on{background:#1f3a24;color:var(--good)}.pill.ban{background:#3a1f1c;color:var(--bad)}
+.heroes{display:grid;grid-template-columns:1fr 70px 90px 60px;gap:6px;align-items:center}
+.heroes .h{font-size:13px}.heroes input{padding:7px}
+.muted{color:var(--dim);font-size:13px}
+.toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#2b2418;border:1px solid var(--gold);color:var(--text);padding:10px 16px;border-radius:10px;z-index:9;max-width:90vw;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.log{font:11px/1.35 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;max-height:60vh;overflow:auto;background:#0f0c09;padding:8px;border-radius:8px}
+.login{max-width:420px;margin:12vh auto 0;padding:0 16px}
+.login h1{text-align:center;color:var(--gold);font-size:26px;margin-bottom:4px}
+.back{background:none;border:0;color:var(--gold);font-size:22px;padding:0 6px 0 0;cursor:pointer}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<div id="login" class="login hide">
+  <h1>⚜ Vigilfall Admin</h1>
+  <p class="muted" style="text-align:center">Manage your Realm server</p>
+  <label>Server address</label><input id="lsrv" placeholder="myrealm.duckdns.org" autocapitalize="off" autocorrect="off">
+  <label>Admin password</label><input id="lpw" type="password" placeholder="password">
+  <p id="lerr" style="color:var(--bad);min-height:1.4em"></p>
+  <button class="b p" id="lgo" style="width:100%">Connect</button>
+  <p class="muted" style="margin-top:18px">The password is in <b>data/config.json</b> on the server (the setup script also prints it).</p>
+</div>
+<div id="app" class="hide">
+  <header><button class="back hide" id="hback">‹</button><span class="dot" id="hdot"></span><h1 id="htitle">Realm</h1><button class="b s" id="hout" title="Sign out">⎋</button></header>
+  <main id="main"></main>
+  <nav>
+    <button data-t="dash" class="sel"><b>◈</b>Dashboard</button>
+    <button data-t="players"><b>☺</b>Players</button>
+    <button data-t="msg"><b>✉</b>Message</button>
+    <button data-t="server"><b>⚙</b>Server</button>
+  </nav>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+const HERO = { templar: "Ser Aldric", warden: "Morrow", colossus: "Gravemaw", cleric: "Sister Ysolde", druid: "Hollin Thorne", apothecary: "Doctor Vesh", witch: "Cinder Maeve", ranger: "Wren Ashby", assassin: "Nyx" };
+const heroName = (id) => HERO[id] || String(id || "").replace(/(^|_)(\w)/g, (a, b, c) => (b ? " " : "") + c.toUpperCase());
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const ago = (t) => { if (!t) return "never"; const s = (Date.now() - t) / 1000; return s < 60 ? "just now" : s < 3600 ? Math.round(s / 60) + " min ago" : s < 86400 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " days ago"; };
+const dur = (s) => { s = Math.round(s); const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; };
+const mb = (b) => (b / 1048576).toFixed(0) + " MB";
+const toast = (t) => { const e = $("#toast"); e.textContent = t; e.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove("show"), 2600); };
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }, del: (k) => { try { localStorage.removeItem(k); } catch (e) {} } };
+
+const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
+const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
+let S = { base: store.get("vfa_srv") || (!IN_APP && location.protocol.startsWith("http") ? location.origin : ""), pw: store.get("vfa_pw") || "" };
+
+async function call(path, method = "GET", body) {
+  const r = await fetch(S.base + "/api/" + path, { method, headers: { Authorization: "Bearer " + S.pw, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
+  let j = {};
+  try { j = await r.json(); } catch (e) {}
+  if (!r.ok) { const err = new Error(j.error || "HTTP " + r.status); err.code = r.status; throw err; }
+  return j;
+}
+
+// ---------------- login ----------------
+function showLogin(msg) {
+  $("#app").classList.add("hide"); $("#login").classList.remove("hide");
+  $("#lsrv").value = S.base.replace(/^https?:\/\//, ""); $("#lpw").value = ""; $("#lerr").textContent = msg || "";
+}
+$("#lgo").onclick = async () => {
+  S.base = norm($("#lsrv").value); S.pw = $("#lpw").value;
+  if (!S.base) return ($("#lerr").textContent = "Enter the server address.");
+  $("#lerr").textContent = "Connecting…";
+  try { await call("status"); store.set("vfa_srv", S.base); store.set("vfa_pw", S.pw); start(); }
+  catch (e) { $("#lerr").textContent = e.code === 401 ? "Wrong password." : e.message === "Failed to fetch" ? "Could not reach the server." : e.message; }
+};
+$("#lpw").onkeydown = (e) => e.key === "Enter" && $("#lgo").click();
+$("#hout").onclick = () => { if (confirm("Sign out of this server?")) { store.del("vfa_pw"); S.pw = ""; showLogin(); } };
+
+// ---------------- navigation ----------------
+let tab = "dash", timer = null, stack = [];
+function go(t) {
+  tab = t; stack = [];
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("sel", b.dataset.t === t));
+  render();
+}
+document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => go(b.dataset.t)));
+$("#hback").onclick = () => back();
+function push(fn) { stack.push(fn); fn(); $("#hback").classList.remove("hide"); }
+function back() { stack.pop(); stack.length ? stack[stack.length - 1]() : render(); }
+window.VFA_back = () => { if (stack.length) { back(); return true; } if (tab !== "dash") { go("dash"); return true; } return false; };
+function render() {
+  clearInterval(timer); $("#hback").classList.add("hide");
+  ({ dash, players, msg, server })[tab]();
+}
+const M = () => $("#main");
+const fail = (e) => { if (e.code === 401) return showLogin("The password changed — sign in again."); toast("⚠ " + e.message); };
+
+// ---------------- dashboard ----------------
+let lastStatus = null;
+async function dash() {
+  M().innerHTML = `<div class="muted">Loading…</div>`;
+  const draw = async () => {
+    if (tab !== "dash" || stack.length) return;
+    let s;
+    try { s = await call("status"); } catch (e) { $("#hdot").className = "dot off"; return fail(e); }
+    lastStatus = s;
+    $("#htitle").textContent = s.name; $("#hdot").className = "dot " + (s.hostReady ? "on" : "off");
+    const w = s.world || {};
+    const memUsed = s.mem.total - s.mem.free;
+    M().innerHTML = `
+      <div class="card"><h2>World</h2><div class="grid">
+        <div class="stat"><div class="v" style="color:${s.hostReady ? "var(--good)" : "var(--bad)"}">${s.hostReady ? "Online" : s.hostUp ? "Starting…" : "Down"}</div><div class="k">${s.hostReady ? "running " + dur((Date.now() - s.hostSince) / 1000) : "world host"}</div></div>
+        <div class="stat"><div class="v">${s.online.length}<span class="muted"> / ${s.maxPlayers}</span></div><div class="k">players online</div></div>
+        <div class="stat"><div class="v">${w.tick ?? "–"}<span class="muted"> ms</span></div><div class="k">world tick (worst ${w.worst ?? "–"} ms)</div></div>
+        <div class="stat"><div class="v">${w.enemies ?? "–"}</div><div class="k">monsters awake${w.blood ? " · 🌑 blood moon" : ""}</div></div>
+        <div class="stat"><div class="v">${(s.load[0] / s.cpus * 100).toFixed(0)}<span class="muted"> %</span></div><div class="k">CPU (${s.cpus} cores)</div></div>
+        <div class="stat"><div class="v">${(memUsed / s.mem.total * 100).toFixed(0)}<span class="muted"> %</span></div><div class="k">memory · ${mb(memUsed)} of ${mb(s.mem.total)}</div></div>
+        <div class="stat"><div class="v">${s.players}</div><div class="k">characters saved</div></div>
+        <div class="stat"><div class="v" style="font-size:16px">${esc(s.hostVersion || s.gameVersion || "?")}</div><div class="k">game version${s.restarts ? " · " + s.restarts + " restart(s)" : ""}</div></div>
+      </div></div>
+      <div class="card"><h2>Online now</h2><div class="list" id="onl">${s.online.length ? "" : '<div class="muted">Nobody is online.</div>'}</div></div>`;
+    const L = $("#onl");
+    for (const o of s.online) {
+      const d = document.createElement("div"); d.className = "it tap";
+      d.innerHTML = `<div class="nm"><b>${esc(o.name)}</b><span>Lv ${o.lv || "?"} ${esc(heroName(o.hero))} · ${ago(o.since).replace(" ago", "")} online${o.pos ? " · at " + o.pos.join(", ") : ""}</span></div><button class="b s d">Kick</button>`;
+      d.querySelector("button").onclick = async (e) => { e.stopPropagation(); const why = prompt(`Kick ${o.name}? Reason (shown to them):`, "Removed by an admin."); if (why === null) return; try { await call(`players/${o.pid}/kick`, "POST", { why }); toast("Kicked " + o.name); setTimeout(draw, 800); } catch (er) { fail(er); } };
+      d.onclick = () => push(() => player(o.pid));
+      L.appendChild(d);
+    }
+  };
+  await draw();
+  timer = setInterval(draw, 5000);
+}
+
+// ---------------- players ----------------
+let q = "";
+async function players() {
+  $("#htitle").textContent = "Players";
+  M().innerHTML = `<div class="card"><input id="q" placeholder="Search by name or friend code" value="${esc(q)}"></div><div class="card list" id="pl"><div class="muted">Loading…</div></div>`;
+  let t = null;
+  const load = async () => {
+    try {
+      const r = await call("players?q=" + encodeURIComponent(q));
+      const L = $("#pl"); if (!L) return;
+      L.innerHTML = r.players.length ? "" : '<div class="muted">No players yet.</div>';
+      for (const p of r.players) {
+        const d = document.createElement("div"); d.className = "it tap";
+        d.innerHTML = `<div class="nm"><b>${esc(p.name || "?")}</b><span>${esc(p.pid)} · Lv ${p.lv} · ${p.heroes} hero(es) · ◆ ${(p.shards || 0).toLocaleString()} · ${p.online ? "online" : ago(p.lastSeen)}</span></div>${p.banned ? '<span class="pill ban">banned</span>' : p.online ? '<span class="pill on">online</span>' : ""}`;
+        d.onclick = () => push(() => player(p.pid));
+        L.appendChild(d);
+      }
+    } catch (e) { fail(e); }
+  };
+  $("#q").oninput = (e) => { q = e.target.value; clearTimeout(t); t = setTimeout(load, 300); };
+  load();
+}
+
+async function player(pid) {
+  clearInterval(timer);
+  M().innerHTML = `<div class="muted">Loading…</div>`;
+  let r;
+  try { r = await call("players/" + encodeURIComponent(pid)); } catch (e) { return fail(e); }
+  const p = r.profile || null;
+  $("#htitle").textContent = r.name || pid;
+  const heroes = p ? Object.entries(p.heroes || {}) : [];
+  M().innerHTML = `
+    <div class="card"><div class="row" style="justify-content:space-between"><div><b style="font-size:18px">${esc(r.name)}</b><div class="muted">Friend code ${esc(pid)} · joined ${ago(r.created)} · last seen ${r.online ? "now" : ago(r.lastSeen)}</div><div class="muted">Game ${esc(r.ver || "?")}${r.adminRev ? " · edited " + r.adminRev + "×" : ""}${r.locked ? " · linked to a device" : ""}</div></div>
+      <div>${r.banned ? `<span class="pill ban">banned</span>` : r.online ? '<span class="pill on">online</span>' : ""}</div></div>
+      ${r.banned && r.banReason ? `<p class="muted">Reason: ${esc(r.banReason)}</p>` : ""}
+      <div class="row" style="margin-top:10px">
+        ${r.online ? '<button class="b s" data-x="kick">Kick</button>' : ""}
+        ${r.banned ? '<button class="b s" data-x="unban">Unban</button>' : '<button class="b s d" data-x="ban">Ban</button>'}
+        <button class="b s" data-x="resetkey" title="Lets the character log in from a new phone or PC">Reset device link</button>
+        <button class="b s" data-x="backups">Backups</button>
+        <button class="b s d" data-x="delete">Delete</button>
+      </div></div>
+    ${p ? `<div class="card"><h2>Edit save</h2>
+      <label>Name</label><input id="e_name" maxlength="16" value="${esc(p.name)}">
+      <div class="row" style="gap:10px"><div style="flex:1"><label>◆ Soul Shards</label><input id="e_sh" type="number" min="0" value="${p.shards || 0}"></div><div style="flex:1"><label>✦ Ashen Marks</label><input id="e_mk" type="number" min="0" value="${p.marks || 0}"></div></div>
+      <label>Heroes</label>
+      <div class="heroes"><span class="muted">Hero</span><span class="muted">Level</span><span class="muted">XP</span><span class="muted">Potions</span>
+        ${heroes.map(([id, h]) => `<span class="h">${esc(heroName(id))}</span><input data-h="${esc(id)}" data-f="level" type="number" min="1" max="60" value="${h.level || 1}"><input data-h="${esc(id)}" data-f="xp" type="number" min="0" value="${Math.round(h.xp || 0)}"><input data-h="${esc(id)}" data-f="potions" type="number" min="0" max="20" value="${h.potions ?? 3}">`).join("") || '<span class="muted" style="grid-column:1/-1">No heroes yet.</span>'}
+      </div>
+      <div class="row" style="margin-top:8px;gap:12px">
+        <label style="display:flex;gap:6px;align-items:center;margin:0"><input id="e_vic" type="checkbox" style="width:auto" ${p.campaign?.victory ? "checked" : ""}> Dark Lord slain</label>
+        <label style="display:flex;gap:6px;align-items:center;margin:0"><input id="e_tut" type="checkbox" style="width:auto" ${p.tutorialDone ? "checked" : ""}> Tutorial done</label>
+      </div>
+      <p class="muted">Inventory: ${(p.inventory || []).length} item(s) · Sigils ${(p.campaign?.sigils || []).length}/3 · played ${dur((p.played || 0))}</p>
+      <div class="row"><button class="b p" id="e_save">Save changes</button><button class="b" id="e_raw">Edit raw save (JSON)</button>${IN_APP ? "" : '<button class="b" id="e_dl">Download</button>'}</div>
+      <p class="muted">${r.online ? "The player is online: their game restarts into the menu with the new save." : "The new save is applied the next time this player enters the Realm."}</p>
+    </div>` : `<div class="card muted">No save uploaded yet — it arrives a minute after the player enters the Realm.</div>`}`;
+  const act = async (x) => {
+    try {
+      if (x === "kick") { const why = prompt("Reason (shown to the player):", "Removed by an admin."); if (why === null) return; await call(`players/${pid}/kick`, "POST", { why }); toast("Kicked"); }
+      if (x === "ban") { const why = prompt("Ban reason (shown to the player):", ""); if (why === null) return; await call(`players/${pid}/ban`, "POST", { why }); toast("Banned"); }
+      if (x === "unban") { await call(`players/${pid}/unban`, "POST"); toast("Unbanned"); }
+      if (x === "resetkey") { if (!confirm("Allow this character to log in from a new device? (The old device keeps working too until someone logs in.)")) return; await call(`players/${pid}/resetkey`, "POST"); toast("Device link reset"); }
+      if (x === "backups") return push(() => backups(pid));
+      if (x === "delete") { if (prompt(`Type DELETE to remove ${r.name} from the server (a backup is kept).`) !== "DELETE") return; await call(`players/${pid}`, "DELETE"); toast("Deleted"); return back(); }
+      player(pid);
+    } catch (e) { fail(e); }
+  };
+  M().querySelectorAll("[data-x]").forEach((b) => (b.onclick = () => act(b.dataset.x)));
+  if (!p) return;
+  $("#e_save").onclick = async () => {
+    const np = JSON.parse(JSON.stringify(p));
+    np.name = $("#e_name").value.trim() || np.name;
+    np.shards = Math.max(0, Math.round(+$("#e_sh").value || 0));
+    np.marks = Math.max(0, Math.round(+$("#e_mk").value || 0));
+    M().querySelectorAll("[data-h]").forEach((i) => {
+      const h = np.heroes[i.dataset.h]; if (!h) return;
+      let v = Math.max(0, Math.round(+i.value || 0));
+      if (i.dataset.f === "level") v = Math.min(60, Math.max(1, v));
+      h[i.dataset.f] = v;
+    });
+    np.campaign = np.campaign || {}; np.campaign.victory = $("#e_vic").checked; np.tutorialDone = $("#e_tut").checked;
+    await saveProfile(pid, np, r.name);
+  };
+  $("#e_raw").onclick = () => push(() => rawEdit(pid, p, r.name));
+  $("#e_dl") && ($("#e_dl").onclick = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(p, null, 1)], { type: "application/json" }));
+    a.download = `vigilfall-${(r.name || pid).replace(/[^\w-]+/g, "_")}.json`; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 500);
+  });
+}
+async function saveProfile(pid, np, name) {
+  if (!confirm(`Replace ${name}'s save? A backup of the current save is kept.`)) return;
+  try { const r = await call("players/" + encodeURIComponent(pid), "PUT", { profile: np }); toast(r.live ? "Saved — sent to the player now" : "Saved — applies on their next login"); stack.pop(); player(pid); stack.push(() => player(pid)); }
+  catch (e) { fail(e); }
+}
+function rawEdit(pid, p, name) {
+  M().innerHTML = `<div class="card"><h2>Raw save · ${esc(name)}</h2><p class="muted">Everything in the save. Change carefully; it must stay valid JSON.</p><textarea id="raw" spellcheck="false"></textarea><p id="rerr" style="color:var(--bad)"></p><div class="row"><button class="b p" id="rsave">Save</button><button class="b" id="rfmt">Check</button></div></div>`;
+  $("#raw").value = JSON.stringify(p, null, 1);
+  const parse = () => { try { const o = JSON.parse($("#raw").value); if (!o.heroes || !o.campaign) throw new Error("heroes and campaign are required"); $("#rerr").textContent = ""; return o; } catch (e) { $("#rerr").textContent = "⚠ " + e.message; return null; } };
+  $("#rfmt").onclick = () => { const o = parse(); o && (($("#raw").value = JSON.stringify(o, null, 1)), toast("Looks good")); };
+  $("#rsave").onclick = async () => { const o = parse(); if (o) { await saveProfile(pid, o, name); } };
+}
+async function backups(pid) {
+  M().innerHTML = `<div class="card"><h2>Backups</h2><div class="list" id="bl"><div class="muted">Loading…</div></div><p class="muted">Kept automatically every hour of play and before every admin change (last 20).</p></div>`;
+  try {
+    const r = await call(`players/${encodeURIComponent(pid)}/backups`);
+    const L = $("#bl"); L.innerHTML = r.backups.length ? "" : '<div class="muted">No backups yet.</div>';
+    for (const b of r.backups) {
+      const d = document.createElement("div"); d.className = "it";
+      d.innerHTML = `<div class="nm"><b>${new Date(b.at).toLocaleString()}</b><span>${esc(b.why)} · ${ago(b.at)}</span></div><button class="b s">Restore</button>`;
+      d.querySelector("button").onclick = async () => { if (!confirm("Restore this backup? The current save is backed up first.")) return; try { const x = await call(`players/${encodeURIComponent(pid)}/restore`, "POST", { file: b.file }); toast(x.live ? "Restored — sent to the player now" : "Restored"); back(); } catch (e) { fail(e); } };
+      L.appendChild(d);
+    }
+  } catch (e) { fail(e); }
+}
+
+// ---------------- messages ----------------
+function msg() {
+  $("#htitle").textContent = "Message";
+  const s = lastStatus || {};
+  M().innerHTML = `<div class="card"><h2>Announcement</h2><p class="muted">Shown as a banner and in chat to everyone in the Realm right now.</p><textarea id="ann" style="min-height:90px" maxlength="300" placeholder="Double XP weekend starts now!"></textarea><div class="row" style="margin-top:8px"><button class="b p" id="send">Send to everyone</button></div></div>
+    <div class="card"><h2>Message of the day</h2><p class="muted">Shown to each player when they enter the Realm.</p><input id="motd" maxlength="200" value="${esc(s.motd || "")}"><div class="row" style="margin-top:8px"><button class="b" id="smotd">Save</button></div></div>
+    <div class="card"><h2>Scheduled restart</h2><p class="muted">Warns everyone, then restarts the world. Players reconnect by themselves.</p><div class="row"><button class="b" data-r="60">In 1 minute</button><button class="b" data-r="300">In 5 minutes</button><button class="b d" data-r="0">Now</button></div></div>`;
+  $("#send").onclick = async () => { const t = $("#ann").value.trim(); if (!t) return; try { const r = await call("announce", "POST", { text: t }); toast(`Sent to ${r.sent} player(s)`); $("#ann").value = ""; } catch (e) { fail(e); } };
+  $("#smotd").onclick = async () => { try { await call("config", "POST", { motd: $("#motd").value }); toast("Saved"); } catch (e) { fail(e); } };
+  M().querySelectorAll("[data-r]").forEach((b) => (b.onclick = async () => { if (!confirm("Restart the world " + (b.dataset.r === "0" ? "now" : "in " + b.dataset.r / 60 + " min") + "?")) return; try { await call("restart", "POST", { delay: +b.dataset.r }); toast("Restart scheduled"); } catch (e) { fail(e); } }));
+  if (!lastStatus) call("status").then((x) => { lastStatus = x; $("#motd") && ($("#motd").value = x.motd || ""); }).catch(() => {});
+}
+
+// ---------------- server ----------------
+async function server() {
+  $("#htitle").textContent = "Server";
+  let s;
+  try { s = await call("status"); lastStatus = s; } catch (e) { return fail(e); }
+  M().innerHTML = `
+    <div class="card"><h2>Realm</h2>
+      <label>Realm name</label><input id="sname" maxlength="40" value="${esc(s.name)}">
+      <label>Most players at once</label><input id="smax" type="number" min="1" max="300" value="${s.maxPlayers}">
+      <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input id="sauto" type="checkbox" style="width:auto" ${s.autoUpdate ? "checked" : ""}> Install new game versions automatically (checks every 10 minutes)</label>
+      <div class="row" style="margin-top:10px"><button class="b p" id="ssave">Save</button></div></div>
+    <div class="card"><h2>Game version</h2><p class="muted">Server has <b>${esc(s.gameVersion || "?")}</b>, the world runs <b>${esc(s.hostVersion || "?")}</b>.</p>
+      <div class="row"><button class="b" id="supd">Check for update now</button><button class="b d" id="srst">Restart world now</button></div></div>
+    <div class="card"><h2>Admin password</h2><input id="spw" type="password" placeholder="new password (8+ characters)"><div class="row" style="margin-top:8px"><button class="b" id="spws">Change password</button></div></div>
+    <div class="card"><h2>Server log</h2><div class="row" style="margin-bottom:8px"><button class="b s" id="slog">Refresh</button></div><div class="log" id="log">…</div></div>
+    <p class="muted" style="text-align:center">Server up ${dur(s.uptime)} · ${esc(S.base.replace(/^https?:\/\//, ""))}</p>`;
+  $("#ssave").onclick = async () => { try { await call("config", "POST", { name: $("#sname").value, maxPlayers: +$("#smax").value, autoUpdate: $("#sauto").checked }); toast("Saved"); } catch (e) { fail(e); } };
+  $("#supd").onclick = async () => { toast("Checking…"); try { const r = await call("update", "POST"); toast(r.changed ? `Downloaded ${r.ver} — world restarts in 60 s` : r.ok ? `Already up to date (${r.ver})` : "Update failed: " + r.why); } catch (e) { fail(e); } };
+  $("#srst").onclick = async () => { if (!confirm("Restart the world now? Everyone is disconnected for about a minute.")) return; try { await call("restart", "POST", { delay: 0 }); toast("Restarting…"); } catch (e) { fail(e); } };
+  $("#spws").onclick = async () => { const v = $("#spw").value; if (v.length < 8) return toast("At least 8 characters"); try { await call("config", "POST", { newPassword: v }); S.pw = v; store.set("vfa_pw", v); toast("Password changed"); $("#spw").value = ""; } catch (e) { fail(e); } };
+  const loadLog = async () => { try { const r = await call("log"); const L = $("#log"); if (L) { L.textContent = r.lines.slice().reverse().join("\n"); } } catch (e) { fail(e); } };
+  $("#slog").onclick = loadLog; loadLog();
+}
+
+function start() { $("#login").classList.add("hide"); $("#app").classList.remove("hide"); go("dash"); }
+(async () => {
+  if (!S.base || !S.pw) return showLogin();
+  try { await call("status"); start(); } catch (e) { showLogin(e.code === 401 ? "Sign in again." : e.message === "Failed to fetch" ? "Could not reach " + S.base.replace(/^https?:\/\//, "") : e.message); }
+})();
+</script>
+</body>
+</html>
