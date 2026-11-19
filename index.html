@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.20.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.20.1</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,12 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.20.0";
+  X.VERSION = "1.20.1";
   X.CHANGELOG = {
+    "1.20.1": [
+      "Phones: the attack and skill buttons show each skill's own icon with its key and a cooldown sweep (instead of ⚔, 🛡, Q, E, R); press and hold a button to see the skill's name, cooldown, cost and what it does.",
+      "Phones: the talent reminder says ☰ → Talents instead of \"press N\". Greek: the time of day (Midday, Witching Hour) and the talent reminder are translated.",
+    ],
     "1.20.0": [
       "Sound: every skill has its own sound (before, all of a class's spells shared one); zones have living ambience — surf on the coast, forest and night insects, sand, mountain gusts, cave hum and dripping water; dungeons and raids echo like stone halls; boss fights get war drums, a brass ostinato and choir.",
       "Greek: items, materials, recipes, cosmetics, mounts, companions, furniture, lore pages, rare enemies and shrines are now in Greek too (item names are composed with proper Greek grammar).",
@@ -44853,7 +44857,7 @@ Object.assign(X.COMPANIONS, {
         ]) {
           let b = document.querySelector(`#tbtns .tb[data-k="${key}"]`),
             e = w.skills[idx];
-          if (!b || !e) continue;
+          if (!b || !e || b.classList.contains("sk")) continue; // 1.20.1: FJ_touchskills draws these
           let t = I.cds[e.id] || 0,
             M = e.cd * A.cdMul(e.id) || 1;
           b.style.setProperty("--cd", t > 0 ? `${Math.min(100, (t / M) * 100)}%` : "0%");
@@ -48595,6 +48599,93 @@ X.EL.quests = {
   };
 }
 
+/* ---- FJ_touchskills.js ---- */
+/* 1.20.1 — phones: the skill buttons show the skill's own icon (with its key and a cooldown sweep) instead of
+   ⚔ / 🛡 / Q / E / R, and a long press shows what the skill does (the press still casts as before). */
+{
+  const touch = () => X.isTouch || matchMedia("(pointer:coarse)").matches;
+  if (touch()) {
+    const U = XC.prototype;
+    const SLOT = { LMB: 0, RMB: 1, KeyQ: 2, KeyE: 3, KeyR: 4 };
+    const KEY = ["⚔", "🛡", "Q", "E", "R"];
+    let built = null;
+    const css = document.createElement("style");
+    css.textContent = `#tbtns .tb.sk{position:relative;padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center}
+    #tbtns .tb.sk svg,#tbtns .tb.sk img{width:78%;height:78%;pointer-events:none}
+    #tbtns .tb.sk .tk{position:absolute;right:3px;bottom:1px;font:700 11px Georgia,serif;color:#fff1c2;text-shadow:0 1px 2px #000,0 0 3px #000;pointer-events:none}
+    #tbtns .tb.sk .tcd{position:absolute;inset:0;border-radius:50%;pointer-events:none;background:conic-gradient(rgba(0,0,0,.68) var(--p,0%),transparent 0)}
+    #tbtns .tb.sk .tct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 15px Georgia,serif;color:#fff;text-shadow:0 1px 3px #000;pointer-events:none}
+    #tbtns .tb.sk.nores{filter:grayscale(.7) brightness(.7)}
+    #tskill-tip{position:fixed;z-index:47;left:50%;bottom:30vh;transform:translateX(-50%);max-width:min(440px,80vw);background:rgba(12,9,7,.94);border:1px solid #c9a96a;border-radius:8px;padding:8px 12px;color:#e8d4a0;font-size:13px;line-height:1.35;pointer-events:none;display:none;box-shadow:0 6px 20px #000a}
+    #tskill-tip b{color:#ffe08a;font-size:15px}#tskill-tip small{opacity:.7;display:block;margin:2px 0 4px}`;
+    document.head.appendChild(css);
+    const tip = document.createElement("div");
+    tip.id = "tskill-tip";
+    document.body.appendChild(tip);
+    const build = (g) => {
+      const btns = document.querySelectorAll("#tbtns .tb[data-k]");
+      if (!btns.length || !g?.hero) return;
+      for (const b of btns) {
+        const i = SLOT[b.dataset.k];
+        if (i === undefined) continue;
+        const s = g.hero.skills[i];
+        if (!s) continue;
+        b.classList.add("sk");
+        b.innerHTML = `${pC(s.id, 44)}<div class="tcd"></div><div class="tct"></div><span class="tk">${KEY[i]}</span>`;
+        b.dataset.sk = s.id;
+        if (!b._tipBound) {
+          b._tipBound = 1;
+          let timer = null;
+          b.addEventListener("touchstart", () => {
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+              const G = window.__app?.game, sk = G?.hero?.skills?.[SLOT[b.dataset.k]];
+              if (!sk) return;
+              const cd = sk.cd ? (sk.cd * (G.cdMul?.(sk.id) || 1)).toFixed(1) + "s" : "", cost = sk.cost ? ` · ${sk.cost} ${nI[G.hero.res]?.name || ""}` : "";
+              tip.innerHTML = `<b>${sk.name}</b><small>${KEY[SLOT[b.dataset.k]]}${cd ? " · " + cd : ""}${cost}</small>${sk.desc}`;
+              tip.style.display = "block";
+            }, 450);
+          }, { passive: !0 });
+          const hide = () => { clearTimeout(timer); tip.style.display = "none"; };
+          b.addEventListener("touchend", hide, { passive: !0 });
+          b.addEventListener("touchcancel", hide, { passive: !0 });
+        }
+      }
+      built = g.hero.id + ":" + X.lang;
+    };
+    const uh0 = U.updateHUD;
+    U.updateHUD = function (A, ...a) {
+      const r = uh0.call(this, A, ...a);
+      try {
+        const g = A;
+        if (!g?.hero) return r;
+        (built !== g.hero.id + ":" + X.lang || !document.querySelector("#tbtns .tb.sk")) && build(g);
+        const P = g.player, res = P.res ?? P.resource;
+        for (const b of document.querySelectorAll("#tbtns .tb.sk")) {
+          const s = g.hero.skills[SLOT[b.dataset.k]];
+          if (!s) continue;
+          const left = P.cds?.[s.id] || 0, max = s.cd * (g.cdMul?.(s.id) || 1) || 1;
+          const p = left > 0 ? Math.min(100, (left / max) * 100) : 0;
+          b.style.setProperty("--p", p.toFixed(1) + "%");
+          b.querySelector(".tct").textContent = left > 0.95 && max > 2 ? Math.ceil(left) : "";
+          b.classList.toggle("nores", typeof res === "number" && s.cost > 0 && res < s.cost * (1 - (g.tal?.costPct || 0) / 100));
+        }
+      } catch (e) {}
+      return r;
+    };
+    // the talent reminder: phones have no N key
+    const uh1 = U.updateHUD;
+    U.updateHUD = function (...a) {
+      const r = uh1.apply(this, a);
+      try {
+        const t = document.getElementById("talnote"), m = t && /^(\d+) talent points? to spend — press N$/.exec(t.textContent);
+        m && (t.textContent = `${m[1]} talent point${m[1] > 1 ? "s" : ""} to spend — ☰ → Talents`);
+      } catch (e) {}
+      return r;
+    };
+  }
+}
+
 /* ---- FY_el_items.js ---- */
 /* 1.20.0 — Greek (ελληνικά): items and everything you own. Item names are stored in English in saves (and travel between
    players), so they are composed in Greek when shown: [adjectives] noun [of-phrase], with the adjectives agreeing with the
@@ -49536,6 +49627,10 @@ X.EL.msg = {
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.20.1"] && (X.CHANGELOG["1.20.1"] = [
+        "Κινητά: τα κουμπιά επίθεσης και δεξιοτήτων δείχνουν το εικονίδιο της κάθε δεξιότητας με το πλήκτρο της και την αναμονή (αντί για ⚔, 🛡, Q, E, R)· κράτα πατημένο ένα κουμπί για να δεις όνομα, αναμονή, κόστος και τι κάνει η δεξιότητα.",
+        "Κινητά: η υπενθύμιση ταλέντων λέει ☰ → Ταλέντα αντί για «πάτα N». Ελληνικά: η ώρα της μέρας (Μεσημέρι, Ώρα των Μαγισσών) και η υπενθύμιση ταλέντων μεταφράστηκαν.",
+      ]);
       X.CHANGELOG && X.CHANGELOG["1.20.0"] && (X.CHANGELOG["1.20.0"] = [
         "Ήχος: κάθε δεξιότητα έχει τον δικό της ήχο (πριν, όλα τα ξόρκια μιας κλάσης μοιράζονταν έναν)· οι περιοχές έχουν ζωντανή ατμόσφαιρα — κύμα στην ακτή, δάσος και έντομα τη νύχτα, άμμος, ριπές στα βουνά, βουητό και σταγόνες στις σπηλιές· μπουντρούμια και επιδρομές αντηχούν σαν πέτρινες αίθουσες· οι μάχες με αρχηγούς έχουν πολεμικά τύμπανα, χάλκινα και χορωδία.",
         "Ελληνικά: αντικείμενα, υλικά, συνταγές, διακοσμητικά, άλογα, σύντροφοι, έπιπλα, σελίδες ιστορίας, σπάνιοι εχθροί και ιερά είναι πλέον κι αυτά στα ελληνικά (τα ονόματα αντικειμένων σχηματίζονται με σωστή ελληνική γραμματική).",
@@ -49599,6 +49694,7 @@ X.EL.msg = {
       "tap or click to dismiss · F1 for the full guide": "πάτα ή κάνε κλικ για κλείσιμο · F1 για τον πλήρη οδηγό",
       Phone: "Κινητό", "Frame cap": "Όριο καρέ", "30 (battery saver)": "30 (εξοικονόμηση μπαταρίας)", "No cap": "Χωρίς όριο", "Adaptive resolution": "Προσαρμοζόμενη ανάλυση",
       "Lowers the resolution a little when the phone struggles, and raises it again when it can.": "Χαμηλώνει λίγο την ανάλυση όταν το κινητό δυσκολεύεται και την ανεβάζει ξανά όταν μπορεί.",
+      Midday: "Μεσημέρι", "Witching Hour": "Ώρα των Μαγισσών",
       Rimeguard: "Παγοφρουρά", Sunwrought: "Ηλιόπλαστο", Thornweave: "Αγκαθόπλεκτο",
     });
     add({
@@ -49661,6 +49757,7 @@ X.EL.msg = {
       [/^Salvage all (\d+) items in your bag\?$/, (m, a) => `Διάλυση και των ${a} αντικειμένων της τσάντας;`],
       [/^You get (\d+) Soul Shards · equipped and locked items are kept · \[Y\] yes · \[N\] no$/, (m, a) => `Παίρνεις ${a} Θραύσματα Ψυχής · τα φορεμένα και κλειδωμένα μένουν · [Y] ναι · [N] όχι`],
       [/^(.+) set \((\d)\/4\)$/, (m, a, n) => `Σετ ${EL.SETS?.[a] || a} (${n}/4)`],
+      [/^(\d+) talent points? to spend — (press N|☰ → Talents)$/, (m, n, w) => `${n} ${n > 1 ? "πόντοι ταλέντων" : "πόντος ταλέντου"} για ξόδεμα — ${w === "press N" ? "πάτα N" : "☰ → Ταλέντα"}`],
       [/^Level (\d+)$/, (m, n) => lvl(n)],
       [/^LEVEL (\d+)$/, (m, n) => `ΕΠΙΠΕΔΟ ${n}`],
       [/^Lv (\d+)$/, (m, n) => `Επ. ${n}`],
