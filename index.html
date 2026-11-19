@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.19.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.19.1</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33726,8 +33726,15 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.19.0";
+  X.VERSION = "1.19.1";
   X.CHANGELOG = {
+    "1.19.1": [
+      "Phones: the on-screen controls no longer disappear after Change Hero; the desktop key list no longer covers the main menu; the start screen fits a phone held upright.",
+      "Install as app is always in the main menu on the website; when the browser has no ready install prompt it shows the steps (Android: Chrome ⋮ → Install app).",
+      "Sister Nerys holds only her staff, the right way up. Cinder Maeve's casting light sits on the tip of her wand, not on the grip.",
+      "Characters are drawn merged (each one in a single piece instead of 5–8): about 5× fewer draw calls for characters. Settings → Troubleshooting → Merged characters switches it off.",
+      "Greek: a few interface lines that stayed in English (level line, quest arrow, seasons, start screen) are translated.",
+    ],
     "1.19.0": [
       "Raids and a new dungeon: the Drowned Deep, Throne of Storms and Reckoning bosses now use the full raid mechanics (tank swaps, interrupts, soak and spread marks, shield phases). New dungeon: The Obsidian Foundry (level 18, south-east of the Black Citadel) with Forgewarden Kraal, and a quest from Brannoc.",
       "Crafting depth: reforge a stat on any item, temper items (+2 item level, three times) with Obsidian Lumps, Grandmaster recipes for level-60 legendaries from Abyssal Cores, and three saved outfits per hero in the Wardrobe.",
@@ -46074,6 +46081,300 @@ body.pause-open #touch-ui,body.pause-open #tleft,body.pause-open #tdeco{display:
   };
 }
 
+/* ---- F2_skinmerge.js ---- */
+/* 1.19.0 — character mesh merge: every KayKit character (5–8 SkinnedMeshes under one Rig) is drawn as one
+   SkinnedMesh with material groups. Originals stay in the hierarchy (layer 31, not rendered) so all game code
+   that walks parts (hit flash, tints, visibility, wardrobe) keeps working; the merged copy shares the same
+   material instances and is rebuilt whenever a part's material object or visibility changes. */
+{
+  const SM = (X.skinMerge = { enabled: true, list: [], stats: { chars: 0, meshes: 0, draws: 0 }, every: 30 });
+  const HIDE = 31;
+  const tmp2 = new _A(),
+    vt = new N(),
+    nm = new wi();
+  const sameMat4 = (a, b) => {
+    for (let i = 0; i < 16; i++) if (Math.abs(a.elements[i] - b.elements[i]) > 1e-5) return false;
+    return true;
+  };
+  const parts = (rig) => {
+    const out = [];
+    for (const c of rig.children) if (c.isSkinnedMesh && !c.userData.skinMerged) out.push(c);
+    return out;
+  };
+  const eligible = (rig) => {
+    const ps = parts(rig);
+    if (ps.length < 2) return null;
+    for (const p of ps) {
+      const g = p.geometry;
+      if (!g.index || !g.attributes.normal) return null;
+      if (!g.attributes.position || !g.attributes.skinIndex || !g.attributes.skinWeight) return null;
+      if (g.morphAttributes && Object.keys(g.morphAttributes).length) return null;
+      if (!p.skeleton || !p.skeleton.bones.length) return null;
+      if (!sameMat4(p.bindMatrix, ps[0].bindMatrix)) return null;
+      if (!sameMat4(p.matrix, ps[0].matrix)) return null;
+      if (p.material.isShaderMaterial || Array.isArray(p.material)) return null;
+    }
+    return ps;
+  };
+  const build = (rig, ps) => {
+    // union of bones; a part whose inverses differ from the first part's by one global transform T
+    // (KayKit parts are each stored in their own bind space: T = inv0^-1 · invP) gets its vertices baked through T
+    const bones = [],
+      inv = [],
+      boneIdx = new Map(),
+      T = new Map(),
+      tmp = new _A();
+    for (const p of ps) {
+      const sk = p.skeleton;
+      let Tp = null;
+      for (let i = 0; i < sk.bones.length; i++) {
+        const b = sk.bones[i];
+        if (!boneIdx.has(b)) continue;
+        const m = new _A().copy(inv[boneIdx.get(b)]).invert().multiply(sk.boneInverses[i]);
+        if (!Tp) Tp = m;
+        else if (!sameMat4(Tp, m)) return null;
+      }
+      const TpInv = Tp ? tmp2.copy(Tp).invert() : null;
+      for (let i = 0; i < sk.bones.length; i++) {
+        const b = sk.bones[i];
+        if (boneIdx.has(b)) continue;
+        boneIdx.set(b, bones.length);
+        bones.push(b);
+        inv.push(TpInv ? tmp.copy(sk.boneInverses[i]).multiply(TpInv).clone() : sk.boneInverses[i].clone());
+      }
+      T.set(p, Tp);
+    }
+    if (bones.length > 180) {
+      SM.why = "bones";
+      return null;
+    }
+    const vis = ps.filter((p) => p.visible);
+    // vertices are converted to floats in one shared bind space: each part's dequantised position goes
+    // through its bind-space transform T (KayKit parts are quantised per part), normals through T's normal matrix
+    let nv = 0,
+      ni = 0;
+    for (const p of vis) {
+      nv += p.geometry.attributes.position.count;
+      ni += p.geometry.index.count;
+    }
+    const g0 = vis[0].geometry,
+      hasUv = !!g0.attributes.uv,
+      hasN = !!g0.attributes.normal;
+    for (const p of vis) {
+      const a = p.geometry.attributes;
+      if (!!a.uv !== hasUv || !!a.normal !== hasN || a.skinIndex.itemSize !== 4 || a.skinWeight.itemSize !== 4) {
+        SM.why = "layout:" + p.name;
+        return null;
+      }
+    }
+    const pos = new Float32Array(nv * 3),
+      nor = hasN ? new Float32Array(nv * 3) : null,
+      uv = hasUv ? new Float32Array(nv * 2) : null,
+      sw = new Float32Array(nv * 4),
+      si = new Uint16Array(nv * 4),
+      idx = new (nv > 65535 ? Uint32Array : Uint16Array)(ni);
+    const mats = [],
+      groups = [],
+      v = new N(),
+      nm3 = new wi();
+    let vo = 0,
+      io = 0;
+    for (const p of vis) {
+      const g = p.geometry,
+        a = g.attributes,
+        cnt = a.position.count,
+        Tp = T.get(p),
+        remap = p.skeleton.bones.map((b) => boneIdx.get(b));
+      if (Tp) nm3.getNormalMatrix(Tp);
+      for (let i = 0; i < cnt; i++) {
+        const o = vo + i;
+        v.fromBufferAttribute(a.position, i);
+        if (Tp) v.applyMatrix4(Tp);
+        pos[o * 3] = v.x;
+        pos[o * 3 + 1] = v.y;
+        pos[o * 3 + 2] = v.z;
+        if (hasN) {
+          v.fromBufferAttribute(a.normal, i);
+          if (Tp) v.applyMatrix3(nm3).normalize();
+          nor[o * 3] = v.x;
+          nor[o * 3 + 1] = v.y;
+          nor[o * 3 + 2] = v.z;
+        }
+        if (hasUv) {
+          uv[o * 2] = a.uv.getX(i);
+          uv[o * 2 + 1] = a.uv.getY(i);
+        }
+        sw[o * 4] = a.skinWeight.getX(i);
+        sw[o * 4 + 1] = a.skinWeight.getY(i);
+        sw[o * 4 + 2] = a.skinWeight.getZ(i);
+        sw[o * 4 + 3] = a.skinWeight.getW(i);
+        si[o * 4] = remap[a.skinIndex.getX(i)] ?? 0;
+        si[o * 4 + 1] = remap[a.skinIndex.getY(i)] ?? 0;
+        si[o * 4 + 2] = remap[a.skinIndex.getZ(i)] ?? 0;
+        si[o * 4 + 3] = remap[a.skinIndex.getW(i)] ?? 0;
+      }
+      const ix = g.index.array,
+        c = g.index.count;
+      for (let i = 0; i < c; i++) idx[io + i] = ix[i] + vo;
+      let mi = mats.indexOf(p.material);
+      if (mi < 0) {
+        mi = mats.length;
+        mats.push(p.material);
+      }
+      groups.push({ start: io, count: c, materialIndex: mi });
+      vo += cnt;
+      io += c;
+    }
+    const geo = new Ti();
+    geo.setAttribute("position", new Yi(pos, 3));
+    if (hasN) geo.setAttribute("normal", new Yi(nor, 3));
+    if (hasUv) geo.setAttribute("uv", new Yi(uv, 2));
+    geo.setAttribute("skinWeight", new Yi(sw, 4));
+    geo.setAttribute("skinIndex", new Yi(si, 4));
+    geo.setIndex(new Yi(idx, 1));
+    for (const gr of groups) geo.addGroup(gr.start, gr.count, gr.materialIndex);
+    // bounding volumes copied from the parts' union (unused for culling, kept for raycasts)
+    geo.computeBoundingSphere();
+    const m = new TQ(geo, mats.length === 1 ? mats[0] : mats);
+    m.name = "SkinMerged";
+    m.userData.skinMerged = true;
+    m.frustumCulled = false;
+    m.castShadow = ps.some((p) => p.castShadow);
+    m.receiveShadow = ps.some((p) => p.receiveShadow);
+    m.matrix.copy(ps[0].matrix);
+    m.matrix.decompose(m.position, m.quaternion, m.scale);
+    m.bind(new Eg(bones, inv), ps[0].bindMatrix);
+    m.renderOrder = ps[0].renderOrder;
+    return { mesh: m, mats: ps.map((p) => p.material), vis: ps.map((p) => p.visible), draws: mats.length };
+  };
+  const unhide = (e) => {
+    for (const p of e.parts) p.layers.set(0);
+  };
+  const dispose = (e) => {
+    if (e.mesh) {
+      e.mesh.removeFromParent();
+      e.mesh.geometry.dispose();
+    }
+    unhide(e);
+    delete e.rig.userData._skm;
+  };
+  const merge = (rig, ps) => {
+    const r = build(rig, ps);
+    if (!r) return null;
+    const e = { rig, parts: ps, mesh: r.mesh, mats: r.mats, vis: r.vis, draws: r.draws };
+    for (const p of ps) p.layers.set(HIDE);
+    rig.add(r.mesh);
+    rig.userData._skm = e;
+    SM.list.push(e);
+    return e;
+  };
+  // rebuild entries whose parts swapped material objects or toggled visibility (checked every frame; cheap)
+  SM.refresh = function () {
+    for (let k = SM.list.length - 1; k >= 0; k--) {
+      const e = SM.list[k],
+        ps = e.parts;
+      let dirty = false;
+      for (let i = 0; i < ps.length; i++)
+        if (ps[i].material !== e.mats[i] || ps[i].visible !== e.vis[i]) {
+          dirty = true;
+          break;
+        }
+      if (!dirty) continue;
+      const n = build(e.rig, ps);
+      SM.rebuilds = (SM.rebuilds || 0) + 1;
+      e.mesh.removeFromParent();
+      e.mesh.geometry.dispose();
+      if (!n) {
+        e.mesh = null;
+        dispose(e);
+        SM.list.splice(k, 1);
+        continue;
+      }
+      e.mesh = n.mesh;
+      e.mats = n.mats;
+      e.vis = n.vis;
+      e.draws = n.draws;
+      e.rig.add(e.mesh);
+    }
+  };
+  const inScene = (o, scene) => {
+    while (o) {
+      if (o === scene) return true;
+      o = o.parent;
+    }
+    return false;
+  };
+  SM._dbg = { eligible, build };
+  SM.pass = function (scene) {
+    if (!scene) return;
+    // drop entries whose rig left the scene
+    for (let i = SM.list.length - 1; i >= 0; i--) {
+      const e = SM.list[i];
+      if (!inScene(e.rig, scene)) {
+        dispose(e);
+        SM.list.splice(i, 1);
+      }
+    }
+    if (!SM.enabled) return;
+    const rigs = [];
+    scene.traverse((o) => {
+      if (o.userData._skm || o.userData.noSkinMerge) return;
+      let n = 0;
+      for (const c of o.children) if (c.isSkinnedMesh && !c.userData.skinMerged) n++;
+      if (n >= 2) rigs.push(o);
+    });
+    for (const rig of rigs) {
+      const ps = eligible(rig);
+      if (ps) merge(rig, ps);
+    }
+    let meshes = 0,
+      draws = 0;
+    for (const e of SM.list) {
+      meshes += e.parts.length;
+      draws += e.draws;
+    }
+    SM.stats = { chars: SM.list.length, meshes, draws };
+  };
+  SM.revert = function () {
+    for (const e of SM.list) dispose(e);
+    SM.list.length = 0;
+    SM.stats = { chars: 0, meshes: 0, draws: 0 };
+  };
+  SM.setEnabled = function (on) {
+    SM.enabled = !!on;
+    if (!on) SM.revert();
+  };
+  // run after start and then every `every` frames from the app loop
+  let AP = bE.prototype,
+    loop0 = AP.loop,
+    fr = 0;
+  AP.loop = function (...a) {
+    const r = loop0.apply(this, a);
+    try {
+      const g = this.game;
+      if (g && g.running && g.scene) {
+        SM.refresh();
+        if (++fr % SM.every === 0) SM.pass(g.scene);
+      }
+    } catch (e) {
+      if (!SM._err) {
+        SM._err = e;
+        console.warn("skinMerge", e);
+      }
+    }
+    return r;
+  };
+  // Settings → Troubleshooting switch (on unless the player turns it off)
+  X.DIAG && X.DIAG.push(["skinmerge", "Merged characters (fewer draw calls)"]);
+  const ad0 = X.applyDiag;
+  X.applyDiag = function (app) {
+    const r = ad0 ? ad0.call(this, app) : void 0;
+    try { SM.setEnabled(app?.settings?.diag?.skinmerge !== !1); } catch (e) {}
+    return r;
+  };
+  try { SM.enabled = window.__app?.settings?.diag?.skinmerge !== !1; } catch (e) {}
+}
+
 /* ---- F3_raid2.js ---- */
 /* 1.19.0 — raid mechanics pass 2: The Drowned Deep gets the full 1.17 toolkit (scripted bosses, tank-swap stacks,
    interruptible casts, soaks, spreads, tremors, safe zones, shield phases, enrage, bot awareness) on top of its
@@ -47759,6 +48060,119 @@ X.EL.quests = {
   };
 }
 
+/* ---- FD_fp.js ---- */
+/* 1.19.1 — first-person caster weapons: Sister Nerys holds only her tide staff (the extra wand in the right hand is gone);
+   Cinder Maeve's casting focus sits on the tip of her wand instead of on its grip. */
+{
+  let To3 = To;
+  To = function (B, A = {}, i = {}) {
+    const n = To3(B, A, i),
+      U = n.userData;
+    if (!U.weaponsOnly) return n;
+    try {
+      if (B.weapon === "tide" && U.rightWand) {
+        U.rightWand.parent?.remove(U.rightWand);
+        U.weapon = U.leftWeapon || U.weapon;
+        U.rightWand = null;
+      }
+      // the tide staff was held by its tip: turn it over so the wrapped grip sits in the hand and the tip points up
+      if (B.weapon === "tide" && U.leftWeapon && !U.leftWeapon.userData._flipped) {
+        const d = U.leftWeapon, l = d.parent;
+        if (l) {
+          const box = () => { l.updateMatrixWorld(!0); const inv = new _A().copy(l.matrixWorld).invert(), b = new lI();
+            d.traverse((m) => { if (!m.isMesh) return; m.geometry.boundingBox || m.geometry.computeBoundingBox(); b.union(m.geometry.boundingBox.clone().applyMatrix4(new _A().multiplyMatrices(inv, m.matrixWorld))); });
+            return b; };
+          const b0 = box();
+          d.rotateZ(Math.PI);
+          const b1 = box();
+          d.position.x += (b0.min.x + b0.max.x) / 2 - (b1.min.x + b1.max.x) / 2;
+          d.position.y += b0.min.y - b1.min.y;
+          d.position.z += (b0.min.z + b0.max.z) / 2 - (b1.min.z + b1.max.z) / 2;
+          d.userData._flipped = !0;
+          d.scale.multiplyScalar(0.85);
+          l.position.x -= 0.07;
+          l.position.y -= 0.03;
+          U.base && (U.base.l = l.position.clone());
+        }
+      }
+      if (B.weapon === "orb" && U.focusR && U.rightWand) {
+        const w = U.rightWand, f = U.focusR;
+        // tip = the far end of the wand along its own up axis
+        const bb = new lI();
+        w.updateMatrixWorld(!0);
+        const inv = new _A().copy(w.matrixWorld).invert();
+        w.traverse((m) => {
+          if (!m.isMesh) return;
+          m.geometry.boundingBox || m.geometry.computeBoundingBox();
+          const b = m.geometry.boundingBox.clone().applyMatrix4(new _A().multiplyMatrices(inv, m.matrixWorld));
+          bb.union(b);
+        });
+        f.parent?.remove(f);
+        const s = 1 / (w.scale.y || 1);
+        f.scale.setScalar(s * 0.75);
+        f.position.set((bb.min.x + bb.max.x) / 2, bb.max.y + 0.02 * s, (bb.min.z + bb.max.z) / 2);
+        w.add(f);
+      }
+    } catch (e) {}
+    return n;
+  };
+  X.To = (...a) => To(...a);
+}
+
+/* ---- FE_mobile3.js ---- */
+/* 1.19.1 — phone fixes: touch controls came back hidden after Change Hero (the pause-menu flag stayed on), the desktop
+   key list overlapped the main menu on phones, "Click to begin" wrapped badly in portrait, and Install as app only
+   appeared when Chrome had already offered it — it is now always there on the website, with the steps when the
+   browser has no ready prompt. */
+{
+  const U = XC.prototype, GP = SC.prototype, EL = X.lang === "el";
+  const touch = () => X.isTouch || matchMedia("(pointer:coarse)").matches;
+  // keep body.pause-open in step with the pause menu, whoever opens or closes it
+  const sync = () => document.body.classList.toggle("pause-open", !!document.querySelector("#pause.on"));
+  const pz = document.getElementById("pause");
+  pz ? new MutationObserver(sync).observe(pz, { attributes: !0, attributeFilter: ["class"] }) : addEventListener("DOMContentLoaded", () => { const p = document.getElementById("pause"); p && new MutationObserver(sync).observe(p, { attributes: !0, attributeFilter: ["class"] }); });
+  const st0 = GP.start;
+  GP.start = function (...a) { const r = st0.apply(this, a); setTimeout(sync, 0); return r; };
+  const hs0 = U.heroSelect;
+  U.heroSelect = function (...a) { const r = hs0.apply(this, a); sync(); return r; };
+  // phones: no desktop key list under the menu; splash text that fits a portrait screen
+  const css = document.createElement("style");
+  css.textContent = `@media (pointer:coarse){#menu .foot{display:none!important}}
+  @media (max-width:600px){#splash .press{letter-spacing:.12em;font-size:15px;padding:0 12px;text-align:center}#splash .warn{padding:0 14px;text-align:center}}`;
+  document.head.appendChild(css);
+  const fixSplash = () => {
+    const p = document.querySelector("#splash .press");
+    p && touch() && (p.textContent = EL ? "Πάτα για να ξεκινήσεις" : "Tap to begin");
+  };
+  setTimeout(fixSplash, 150); setTimeout(fixSplash, 600); addEventListener("DOMContentLoaded", fixSplash);
+  // Install as app: always offered on the website (not from a file, not once installed)
+  const PWA = X.pwa;
+  const web = /^https?:$/.test(location.protocol);
+  const mm0 = U.mainMenu;
+  U.mainMenu = function (...a) {
+    const r = mm0.apply(this, a);
+    try {
+      const b = document.querySelector("#menu [data-a=install]");
+      if (b && web && !PWA?.installed) {
+        b.style.display = "";
+        const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        b.onclick = async () => {
+          this.click?.();
+          if (PWA?.prompt) { const ok = await PWA.install(); ok && this.app.game?.toast?.(EL ? "Εγκαταστάθηκε — βρες το Vigilfall στην αρχική σου οθόνη" : "Installed — find Vigilfall on your home screen", "#ffd070"); return; }
+          const android = /Android/i.test(navigator.userAgent);
+          const steps = ios
+            ? (EL ? "Στο Safari πάτα <b>Κοινοποίηση</b> (το τετράγωνο με το βέλος) και μετά <b>Προσθήκη στην οθόνη Αφετηρίας</b>." : "In Safari tap <b>Share</b> (the square with an arrow), then <b>Add to Home Screen</b>.")
+            : android
+              ? (EL ? "Στο Chrome πάτα το μενού <b>⋮</b> πάνω δεξιά (ή κάτω δεξιά) και μετά <b>Εγκατάσταση εφαρμογής</b> ή <b>Προσθήκη στην αρχική οθόνη</b>. Αν δεν φαίνεται, ξαναφόρτωσε τη σελίδα μία φορά και δοκίμασε ξανά." : "In Chrome tap the <b>⋮</b> menu (top or bottom right), then <b>Install app</b> or <b>Add to Home screen</b>. If it is not there yet, reload the page once and try again.")
+              : (EL ? "Στο Chrome ή στο Edge πάτα το εικονίδιο εγκατάστασης στη γραμμή διευθύνσεων (ή μενού → <b>Εγκατάσταση Vigilfall</b>)." : "In Chrome or Edge click the install icon in the address bar (or menu → <b>Install Vigilfall</b>).");
+          this.openModal(`<div class="lore"><div class="lore-t">${EL ? "Εγκατάσταση ως εφαρμογή" : "Install as an app"}</div><div class="lore-x"><p>${steps}</p><p>${EL ? "Μετά το Vigilfall ανοίγει σε πλήρη οθόνη από το δικό του εικονίδιο και ενημερώνεται μόνο του." : "Vigilfall then opens full screen from its own icon and updates itself."}</p></div><button class="close">${EL ? "Κλείσιμο" : "Close"}</button></div>`);
+        };
+      }
+    } catch (e) {}
+    return r;
+  };
+}
+
 /* ---- FY_el_text.js ---- */
 /* 1.19.0 — Greek (ελληνικά): heroes, people, places, foes, deeds, help */
 X.EL = X.EL || {};
@@ -48180,7 +48594,7 @@ X.EL.ui = {
   "Shadow quality, lights and effects. Low for weak laptops and phones.": "Ποιότητα σκιών, φώτα και εφέ. Χαμηλή για αδύναμα laptop και κινητά.", "Zone music and stingers.": "Μουσική περιοχών και ηχητικά.",
   "Weapons, creatures, interface.": "Όπλα, πλάσματα, διεπαφή.", "Your lantern light": "Το φως του φαναριού σου", "Sun shadows": "Σκιές ήλιου", "God rays (sun shafts)": "Ακτίνες ήλιου",
   "Water & sea": "Νερό και θάλασσα", "Sky dome": "Ουράνιος θόλος", "Troubleshooting": "Επίλυση προβλημάτων", "Wind on trees (applies on next start)": "Άνεμος στα δέντρα (ισχύει στην επόμενη εκκίνηση)",
-  "First-person hands & weapon": "Χέρια και όπλο πρώτου προσώπου", "Torch / lantern point lights": "Φώτα πυρσών / φαναριών", "Merged props (batched meshes)": "Ενωμένα αντικείμενα (ομαδοποιημένα πλέγματα)",
+  "First-person hands & weapon": "Χέρια και όπλο πρώτου προσώπου", "Torch / lantern point lights": "Φώτα πυρσών / φαναριών", "Merged props (batched meshes)": "Ενωμένα αντικείμενα (ομαδοποιημένα πλέγματα)", "Merged characters (fewer draw calls)": "Ενωμένοι χαρακτήρες (λιγότερες κλήσεις σχεδίασης)",
   "Vegetation & fences (instanced)": "Βλάστηση και φράχτες", "Village wards (blue domes)": "Φυλαχτά χωριών (μπλε θόλοι)", "Flame meshes": "Φλόγες", "Glow sprites": "Λάμψεις",
   "If part of the screen goes black, untick these one at a time (they apply instantly) and tell me which one makes it stop. All of them are normally ON.": "Αν μέρος της οθόνης μαυρίζει, ξετσέκαρε αυτά ένα-ένα (ισχύουν αμέσως) και πες μου ποιο το σταματά. Κανονικά είναι όλα ΑΝΟΙΧΤΑ.",
   Language: "Γλώσσα", "Language (reloads the game)": "Γλώσσα (ξαναφορτώνει το παιχνίδι)",
@@ -48462,6 +48876,13 @@ X.EL.msg = {
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.19.1"] && (X.CHANGELOG["1.19.1"] = [
+        "Κινητά: τα χειριστήρια οθόνης δεν εξαφανίζονται πια μετά την Αλλαγή Ήρωα· η λίστα πλήκτρων υπολογιστή δεν σκεπάζει το κύριο μενού· η αρχική οθόνη χωράει σε όρθιο κινητό.",
+        "Η Εγκατάσταση ως εφαρμογή υπάρχει πάντα στο κύριο μενού του ιστότοπου· όταν ο browser δεν έχει έτοιμη πρόταση εγκατάστασης δείχνει τα βήματα (Android: Chrome ⋮ → Εγκατάσταση εφαρμογής).",
+        "Η Αδελφή Νήρυς κρατά μόνο το ραβδί της, από τη σωστή πλευρά. Το φως της Μέιβ είναι στην άκρη του ραβδιού της, όχι στη λαβή.",
+        "Οι χαρακτήρες σχεδιάζονται ενωμένοι (ο καθένας σε ένα κομμάτι αντί για 5–8): περίπου 5× λιγότερες κλήσεις σχεδίασης για χαρακτήρες. Ρυθμίσεις → Επίλυση προβλημάτων → Ενωμένοι χαρακτήρες το κλείνει.",
+        "Ελληνικά: μερικές γραμμές που έμεναν στα αγγλικά (γραμμή επιπέδου, βέλος αποστολής, εποχές, αρχική οθόνη) μεταφράστηκαν.",
+      ]);
       X.CHANGELOG && X.CHANGELOG["1.19.0"] && (X.CHANGELOG["1.19.0"] = [
         "Επιδρομές και νέο μπουντρούμι: οι αρχηγοί των Πνιγμένων Βαθών, του Θρόνου των Θυελλών και της Κρίσης έχουν πλέον όλους τους μηχανισμούς επιδρομής (αλλαγή αμυντικού, διακοπές, κύκλοι απορρόφησης και διασποράς, φάσεις ασπίδας). Νέο μπουντρούμι: το Οψιδιανό Χυτήριο (επίπεδο 18, νοτιοανατολικά του Μαύρου Κάστρου) με τον Κράαλ, και αποστολή από τον Μπράνοκ.",
         "Βάθος στην κατασκευή: αναχύτευση χαρακτηριστικού σε κάθε αντικείμενο, βαφή (+2 επίπεδο αντικειμένου, τρεις φορές) με Οψιδιανούς Σβώλους, συνταγές Αρχιμάστορα για θρυλικά επιπέδου 60 από Αβυσσαλέους Πυρήνες, και τρία αποθηκευμένα σύνολα ανά ήρωα στην Ντουλάπα.",
@@ -48487,6 +48908,11 @@ X.EL.msg = {
     const DICT = new Map();
     const add = (o) => { for (const k in o || {}) DICT.set(k, o[k]); };
     add(EL.ui); add(EL.msg);
+    add({
+      "Best with headphones · A first-person fantasy RPG · Online, with friends or the Dungeon Finder": "Καλύτερα με ακουστικά · RPG φαντασίας σε πρώτο πρόσωπο · Online, με φίλους ή με την Αναζήτηση Μπουντρουμιού",
+      "Winter: snow falls across the inner lands": "Χειμώνας: χιονίζει στις εσωτερικές χώρες", "Spring: petals on the wind": "Άνοιξη: πέταλα στον άνεμο", "Autumn: the leaves are turning": "Φθινόπωρο: τα φύλλα αλλάζουν χρώμα",
+      "Add to Home Screen (how)": "Προσθήκη στην οθόνη Αφετηρίας (πώς)", "Tap to begin": "Πάτα για να ξεκινήσεις", Prologue: "Πρόλογος",
+    });
     add({
       Dawnmere: "Ντόνμιρ", "Hamlet of Last Light": "Χωριό του Τελευταίου Φωτός", "Wayfarer's Crossroads": "Σταυροδρόμι του Ταξιδευτή", "Citadel Approach": "Πρόσβαση στο Κάστρο",
       Discovered: "Ανακαλύφθηκε", Titles: "Τίτλοι", "Blood Moon": "Ματωμένο Φεγγάρι", "no mic": "χωρίς μικρόφωνο", "hold V": "κράτα V", enemies: "εχθρούς", "elite enemies": "επίλεκτους εχθρούς",
@@ -48655,9 +49081,10 @@ X.EL.msg = {
       const el = n.parentElement, now = performance.now();
       let f = el && FIGHT.get(el);
       if (el) {
+        // only a revert within a few milliseconds is a fight (an observer ping-pong); per-frame HUD rewrites are fine
         if (!f) FIGHT.set(el, (f = { src: v, t: now, n: 0 }));
-        else { f.n = f.src === v && now - f.t < 1500 ? f.n + 1 : 0; f.src = v; f.t = now; }
-        if (f.n > 8) return;
+        else { f.n = f.src === v && now - f.t < 5 ? f.n + 1 : 0; f.src = v; f.t = now; }
+        if (f.n > 20) return;
       }
       n.nodeValue = t;
     };
