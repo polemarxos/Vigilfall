@@ -49,6 +49,7 @@ sudo -u vigilfall -H npm install --omit=dev --no-audit --no-fund
 say "Headless browser for the world (this takes a few minutes the first time)"
 ARCH=$(uname -m)
 CHROME=""
+PW_OVERRIDE=""
 if [ "$ARCH" = "x86_64" ]; then
   # Google Chrome works on every 64-bit Ubuntu/Debian, also versions Playwright does not know yet
   if ! command -v google-chrome >/dev/null; then
@@ -60,6 +61,18 @@ if [ "$ARCH" = "x86_64" ]; then
 else
   if npx --yes playwright install-deps chromium && sudo -u vigilfall -H npx --yes playwright install chromium; then
     CHROME=""
+  elif {
+    # newer Ubuntu that Playwright does not list yet: use its Ubuntu 24.04 build and install the libraries by hand
+    echo "Using Playwright's Ubuntu 24.04 browser on $PRETTY_NAME"
+    for pkg in libnss3 libnspr4 libatk1.0-0t64 libatk1.0-0 libatk-bridge2.0-0t64 libatk-bridge2.0-0 libcups2t64 libcups2 libdrm2 libdbus-1-3 \
+               libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 libcairo2 libasound2t64 libasound2 \
+               libatspi2.0-0t64 libatspi2.0-0 libx11-xcb1 libxcb1 libxext6 libxshmfence1 libglib2.0-0t64 libglib2.0-0 fonts-liberation; do
+      apt-get install -y "$pkg" >/dev/null 2>&1 || true
+    done
+    sudo -u vigilfall -H env PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-$( [ "$ARCH" = aarch64 ] && echo arm64 || echo x64 ) npx --yes playwright install chromium
+  }; then
+    CHROME=""
+    PW_OVERRIDE="ubuntu24.04-$( [ "$ARCH" = aarch64 ] && echo arm64 || echo x64 )"
   else
     echo "Playwright's browser is not available for this system; using the distribution's Chromium."
     apt-get install -y chromium || apt-get install -y chromium-browser
@@ -124,6 +137,7 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=CHROME_PATH=$CHROME
+Environment=PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=$PW_OVERRIDE
 LimitNOFILE=65535
 
 [Install]
