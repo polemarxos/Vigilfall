@@ -9,7 +9,8 @@ REPO="https://github.com/polemarxos/Vigilfall.git"
 APP=/opt/vigilfall-realm
 SRC=/opt/vigilfall-src
 SVC=vigilfall-realm
-ask() { local q="$1" d="${2:-}" a; if [ -r /dev/tty ]; then read -r -p "$q" a </dev/tty || true; fi; echo "${a:-$d}"; }
+# questions: answered from VF_* variables when run by the Windows installer (VF_NONINTERACTIVE=1), else typed
+ask() { local q="$1" d="${2:-}" a=""; if [ -z "${VF_NONINTERACTIVE:-}" ] && [ -r /dev/tty ]; then read -r -p "$q" a </dev/tty 2>/dev/null || true; fi; echo "${a:-$d}"; }
 say() { printf '\n\033[1;33m== %s\033[0m\n' "$*"; }
 
 [ "$(id -u)" = 0 ] || { echo "Run with sudo:  sudo bash setup.sh"; exit 1; }
