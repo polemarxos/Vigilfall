@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -23,8 +24,10 @@ import java.util.Arrays;
 public class MainActivity extends Activity {
     static final String HOST = "vigilfall-admin.app";
     static final String LATEST = "https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/admin/index.html";
-    static final String VERSION = "1.2";
+    static final String VERSION = "1.3";
     WebView web;
+    ValueCallback<Uri[]> fileCb;
+    static final int PICK = 42;
 
     File cached() { return new File(getFilesDir(), "admin.html"); }
 
@@ -110,6 +113,24 @@ public class MainActivity extends Activity {
                 return false;
             }
         });
+        // "Upload a backup…" opens the phone's file picker
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView v, ValueCallback<Uri[]> cb, FileChooserParams params) {
+                if (fileCb != null) fileCb.onReceiveValue(null);
+                fileCb = cb;
+                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("*/*");
+                try {
+                    startActivityForResult(Intent.createChooser(i, "Choose a Realm backup (.tgz)"), PICK);
+                } catch (Exception e) {
+                    fileCb = null;
+                    return false;
+                }
+                return true;
+            }
+        });
         setContentView(web);
         if (b != null) web.restoreState(b);
         else web.loadUrl("https://" + HOST + "/");
@@ -120,6 +141,17 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (web != null) web.postDelayed(new Runnable() { public void run() { checkUpdate(); } }, 1500);
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == PICK && fileCb != null) {
+            Uri[] r = null;
+            if (res == RESULT_OK && data != null && data.getData() != null) r = new Uri[] { data.getData() };
+            fileCb.onReceiveValue(r);
+            fileCb = null;
+        }
     }
 
     @Override

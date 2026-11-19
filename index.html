@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.22.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.22.1</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,9 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.22.0";
+  X.VERSION = "1.22.1";
   X.CHANGELOG = {
+    "1.22.1": ["The Realm can send gifts: Soul Shards and Ashen Marks from the Realm arrive right away while you play (or the next time you enter the Realm)."],
     "1.22.0": [
       "The Realm: one shared online world that runs on a dedicated server. Enter the Realm on the main menu puts you in the same world as everyone who is online; you see the players and monsters near you. Your own world (solo and with friends) is still there.",
       "Dungeons, raids and the Dungeon Finder take your group into the leader's world as before and bring everyone back to the Realm afterwards. Friends, groups, chat and voice work in the Realm too.",
@@ -49122,7 +49123,7 @@ X.EL.quests = {
           let m;
           try { m = JSON.parse(ev.data); } catch (e) { return; }
           if (!m) return;
-          if (m.t === "cloud" || m.t === "announce" || m.t === "kicked" || m.t === "_info") return X.realmMsg(m);
+          if (m.t === "cloud" || m.t === "announce" || m.t === "kicked" || m.t === "_info" || m.t === "gift") return X.realmMsg(m);
           if (!done) {
             if (m.t === "hello") {
               done = !0;
@@ -49195,6 +49196,26 @@ X.EL.quests = {
       if (m.t === "announce") {
         g?.running && g.ui.banner("ANNOUNCEMENT", m.text, "#ffd070");
         g?.ui?.chatLine?.("⚑ " + (m.from || "Realm"), m.text);
+        return;
+      }
+      if (m.t === "gift") {
+        // a gift from the Realm admin: added at once, once per gift id, confirmed back to the server
+        const p = ap?.profile;
+        if (!p) return;
+        p.giftsGot ||= [];
+        if (!p.giftsGot.includes(m.id)) {
+          p.giftsGot.push(m.id);
+          p.giftsGot.length > 200 && p.giftsGot.splice(0, p.giftsGot.length - 200);
+          p.shards = (p.shards || 0) + (m.shards || 0);
+          p.marks = (p.marks || 0) + (m.marks || 0);
+          ap.saveProfile();
+          const T = (s) => (X.EL?.T && X.lang === "el" ? X.EL.T(s) : s);
+          const parts = [m.shards ? `+${m.shards.toLocaleString()} ${T("Soul Shards")}` : "", m.marks ? `+${m.marks.toLocaleString()} ${T("Ashen Marks")}` : ""].filter(Boolean).join(" · ");
+          g?.running ? g.ui.banner(T("A GIFT FROM THE REALM"), parts + (m.note ? " — " + m.note : ""), "#ffd070") : ap.ui?.toastMenu?.(parts);
+          g?.audio?.play?.("legendary");
+          X.realmSave("gift");
+        }
+        ap.net?.realm?.send?.({ t: "_giftok", id: m.id });
         return;
       }
       if (m.t === "kicked") {
@@ -50331,7 +50352,7 @@ Object.assign(X.EL.ui, {
   "Could not reach that server (saved anyway).": "Δεν βρέθηκε αυτός ο διακομιστής (αποθηκεύτηκε πάντως).",
 });
 Object.assign(X.EL.msg, {
-  "THE REALM": "ΤΟ ΒΑΣΙΛΕΙΟ", ANNOUNCEMENT: "ΑΝΑΚΟΙΝΩΣΗ", "REMOVED FROM THE REALM": "ΑΠΟΜΑΚΡΥΝΣΗ ΑΠΟ ΤΟ ΒΑΣΙΛΕΙΟ", "THE REALM IS UNREACHABLE": "ΤΟ ΒΑΣΙΛΕΙΟ ΔΕΝ ΑΠΑΝΤΑ",
+  "THE REALM": "ΤΟ ΒΑΣΙΛΕΙΟ", "A GIFT FROM THE REALM": "ΔΩΡΟ ΑΠΟ ΤΟ ΒΑΣΙΛΕΙΟ", "Soul Shards": "Θραύσματα Ψυχής", "Ashen Marks": "Στακτερά Σημάδια", "The Realm is closed for maintenance.": "Το Βασίλειο είναι κλειστό για συντήρηση.", ANNOUNCEMENT: "ΑΝΑΚΟΙΝΩΣΗ", "REMOVED FROM THE REALM": "ΑΠΟΜΑΚΡΥΝΣΗ ΑΠΟ ΤΟ ΒΑΣΙΛΕΙΟ", "THE REALM IS UNREACHABLE": "ΤΟ ΒΑΣΙΛΕΙΟ ΔΕΝ ΑΠΑΝΤΑ",
   "You keep playing in your own world. Reconnecting…": "Συνεχίζεις στον δικό σου κόσμο. Επανασύνδεση…", "BACK IN THE REALM": "ΠΙΣΩ ΣΤΟ ΒΑΣΙΛΕΙΟ",
   "Removed by an admin": "Απομακρύνθηκες από διαχειριστή", "Removed by an admin.": "Απομακρύνθηκες από διαχειριστή.", "You logged in somewhere else.": "Συνδέθηκες από αλλού.",
   "The Realm is starting. Try again in a minute.": "Το Βασίλειο ξεκινά. Δοκίμασε ξανά σε ένα λεπτό.", "The Realm is full right now.": "Το Βασίλειο είναι γεμάτο αυτή τη στιγμή.",
@@ -50552,6 +50573,7 @@ Object.assign(X.EL.msg, {
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.22.1"] && (X.CHANGELOG["1.22.1"] = ["Το Βασίλειο μπορεί να στέλνει δώρα: Θραύσματα Ψυχής και Στακτερά Σημάδια φτάνουν αμέσως όσο παίζεις (ή την επόμενη φορά που θα μπεις στο Βασίλειο)."]);
       X.CHANGELOG && X.CHANGELOG["1.22.0"] && (X.CHANGELOG["1.22.0"] = [
         "Το Βασίλειο: ένας κοινός διαδικτυακός κόσμος που τρέχει σε δικό του διακομιστή. Η Είσοδος στο Βασίλειο στο κύριο μενού σε βάζει στον ίδιο κόσμο με όλους όσους είναι συνδεδεμένοι· βλέπεις τους παίκτες και τα τέρατα κοντά σου. Ο δικός σου κόσμος (μόνος και με φίλους) υπάρχει ακόμη.",
         "Τα μπουντρούμια, οι επιδρομές και η Αναζήτηση Μπουντρουμιών πηγαίνουν την ομάδα σου στον κόσμο του αρχηγού όπως πριν και φέρνουν όλους πίσω στο Βασίλειο μετά. Φίλοι, ομάδες, συνομιλία και φωνή λειτουργούν και στο Βασίλειο.",

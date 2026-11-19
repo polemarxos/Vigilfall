@@ -1,6 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
+const SERVER_VERSION = "1.3.0";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -29,6 +30,10 @@ cfg = Object.assign(
     port: 8787,
     bind: "127.0.0.1",
     maxPlayers: 80,
+    autoBackupHours: 6,
+    autoBackupKeep: 10,
+    maintenance: false,
+    maintenanceMsg: "The Realm is closed for maintenance. Please come back soon.",
     adminPassword: process.env.VF_ADMIN_PASSWORD || rnd(14),
     hostToken: rnd(24),
     gameUrl: "https://polemarxos.github.io/Vigilfall/",
@@ -65,6 +70,8 @@ const summaryOf = (p) => {
     victory: !!p?.campaign?.victory,
   };
 };
+const loadRecs = () => {
+recs.clear();
 for (const f of fs.readdirSync(PLAYERS)) {
   if (!f.endsWith(".json")) continue;
   try {
@@ -76,6 +83,8 @@ for (const f of fs.readdirSync(PLAYERS)) {
     log("bad record", f, e.message);
   }
 }
+};
+loadRecs();
 const readRec = async (pid) => {
   try { return JSON.parse(await fsp.readFile(recFile(pid), "utf8")); } catch (e) { return null; }
 };
@@ -225,6 +234,7 @@ async function onClientMsg(c, m) {
     if (m.t !== "auth") return;
     const pid = String(m.pid || ""), key = String(m.key || "");
     if (!okPid(pid) || key.length < 16) return sendJ(c.ws, { t: "denied", why: "Bad login data." });
+    if (cfg.maintenance) return sendJ(c.ws, { t: "denied", why: cfg.maintenanceMsg || "The Realm is closed for maintenance." });
     if (!H.ready || !H.ws) return sendJ(c.ws, { t: "denied", why: "The Realm is starting. Try again in a minute.", retry: true });
     if ([...clients.values()].filter((x) => x.authed).length >= cfg.maxPlayers) return sendJ(c.ws, { t: "full" });
     let r = await readRec(pid);
@@ -251,6 +261,7 @@ async function onClientMsg(c, m) {
     sendJ(c.ws, { t: "_info", motd: cfg.motd, ver: H.ver || gameVer, name: cfg.name, online: clients.size });
     if (r.profile && (r.adminRev || 0) > (+m.rev || 0)) sendJ(c.ws, { t: "cloud", p: r.profile, rev: r.adminRev });
     hsend({ o: "open", id: c.id, pid, name: c.name });
+    for (const g of r.gifts || []) setTimeout(() => sendJ(c.ws, { t: "gift", ...g }), 6000);
     log("join", pid, c.name, c.ip);
     return;
   }
@@ -271,8 +282,142 @@ async function onClientMsg(c, m) {
     await writeRec(r);
     return;
   }
+  if (m.t === "_giftok") {
+    const r = await readRec(c.pid);
+    if (r?.gifts?.length) {
+      r.gifts = r.gifts.filter((g) => g.id !== m.id);
+      await writeRec(r);
+      log("gift received", c.pid, m.id);
+    }
+    return;
+  }
   if (m.t === "me") (c.lv = m.lv), (c.hero = m.hero), (c.pos = m.p);
   hsend({ o: "msg", id: c.id, m });
+}
+
+// ---------------- whole-server backups (players + their backups + settings) ----------------
+const FULL = path.join(DATA, "fullbackups");
+fs.mkdirSync(FULL, { recursive: true });
+const runCmd = (cmd, args, opts = {}) =>
+  new Promise((ok, bad) => {
+    const ch = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], ...opts });
+    let err = "";
+    ch.stderr.on("data", (d) => (err += d));
+    ch.on("error", bad);
+    ch.on("exit", (code) => (code === 0 ? ok() : bad(new Error(err.trim().slice(0, 300) || cmd + " failed (" + code + ")"))));
+  });
+const okFull = (f) => /^\d{10,}-[a-z-]+\.tgz$/.test(f) && fs.existsSync(path.join(FULL, f));
+const listFull = () =>
+  fs.readdirSync(FULL).filter((f) => /\.tgz$/.test(f)).sort().reverse().map((f) => {
+    const st = fs.statSync(path.join(FULL, f));
+    const m = f.match(/^(\d+)-([a-z-]+)\.tgz$/) || [];
+    return { file: f, at: +m[1] || st.mtimeMs, kind: m[2] || "manual", size: st.size };
+  });
+let lastAutoBackup = 0;
+async function makeFull(kind) {
+  await Promise.all([...writing.values()]);
+  const name = `${Date.now()}-${kind}.tgz`;
+  await runCmd("tar", ["czf", path.join(FULL, name), "-C", DATA, "players", "backups", "config.json"]);
+  if (kind === "auto") {
+    lastAutoBackup = Date.now();
+    const autos = listFull().filter((b) => b.kind === "auto");
+    for (const b of autos.slice(Math.max(1, +cfg.autoBackupKeep || 10))) await fsp.unlink(path.join(FULL, b.file)).catch(() => {});
+  }
+  log("server backup made", name);
+  return name;
+}
+let backupTimer = null;
+const scheduleBackups = () => {
+  clearInterval(backupTimer);
+  const h = +cfg.autoBackupHours || 0;
+  if (h > 0) backupTimer = setInterval(() => makeFull("auto").catch((e) => log("auto backup failed", e.message)), Math.max(1, h) * 3600e3);
+};
+async function restoreFull(file) {
+  if (!okFull(file)) throw new Error("No such backup.");
+  await makeFull("before-restore");
+  const tmp = path.join(DATA, "restore-tmp");
+  await fsp.rm(tmp, { recursive: true, force: true });
+  await fsp.mkdir(tmp, { recursive: true });
+  await runCmd("tar", ["xzf", path.join(FULL, file), "-C", tmp]);
+  if (!fs.existsSync(path.join(tmp, "players"))) {
+    await fsp.rm(tmp, { recursive: true, force: true });
+    throw new Error("That file is not a Realm backup (no players folder).");
+  }
+  for (const c of [...clients.values()]) c.authed && kick(c.id, "The Realm is being restored from a backup. Come back in a minute.");
+  await Promise.all([...writing.values()]);
+  await fsp.rm(PLAYERS, { recursive: true, force: true });
+  await fsp.rename(path.join(tmp, "players"), PLAYERS);
+  if (fs.existsSync(path.join(tmp, "backups"))) {
+    await fsp.rm(BACKUPS, { recursive: true, force: true });
+    await fsp.rename(path.join(tmp, "backups"), BACKUPS);
+  }
+  let pwChanged = false;
+  try {
+    const old = JSON.parse(await fsp.readFile(path.join(tmp, "config.json"), "utf8"));
+    pwChanged = !!old.adminPassword && old.adminPassword !== cfg.adminPassword;
+    const keep = { port: cfg.port, bind: cfg.bind, hostToken: cfg.hostToken };
+    Object.assign(cfg, old, keep);
+    saveCfg();
+  } catch (e) {}
+  await fsp.rm(tmp, { recursive: true, force: true });
+  loadRecs();
+  scheduleUpdates();
+  scheduleBackups();
+  log("restored server backup", file, recs.size + " players");
+  restartHost("restored backup");
+  return { players: recs.size, passwordChanged: pwChanged };
+}
+// one-time download links (phones download with the system downloader, which cannot send the password)
+const dls = new Map();
+const dlToken = (item) => {
+  const t = rnd(24);
+  dls.set(t, { ...item, exp: Date.now() + 10 * 60e3 });
+  for (const [k, v] of dls) v.exp < Date.now() && dls.delete(k);
+  return t;
+};
+// the server program updates itself from GitHub
+const RAW = "https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/";
+const SELF_FILES = ["realm.js", "host.js", "package.json", "admin/index.html", "setup.sh", "README.md"];
+async function latestServer() {
+  const t = await (await fetch(RAW + "realm.js?t=" + Date.now())).text();
+  return (t.match(/SERVER_VERSION = "([\d.]+)"/) || [])[1] || null;
+}
+let selfUpdating = false;
+async function selfUpdate() {
+  if (selfUpdating) throw new Error("Already updating.");
+  selfUpdating = true;
+  try {
+    const got = {};
+    for (const f of SELF_FILES) {
+      const r = await fetch(RAW + f + "?t=" + Date.now());
+      if (!r.ok) throw new Error("download " + f + ": " + r.status);
+      got[f] = Buffer.from(await r.arrayBuffer());
+    }
+    const code = got["realm.js"].toString("utf8");
+    const ver = (code.match(/SERVER_VERSION = "([\d.]+)"/) || [])[1];
+    if (!ver) throw new Error("The downloaded server program looks wrong; nothing was changed.");
+    const chk = path.join(os.tmpdir(), "vf-realm-check.js");
+    await fsp.writeFile(chk, got["realm.js"]);
+    await runCmd(process.execPath, ["--check", chk]);
+    const pkgChanged = !fs.existsSync(path.join(ROOT, "package.json")) || !got["package.json"].equals(fs.readFileSync(path.join(ROOT, "package.json")));
+    for (const f of SELF_FILES) {
+      const dst = path.join(ROOT, f);
+      await fsp.mkdir(path.dirname(dst), { recursive: true });
+      await fsp.writeFile(dst + ".new", got[f]);
+      await fsp.rename(dst + ".new", dst);
+    }
+    if (pkgChanged) await runCmd("npm", ["install", "--omit=dev", "--no-audit", "--no-fund"], { cwd: ROOT });
+    log("server program updated", SERVER_VERSION, "->", ver, "— restarting");
+    announce("The Realm restarts for a server update. You will be back in about a minute.", "Realm");
+    setTimeout(() => {
+      H.wantStop = true;
+      try { H.child?.kill("SIGTERM"); } catch (e) {}
+      setTimeout(() => process.exit(0), 2000);
+    }, 1500);
+    return { ok: true, from: SERVER_VERSION, to: ver };
+  } finally {
+    selfUpdating = false;
+  }
 }
 
 // ---------------- HTTP: health, admin page, admin API ----------------
@@ -320,7 +465,7 @@ async function api(req, res, url) {
   if (p[0] === "status" && M === "GET") {
     const mem = process.memoryUsage();
     return json(res, 200, {
-      name: cfg.name, motd: cfg.motd, maxPlayers: cfg.maxPlayers, autoUpdate: cfg.autoUpdate, updateMinutes: cfg.updateMinutes, lastCheck, nextCheck, gameUrl: cfg.gameUrl,
+      name: cfg.name, motd: cfg.motd, maxPlayers: cfg.maxPlayers, autoUpdate: cfg.autoUpdate, updateMinutes: cfg.updateMinutes, serverVersion: SERVER_VERSION, maintenance: cfg.maintenance, maintenanceMsg: cfg.maintenanceMsg, autoBackupHours: cfg.autoBackupHours, autoBackupKeep: cfg.autoBackupKeep, lastAutoBackup, lastCheck, nextCheck, gameUrl: cfg.gameUrl,
       gameVersion: gameVer, hostVersion: H.ver, hostUp: !!H.child, hostReady: H.ready, hostSince: H.startedAt, restarts: H.restarts,
       world: H.stat, uptime: Math.round(process.uptime()), load: os.loadavg(), cpus: os.cpus().length,
       mem: { total: os.totalmem(), free: os.freemem(), server: mem.rss }, players: recs.size, online: onlineList(),
@@ -424,6 +569,84 @@ async function api(req, res, url) {
       return json(res, 200, { ok: true });
     }
   }
+  if (p[0] === "players" && p[1] && okPid(p[1]) && p[2] === "backup" && M === "POST") {
+    const r = await readRec(p[1]);
+    if (!r?.profile) return json(res, 404, { error: "No save to back up yet." });
+    await backup(r, "manual");
+    return json(res, 200, { ok: true });
+  }
+  if (p[0] === "fullbackups") {
+    if (!p[1] && M === "GET") return json(res, 200, { backups: listFull(), autoBackupHours: cfg.autoBackupHours, autoBackupKeep: cfg.autoBackupKeep, lastAutoBackup });
+    if (!p[1] && M === "POST") return json(res, 200, { ok: true, file: await makeFull("manual") });
+    if (p[1] === "upload" && M === "POST") {
+      const name = `${Date.now()}-uploaded.tgz`, dst = path.join(FULL, name);
+      await new Promise((ok, bad) => {
+        let n = 0;
+        const out = fs.createWriteStream(dst);
+        req.on("data", (d) => { n += d.length; if (n > 600e6) { bad(new Error("File too big.")); req.destroy(); } });
+        req.pipe(out);
+        out.on("finish", ok);
+        out.on("error", bad);
+        req.on("error", bad);
+      });
+      try {
+        await runCmd("tar", ["tzf", dst]);
+      } catch (e) {
+        await fsp.unlink(dst).catch(() => {});
+        return json(res, 400, { error: "That file is not a Realm backup (.tgz)." });
+      }
+      log("server backup uploaded", name);
+      return json(res, 200, { ok: true, file: name });
+    }
+    const f = path.basename(p[1] || "");
+    if (!okFull(f)) return json(res, 404, { error: "No such backup." });
+    if (!p[2] && M === "DELETE") {
+      await fsp.unlink(path.join(FULL, f));
+      log("server backup deleted", f);
+      return json(res, 200, { ok: true });
+    }
+    if (p[2] === "restore" && M === "POST") return json(res, 200, { ok: true, ...(await restoreFull(f)) });
+    if (p[2] === "link" && M === "POST") return json(res, 200, { url: "/dl/" + dlToken({ file: path.join(FULL, f), name: "vigilfall-realm-" + f, type: "application/gzip" }) });
+  }
+  if (p[0] === "savelink" && M === "POST") {
+    const b = await body(req);
+    if (!okPid(String(b.pid || ""))) return json(res, 400, { error: "bad id" });
+    let data;
+    if (b.backup) {
+      const bf = path.basename(String(b.backup));
+      try { data = await fsp.readFile(path.join(BACKUPS, b.pid, bf), "utf8"); } catch (e) { return json(res, 404, { error: "No such backup." }); }
+    } else {
+      const r = await readRec(b.pid);
+      if (!r?.profile) return json(res, 404, { error: "No save yet." });
+      data = JSON.stringify(r.profile, null, 1);
+    }
+    return json(res, 200, { url: "/dl/" + dlToken({ data, name: `vigilfall-save-${b.pid}${b.backup ? "-" + String(b.backup).replace(/\.json$/, "") : ""}.json`, type: "application/json" }) });
+  }
+  if (p[0] === "gift" && M === "POST") {
+    const b = await body(req);
+    const shards = Math.max(0, Math.min(1e7, Math.round(+b.shards || 0))), marks = Math.max(0, Math.min(1e7, Math.round(+b.marks || 0)));
+    if (!shards && !marks) return json(res, 400, { error: "Give some Soul Shards or Ashen Marks." });
+    const pids = b.all ? [...recs.keys()] : [String(b.pid || "")].filter(okPid);
+    if (!pids.length) return json(res, 400, { error: "No player chosen." });
+    let live = 0;
+    for (const pid of pids) {
+      const r = await readRec(pid);
+      if (!r) continue;
+      const g = { id: rnd(10), shards, marks, note: String(b.note || "").slice(0, 160), at: Date.now() };
+      r.gifts = [...(r.gifts || []), g];
+      await writeRec(r);
+      const c = clientOfPid(pid);
+      if (c) (sendJ(c.ws, { t: "gift", ...g }), live++);
+    }
+    log("gift", b.all ? "to all" : pids[0], shards + " shards", marks + " marks");
+    return json(res, 200, { ok: true, players: pids.length, live });
+  }
+  if (p[0] === "server" && M === "GET") {
+    let latest = null;
+    try { latest = await latestServer(); } catch (e) {}
+    return json(res, 200, { version: SERVER_VERSION, latest });
+  }
+  if (p[0] === "server" && p[1] === "update" && M === "POST") return json(res, 200, await selfUpdate());
   if (p[0] === "announce" && M === "POST") {
     const b = await body(req);
     if (!b.text) return json(res, 400, { error: "empty" });
@@ -436,6 +659,14 @@ async function api(req, res, url) {
     if (typeof b.motd === "string") cfg.motd = b.motd.slice(0, 200);
     if (b.maxPlayers) cfg.maxPlayers = Math.max(1, Math.min(300, +b.maxPlayers | 0));
     if (typeof b.autoUpdate === "boolean") cfg.autoUpdate = b.autoUpdate;
+    if (b.autoBackupHours !== undefined) cfg.autoBackupHours = Math.max(0, Math.min(168, Math.round(+b.autoBackupHours) || 0));
+    if (b.autoBackupKeep !== undefined) cfg.autoBackupKeep = Math.max(1, Math.min(100, Math.round(+b.autoBackupKeep) || 10));
+    if (typeof b.maintenanceMsg === "string") cfg.maintenanceMsg = b.maintenanceMsg.slice(0, 200);
+    if (typeof b.maintenance === "boolean" && b.maintenance !== cfg.maintenance) {
+      cfg.maintenance = b.maintenance;
+      log("maintenance", cfg.maintenance ? "ON" : "off");
+      if (cfg.maintenance) for (const c of [...clients.values()]) c.authed && kick(c.id, cfg.maintenanceMsg || "The Realm is closed for maintenance.");
+    }
     if (b.updateMinutes !== undefined) cfg.updateMinutes = Math.max(1, Math.min(1440, Math.round(+b.updateMinutes) || 10));
     if (typeof b.newPassword === "string") {
       if (b.newPassword.length < 8) return json(res, 400, { error: "Password must be at least 8 characters." });
@@ -443,6 +674,7 @@ async function api(req, res, url) {
     }
     saveCfg();
     scheduleUpdates();
+    scheduleBackups();
     log("config changed");
     return json(res, 200, { ok: true });
   }
@@ -463,8 +695,14 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   try {
     if (req.method === "OPTIONS") return (res.writeHead(204, CORS), res.end());
-    if (url.pathname === "/health") return json(res, 200, { ok: true, name: cfg.name, online: [...clients.values()].filter((c) => c.authed).length, max: cfg.maxPlayers, ver: H.ver || gameVer, ready: H.ready });
+    if (url.pathname === "/health") return json(res, 200, { ok: true, name: cfg.name, online: [...clients.values()].filter((c) => c.authed).length, max: cfg.maxPlayers, ver: H.ver || gameVer, ready: H.ready, maintenance: cfg.maintenance, server: SERVER_VERSION });
     if (url.pathname.startsWith("/api/")) return await api(req, res, url);
+    if (url.pathname.startsWith("/dl/")) {
+      const it = dls.get(url.pathname.slice(4));
+      if (!it || it.exp < Date.now()) return json(res, 404, { error: "This download link has expired. Make a new one in the admin app." });
+      res.writeHead(200, { "Content-Type": it.type, "Content-Disposition": `attachment; filename="${it.name}"`, "Cache-Control": "no-store", ...CORS });
+      return it.data ? res.end(it.data) : fs.createReadStream(it.file).pipe(res);
+    }
     if (url.pathname === "/admin" || url.pathname === "/admin/") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       return fs.createReadStream(ADMIN_HTML).pipe(res);
@@ -503,7 +741,8 @@ function onClient(ws, req) {
     if (++c.n > 120) return;
     let m;
     try { m = JSON.parse(d); } catch (e) { return; }
-    if (m && typeof m === "object") onClientMsg(c, m).catch((e) => log("client msg error", e.message));
+    // one message at a time per player, so a save and a gift receipt never overwrite each other
+    if (m && typeof m === "object") c.q = (c.q || Promise.resolve()).then(() => onClientMsg(c, m)).catch((e) => log("client msg error", e.message));
   });
   ws.on("close", () => {
     if (clients.get(c.id) === c) {
@@ -562,6 +801,7 @@ server.listen(cfg.port, cfg.bind, () => {
   if (process.env.VF_NOHOST !== "1") startHost();
   cfg.autoUpdate && setTimeout(() => ((lastCheck = Date.now()), updateAndRestart(false)), 20e3);
   scheduleUpdates();
+  scheduleBackups();
 });
 const bye = () => {
   H.wantStop = true;

@@ -47,6 +47,9 @@ button.s{padding:6px 10px;font-size:13px}
 .login h1{text-align:center;color:var(--gold);font-size:26px;margin-bottom:4px}
 .back{background:none;border:0;color:var(--gold);font-size:22px;padding:0 6px 0 0;cursor:pointer}
 .hide{display:none!important}
+.vw table{width:100%;border-collapse:collapse;font-size:13px}.vw td,.vw th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.vw th{color:var(--dim);font-weight:500}
+.r-common{color:#c8c0b0}.r-uncommon{color:#7ccf8a}.r-rare{color:#6fb0ff}.r-epic{color:#c58cff}.r-legendary{color:#ffa94a}.r-relic{color:#ffa94a}.r-cursed{color:#ff6a5a}
+.warn{border-color:#8a2f25!important;background:#2a1612}
 </style>
 </head>
 <body>
@@ -66,6 +69,7 @@ button.s{padding:6px 10px;font-size:13px}
     <button data-t="dash" class="sel"><b>◈</b>Dashboard</button>
     <button data-t="players"><b>☺</b>Players</button>
     <button data-t="msg"><b>✉</b>Message</button>
+    <button data-t="backup"><b>⛁</b>Backups</button>
     <button data-t="server"><b>⚙</b>Server</button>
   </nav>
 </div>
@@ -85,8 +89,8 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.2";
-const APP_LATEST = "1.2";
+const PAGE_VERSION = "1.3";
+const APP_LATEST = "1.3";
 const APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
 const older = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
@@ -132,7 +136,7 @@ function back() { stack.pop(); stack.length ? stack[stack.length - 1]() : render
 window.VFA_back = () => { if (stack.length) { back(); return true; } if (tab !== "dash") { go("dash"); return true; } return false; };
 function render() {
   clearInterval(timer); $("#hback").classList.add("hide");
-  ({ dash, players, msg, server })[tab]();
+  ({ dash, players, msg, backup: fullBackups, server })[tab]();
 }
 const M = () => $("#main");
 const fail = (e) => { if (e.code === 401) return showLogin("The password changed — sign in again."); toast("⚠ " + e.message); };
@@ -150,6 +154,7 @@ async function dash() {
     const w = s.world || {};
     const memUsed = s.mem.total - s.mem.free;
     M().innerHTML = `${IN_APP && APP_VER && older(APP_VER, APP_LATEST) ? `<div class="card" style="border-color:var(--gold)"><b>New Vigilfall Admin app ${APP_LATEST}</b><p class="muted">You have ${APP_VER}. Install the new version once (it keeps your login).</p><a class="b p" style="display:inline-block;text-decoration:none" href="${APP_URL}">Download</a></div>` : ""}
+${s.maintenance ? `<div class="card warn"><b>Maintenance mode is ON</b><p class="muted">Nobody can enter the Realm. Turn it off under Message.</p></div>` : ""}
       <div class="card"><h2>World</h2><div class="grid">
         <div class="stat"><div class="v" style="color:${s.hostReady ? "var(--good)" : "var(--bad)"}">${s.hostReady ? "Online" : s.hostUp ? "Starting…" : "Down"}</div><div class="k">${s.hostReady ? "running " + dur((Date.now() - s.hostSince) / 1000) : "world host"}</div></div>
         <div class="stat"><div class="v">${s.online.length}<span class="muted"> / ${s.maxPlayers}</span></div><div class="k">players online</div></div>
@@ -172,6 +177,45 @@ async function dash() {
   };
   await draw();
   timer = setInterval(draw, 5000);
+}
+
+// ---------------- downloads and the save viewer ----------------
+async function download(path, bodyObj) {
+  try {
+    const r = await call(path, "POST", bodyObj);
+    const a = document.createElement("a");
+    a.href = S.base + r.url; a.target = "_blank"; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 500);
+    toast(IN_APP ? "Opening the download in your browser…" : "Downloading…");
+  } catch (e) { fail(e); }
+}
+const kb = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB");
+const itemRow = (it) => `<tr><td class="r-${esc(it.rarity || "common")}">${esc(it.name || "?")}</td><td>${esc(it.slot || "")}</td><td>${esc(it.rarity || "")}</td><td>${it.level ?? ""}</td><td class="muted">${Object.entries(it.stats || {}).map(([k, v]) => esc(k) + " " + v).join(", ")}</td></tr>`;
+function viewSave(p, title) {
+  $("#htitle").textContent = title;
+  const heroes = Object.entries(p.heroes || {}), inv = p.inventory || [], camp = p.campaign || {}, stats = Object.entries(p.stats || {}).filter(([, v]) => typeof v !== "object");
+  const gear = heroes.flatMap(([id, h]) => Object.values(h.gear || {}).filter(Boolean).map((it) => [id, it]));
+  M().innerHTML = `<div class="vw">
+    <div class="card"><h2>${esc(p.name || "?")}</h2><div class="grid">
+      <div class="stat"><div class="v">${(p.shards || 0).toLocaleString()}</div><div class="k">◆ Soul Shards</div></div>
+      <div class="stat"><div class="v">${(p.marks || 0).toLocaleString()}</div><div class="k">✦ Ashen Marks</div></div>
+      <div class="stat"><div class="v">${heroes.length}</div><div class="k">heroes</div></div>
+      <div class="stat"><div class="v">${inv.length}</div><div class="k">items in the bag</div></div>
+      <div class="stat"><div class="v">${(camp.sigils || []).length}/3</div><div class="k">sigils${camp.victory ? " · Dark Lord slain" : ""}${camp.ng ? " · NG+" + camp.ng : ""}</div></div>
+      <div class="stat"><div class="v">${Object.keys(p.ach || {}).length}</div><div class="k">achievements</div></div>
+    </div><p class="muted">Shrines lit ${(camp.shrines || []).length} · bosses ${(camp.bosses || []).length} · places discovered ${(p.discovered || []).length} · Abyss best tier ${p.abyss?.best || 0} · saved ${p.savedAt ? new Date(p.savedAt).toLocaleString() : "?"}</p></div>
+    <div class="card"><h2>Heroes</h2><table><tr><th>Hero</th><th>Level</th><th>XP</th><th>Potions</th><th>Talents</th></tr>${heroes.map(([id, h]) => `<tr><td>${esc(heroName(id))}</td><td>${h.level || 1}</td><td>${Math.round(h.xp || 0).toLocaleString()}</td><td>${h.potions ?? ""}</td><td>${Object.keys(h.talents || {}).length}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">No heroes yet.</td></tr>'}</table></div>
+    <div class="card"><h2>Equipped gear</h2><table><tr><th>Item</th><th>Slot</th><th>Rarity</th><th>Lv</th><th>Stats</th></tr>${gear.map(([id, it]) => itemRow({ ...it, slot: heroName(id) + " · " + (it.slot || "") })).join("") || '<tr><td colspan="5" class="muted">Nothing equipped.</td></tr>'}</table></div>
+    <div class="card"><h2>Bag (${inv.length})</h2><table><tr><th>Item</th><th>Slot</th><th>Rarity</th><th>Lv</th><th>Stats</th></tr>${inv.map(itemRow).join("") || '<tr><td colspan="5" class="muted">Empty.</td></tr>'}</table></div>
+    <div class="card"><h2>Statistics</h2><table>${stats.map(([k, v]) => `<tr><td>${esc(k.replace(/_/g, " "))}</td><td>${esc(typeof v === "number" ? v.toLocaleString() : v)}</td></tr>`).join("") || '<tr><td class="muted">None yet.</td></tr>'}</table></div>
+    <div class="card"><h2>Achievements</h2><p>${Object.keys(p.ach || {}).map((k) => `<span class="pill" style="display:inline-block;margin:2px">${esc(k.replace(/_/g, " "))}</span>`).join("") || '<span class="muted">None yet.</span>'}</p></div>
+  </div>`;
+}
+async function giftDialog(pid, name) {
+  const shards = prompt(`Soul Shards to give ${name} (0 for none):`, "1000"); if (shards === null) return;
+  const marks = prompt("Ashen Marks to give (0 for none):", "0"); if (marks === null) return;
+  const note = prompt("A short note shown with the gift (optional):", "") ?? "";
+  try { const r = await call("gift", "POST", pid ? { pid, shards: +shards, marks: +marks, note } : { all: true, shards: +shards, marks: +marks, note }); toast(pid ? (r.live ? "Gift delivered now" : "Gift waits for their next login") : `Gift sent to ${r.players} player(s), ${r.live} online now`); } catch (e) { fail(e); }
 }
 
 // ---------------- players ----------------
@@ -213,7 +257,9 @@ async function player(pid) {
         ${r.online ? '<button class="b s" data-x="kick">Kick</button>' : ""}
         ${r.banned ? '<button class="b s" data-x="unban">Unban</button>' : '<button class="b s d" data-x="ban">Ban</button>'}
         <button class="b s" data-x="resetkey" title="Lets the character log in from a new phone or PC">Reset device link</button>
+        ${p ? '<button class="b s" data-x="view">View save</button>' : ""}
         <button class="b s" data-x="backups">Backups</button>
+        ${p ? '<button class="b s" data-x="backupnow">Back up now</button><button class="b s" data-x="gift">Gift</button><button class="b s" data-x="dlsave">Download save</button>' : ""}
         <button class="b s d" data-x="delete">Delete</button>
       </div></div>
     ${p ? `<div class="card"><h2>Edit save</h2>
@@ -228,7 +274,7 @@ async function player(pid) {
         <label style="display:flex;gap:6px;align-items:center;margin:0"><input id="e_tut" type="checkbox" style="width:auto" ${p.tutorialDone ? "checked" : ""}> Tutorial done</label>
       </div>
       <p class="muted">Inventory: ${(p.inventory || []).length} item(s) · Sigils ${(p.campaign?.sigils || []).length}/3 · played ${dur((p.played || 0))}</p>
-      <div class="row"><button class="b p" id="e_save">Save changes</button><button class="b" id="e_raw">Edit raw save (JSON)</button>${IN_APP ? "" : '<button class="b" id="e_dl">Download</button>'}</div>
+      <div class="row"><button class="b p" id="e_save">Save changes</button><button class="b" id="e_raw">Edit raw save (JSON)</button></div>
       <p class="muted">${r.online ? "The player is online: their game restarts into the menu with the new save." : "The new save is applied the next time this player enters the Realm."}</p>
     </div>` : `<div class="card muted">No save uploaded yet — it arrives a minute after the player enters the Realm.</div>`}`;
   const act = async (x) => {
@@ -238,6 +284,10 @@ async function player(pid) {
       if (x === "unban") { await call(`players/${pid}/unban`, "POST"); toast("Unbanned"); }
       if (x === "resetkey") { if (!confirm("Allow this character to log in from a new device? (The old device keeps working too until someone logs in.)")) return; await call(`players/${pid}/resetkey`, "POST"); toast("Device link reset"); }
       if (x === "backups") return push(() => backups(pid));
+      if (x === "view") return push(() => viewSave(p, r.name || pid));
+      if (x === "backupnow") { await call(`players/${encodeURIComponent(pid)}/backup`, "POST"); return toast("Save backed up"); }
+      if (x === "gift") return giftDialog(pid, r.name || pid);
+      if (x === "dlsave") return download("savelink", { pid });
       if (x === "delete") { if (prompt(`Type DELETE to remove ${r.name} from the server (a backup is kept).`) !== "DELETE") return; await call(`players/${pid}`, "DELETE"); toast("Deleted"); return back(); }
       player(pid);
     } catch (e) { fail(e); }
@@ -278,14 +328,16 @@ function rawEdit(pid, p, name) {
   $("#rsave").onclick = async () => { const o = parse(); if (o) { await saveProfile(pid, o, name); } };
 }
 async function backups(pid) {
-  M().innerHTML = `<div class="card"><h2>Backups</h2><div class="list" id="bl"><div class="muted">Loading…</div></div><p class="muted">Kept automatically every hour of play and before every admin change (last 20).</p></div>`;
+  M().innerHTML = `<div class="card"><h2>Backups</h2><div class="list" id="bl"><div class="muted">Loading…</div></div><p class="muted">Kept automatically every hour of play, before every admin change and when you press Back up now (last 20).</p></div>`;
   try {
     const r = await call(`players/${encodeURIComponent(pid)}/backups`);
     const L = $("#bl"); L.innerHTML = r.backups.length ? "" : '<div class="muted">No backups yet.</div>';
     for (const b of r.backups) {
       const d = document.createElement("div"); d.className = "it";
-      d.innerHTML = `<div class="nm"><b>${new Date(b.at).toLocaleString()}</b><span>${esc(b.why)} · ${ago(b.at)}</span></div><button class="b s">Restore</button>`;
-      d.querySelector("button").onclick = async () => { if (!confirm("Restore this backup? The current save is backed up first.")) return; try { const x = await call(`players/${encodeURIComponent(pid)}/restore`, "POST", { file: b.file }); toast(x.live ? "Restored — sent to the player now" : "Restored"); back(); } catch (e) { fail(e); } };
+      d.innerHTML = `<div class="nm"><b>${new Date(b.at).toLocaleString()}</b><span>${esc(b.why)} · ${ago(b.at)}</span></div><button class="b s" data-v>View</button><button class="b s" data-d>⬇</button><button class="b s" data-r>Restore</button>`;
+      d.querySelector("[data-v]").onclick = async () => { try { const sv = await call(`players/${encodeURIComponent(pid)}/backups/${encodeURIComponent(b.file)}`); push(() => viewSave(sv, "Backup " + new Date(b.at).toLocaleString())); } catch (e) { fail(e); } };
+      d.querySelector("[data-d]").onclick = () => download("savelink", { pid, backup: b.file });
+      d.querySelector("[data-r]").onclick = async () => { if (!confirm("Restore this backup? The current save is backed up first.")) return; try { const x = await call(`players/${encodeURIComponent(pid)}/restore`, "POST", { file: b.file }); toast(x.live ? "Restored — sent to the player now" : "Restored"); back(); } catch (e) { fail(e); } };
       L.appendChild(d);
     }
   } catch (e) { fail(e); }
@@ -297,11 +349,15 @@ function msg() {
   const s = lastStatus || {};
   M().innerHTML = `<div class="card"><h2>Announcement</h2><p class="muted">Shown as a banner and in chat to everyone in the Realm right now.</p><textarea id="ann" style="min-height:90px" maxlength="300" placeholder="Double XP weekend starts now!"></textarea><div class="row" style="margin-top:8px"><button class="b p" id="send">Send to everyone</button></div></div>
     <div class="card"><h2>Message of the day</h2><p class="muted">Shown to each player when they enter the Realm.</p><input id="motd" maxlength="200" value="${esc(s.motd || "")}"><div class="row" style="margin-top:8px"><button class="b" id="smotd">Save</button></div></div>
+    <div class="card ${s.maintenance ? "warn" : ""}"><h2>Maintenance</h2><p class="muted">While it is on, nobody can enter the Realm and everyone inside is sent to their own world with this message.</p><input id="mmsg" maxlength="200" value="${esc(s.maintenanceMsg || "")}"><div class="row" style="margin-top:8px"><button class="b ${s.maintenance ? "p" : "d"}" id="mtog">${s.maintenance ? "Open the Realm again" : "Close for maintenance"}</button></div></div>
+    <div class="card"><h2>Gift to everyone</h2><p class="muted">Soul Shards and Ashen Marks for every player: added at once while they play, or the next time they enter the Realm. To gift one player, open them under Players.</p><button class="b" id="giftall">Send a gift to all players</button></div>
     <div class="card"><h2>Scheduled restart</h2><p class="muted">Warns everyone, then restarts the world. Players reconnect by themselves.</p><div class="row"><button class="b" data-r="60">In 1 minute</button><button class="b" data-r="300">In 5 minutes</button><button class="b d" data-r="0">Now</button></div></div>`;
   $("#send").onclick = async () => { const t = $("#ann").value.trim(); if (!t) return; try { const r = await call("announce", "POST", { text: t }); toast(`Sent to ${r.sent} player(s)`); $("#ann").value = ""; } catch (e) { fail(e); } };
+  $("#mtog").onclick = async () => { const on = !s.maintenance; if (on && !confirm("Close the Realm? Everyone inside is sent to their own world.")) return; try { await call("config", "POST", { maintenance: on, maintenanceMsg: $("#mmsg").value }); lastStatus = await call("status"); toast(on ? "The Realm is closed" : "The Realm is open"); msg(); } catch (e) { fail(e); } };
+  $("#giftall").onclick = () => giftDialog(null, "every player");
   $("#smotd").onclick = async () => { try { await call("config", "POST", { motd: $("#motd").value }); toast("Saved"); } catch (e) { fail(e); } };
   M().querySelectorAll("[data-r]").forEach((b) => (b.onclick = async () => { if (!confirm("Restart the world " + (b.dataset.r === "0" ? "now" : "in " + b.dataset.r / 60 + " min") + "?")) return; try { await call("restart", "POST", { delay: +b.dataset.r }); toast("Restart scheduled"); } catch (e) { fail(e); } }));
-  if (!lastStatus) call("status").then((x) => { lastStatus = x; $("#motd") && ($("#motd").value = x.motd || ""); }).catch(() => {});
+  if (!lastStatus) call("status").then((x) => { lastStatus = x; msg(); }).catch(() => {});
 }
 
 // ---------------- server ----------------
@@ -320,6 +376,7 @@ async function server() {
       <div class="row" style="margin-top:10px"><button class="b p" id="ssave">Save</button></div></div>
     <div class="card"><h2>Game version</h2><p class="muted">Server has <b>${esc(s.gameVersion || "?")}</b>, the world runs <b>${esc(s.hostVersion || "?")}</b>.</p>
       <div class="row"><button class="b" id="supd">Check for update now</button><button class="b d" id="srst">Restart world now</button></div></div>
+    <div class="card"><h2>Server program</h2><p class="muted" id="sver">Version ${esc(s.serverVersion || "1.0 (old)")} · checking GitHub…</p><div class="row"><button class="b" id="sself" disabled>Update server program</button></div></div>
     <div class="card"><h2>Admin password</h2><input id="spw" type="password" placeholder="new password (8+ characters)"><div class="row" style="margin-top:8px"><button class="b" id="spws">Change password</button></div></div>
     <div class="card"><h2>Server log</h2><div class="row" style="margin-bottom:8px"><button class="b s" id="slog">Refresh</button></div><div class="log" id="log">…</div></div>
     <p class="muted" style="text-align:center">Server up ${dur(s.uptime)} · ${esc(S.base.replace(/^https?:\/\//, ""))}<br>Admin ${IN_APP ? "app " + esc(APP_VER) + " · " : ""}page ${PAGE_VERSION} · updates itself</p>`;
@@ -328,8 +385,57 @@ async function server() {
   $("#supd").onclick = async () => { toast("Checking…"); try { const r = await call("update", "POST"); toast(r.changed ? `Downloaded ${r.ver} — world restarts in 60 s` : r.ok ? `Already up to date (${r.ver})` : "Update failed: " + r.why); } catch (e) { fail(e); } };
   $("#srst").onclick = async () => { if (!confirm("Restart the world now? Everyone is disconnected for about a minute.")) return; try { await call("restart", "POST", { delay: 0 }); toast("Restarting…"); } catch (e) { fail(e); } };
   $("#spws").onclick = async () => { const v = $("#spw").value; if (v.length < 8) return toast("At least 8 characters"); try { await call("config", "POST", { newPassword: v }); S.pw = v; store.set("vfa_pw", v); toast("Password changed"); $("#spw").value = ""; } catch (e) { fail(e); } };
+  if (s.serverVersion) call("server").then((v) => {
+    const el = $("#sver"); if (!el) return;
+    const newer = v.latest && older(v.version, v.latest);
+    el.innerHTML = `Version <b>${esc(v.version)}</b> · newest on GitHub <b>${esc(v.latest || "?")}</b>${newer ? "" : " · up to date"}`;
+    $("#sself").disabled = !newer;
+  }).catch(() => {}); else $("#sver").textContent = "This server is too old to update itself: run the setup line once in Termux (see the manual).";
+  $("#sself").onclick = async () => { if (!confirm("Update the server program now? Everyone is disconnected for about a minute.")) return; try { const r = await call("server/update", "POST"); toast(`Updating ${r.from} → ${r.to}; back in about a minute`); } catch (e) { fail(e); } };
   const loadLog = async () => { try { const r = await call("log"); const L = $("#log"); if (L) { L.textContent = r.lines.slice().reverse().join("\n"); } } catch (e) { fail(e); } };
   $("#slog").onclick = loadLog; loadLog();
+}
+
+// ---------------- whole-server backups ----------------
+async function fullBackups() {
+  $("#htitle").textContent = "Backups";
+  M().innerHTML = `<div class="muted">Loading…</div>`;
+  let r;
+  try { r = await call("fullbackups"); } catch (e) { return fail(e); }
+  const tag = (k) => ({ auto: "automatic", manual: "manual", uploaded: "uploaded", "before-restore": "before a restore" })[k] || k;
+  M().innerHTML = `
+    <div class="card"><h2>Server backups</h2><p class="muted">A server backup holds every player's save and save backups plus the Realm settings (admin password included). Use it to undo mistakes or to move to a new server: download it, then upload and restore it there.</p>
+      <div class="row"><button class="b p" id="fbnow">Back up now</button><button class="b" id="fbup">Upload a backup…</button><input id="fbfile" type="file" accept=".tgz,.gz,application/gzip" class="hide"></div></div>
+    <div class="card"><h2>Automatic backups</h2>
+      <div class="row" style="gap:10px"><div style="flex:1"><label>Every (hours, 0 = off)</label><input id="fbh" type="number" min="0" max="168" value="${r.autoBackupHours}"></div><div style="flex:1"><label>Keep the last</label><input id="fbk" type="number" min="1" max="100" value="${r.autoBackupKeep}"></div></div>
+      <p class="muted">Automatic backups only replace older automatic ones. Manual and uploaded backups stay until you delete them.${r.lastAutoBackup ? " Last automatic backup " + ago(r.lastAutoBackup) + "." : ""}</p>
+      <button class="b" id="fbsave">Save</button></div>
+    <div class="card list" id="fbl">${r.backups.length ? "" : '<div class="muted">No server backups yet.</div>'}</div>`;
+  const L = $("#fbl");
+  for (const b of r.backups) {
+    const d = document.createElement("div"); d.className = "it";
+    d.innerHTML = `<div class="nm"><b>${new Date(b.at).toLocaleString()}</b><span>${tag(b.kind)} · ${kb(b.size)} · ${ago(b.at)}</span></div><button class="b s" data-d>⬇</button><button class="b s" data-r>Restore</button><button class="b s d" data-x>✕</button>`;
+    d.querySelector("[data-d]").onclick = () => download(`fullbackups/${encodeURIComponent(b.file)}/link`);
+    d.querySelector("[data-r]").onclick = async () => {
+      if (prompt("Restore this server backup? Every player's save is replaced by the one in the backup (a backup of the current state is made first), and everyone is disconnected for a minute. Type RESTORE to go on.") !== "RESTORE") return;
+      try { const x = await call(`fullbackups/${encodeURIComponent(b.file)}/restore`, "POST"); toast(`Restored ${x.players} player(s)`); if (x.passwordChanged) { alert("The admin password is now the one from the backup. Sign in with it."); store.del("vfa_pw"); S.pw = ""; return showLogin("Sign in with the password from the backup."); } fullBackups(); } catch (e) { fail(e); }
+    };
+    d.querySelector("[data-x]").onclick = async () => { if (!confirm("Delete this server backup for good?")) return; try { await call(`fullbackups/${encodeURIComponent(b.file)}`, "DELETE"); toast("Deleted"); fullBackups(); } catch (e) { fail(e); } };
+    L.appendChild(d);
+  }
+  $("#fbnow").onclick = async () => { toast("Backing up…"); try { await call("fullbackups", "POST"); toast("Server backed up"); fullBackups(); } catch (e) { fail(e); } };
+  $("#fbsave").onclick = async () => { try { await call("config", "POST", { autoBackupHours: +$("#fbh").value, autoBackupKeep: +$("#fbk").value }); toast("Saved"); fullBackups(); } catch (e) { fail(e); } };
+  $("#fbup").onclick = () => $("#fbfile").click();
+  $("#fbfile").onchange = async () => {
+    const f = $("#fbfile").files[0]; if (!f) return;
+    toast(`Uploading ${kb(f.size)}…`);
+    try {
+      const res = await fetch(S.base + "/api/fullbackups/upload", { method: "POST", headers: { Authorization: "Bearer " + S.pw, "Content-Type": "application/gzip" }, body: f });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(j.error || "HTTP " + res.status), { code: res.status });
+      toast("Uploaded — press Restore on it to use it"); fullBackups();
+    } catch (e) { fail(e); }
+  };
 }
 
 function start() { $("#login").classList.add("hide"); $("#app").classList.remove("hide"); go("dash"); }
