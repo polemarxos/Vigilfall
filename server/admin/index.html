@@ -92,7 +92,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.5";
+const PAGE_VERSION = "1.6";
 const APP_LATEST = "1.5";
 const APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
@@ -512,13 +512,31 @@ function consoleTab() {
   const o = $("#cout"); o.scrollTop = o.scrollHeight;
 }
 
+// ---------------- backups kept on GitHub ----------------
+async function ghBackups() {
+  $("#htitle").textContent = "GitHub backups";
+  M().innerHTML = `<div class="card"><h2>Backups on GitHub</h2><div class="list" id="ghl"><div class="muted">Loading…</div></div><p class="muted">Bring back copies a backup from GitHub to this server; it then appears in the Backups list, where you can restore it.</p></div>`;
+  try {
+    const r = await call("github/list");
+    const L = $("#ghl"); L.innerHTML = r.files.length ? "" : '<div class="muted">No backups on GitHub yet.</div>';
+    for (const f of r.files) {
+      const at = +f.name.split("-")[0];
+      const d = document.createElement("div"); d.className = "it";
+      d.innerHTML = `<div class="nm"><b>${at ? new Date(at).toLocaleString() : esc(f.name)}</b><span>${esc(f.name.replace(/^\d+-|\.tgz$/g, ""))} · ${kb(f.size)}${at ? " · " + ago(at) : ""}</span></div><button class="b s">Bring back</button>`;
+      d.querySelector("button").onclick = async () => { toast("Copying from GitHub…"); try { await call("github/fetch", "POST", { name: f.name }); toast("Copied — it is now in the Backups list"); back(); } catch (e) { fail(e); } };
+      L.appendChild(d);
+    }
+  } catch (e) { fail(e); }
+}
+
 // ---------------- whole-server backups ----------------
 async function fullBackups() {
   $("#htitle").textContent = "Backups";
   M().innerHTML = `<div class="muted">Loading…</div>`;
-  let r;
+  let r, g = null;
   try { r = await call("fullbackups"); } catch (e) { return fail(e); }
-  const tag = (k) => ({ auto: "automatic", manual: "manual", uploaded: "uploaded", "before-restore": "before a restore" })[k] || k;
+  try { g = await call("github"); } catch (e) { g = null; }
+  const tag = (k) => ({ auto: "automatic", manual: "manual", uploaded: "uploaded", github: "from GitHub", "before-restore": "before a restore" })[k] || k;
   M().innerHTML = `
     <div class="card"><h2>Server backups</h2><p class="muted">A server backup holds every player's save and save backups plus the Realm settings (admin password included). Use it to undo mistakes or to move to a new server: download it, then upload and restore it there.</p>
       <div class="row"><button class="b p" id="fbnow">Back up now</button><button class="b" id="fbup">Upload a backup…</button><input id="fbfile" type="file" accept=".tgz,.gz,application/gzip" class="hide"></div></div>
@@ -526,11 +544,23 @@ async function fullBackups() {
       <div class="row" style="gap:10px"><div style="flex:1"><label>Every (hours, 0 = off)</label><input id="fbh" type="number" min="0" max="168" value="${r.autoBackupHours}"></div><div style="flex:1"><label>Keep the last</label><input id="fbk" type="number" min="1" max="100" value="${r.autoBackupKeep}"></div></div>
       <p class="muted">Automatic backups only replace older automatic ones. Manual and uploaded backups stay until you delete them.${r.lastAutoBackup ? " Last automatic backup " + ago(r.lastAutoBackup) + "." : ""}</p>
       <button class="b" id="fbsave">Save</button></div>
+    ${g ? `<div class="card"><h2>Copies on GitHub</h2>
+      <p class="muted">Keeps a copy of your server backups in a <b>private</b> GitHub repository, away from this server. Never use the public Vigilfall repository: backups hold every player's save and the admin password.</p>
+      <label>Private repository (owner/name)</label><input id="ghrepo" placeholder="polemarxos/Vigilfall-backups" value="${esc(g.repo || "")}" autocapitalize="off" autocorrect="off">
+      <label>Token${g.hasToken ? " (saved — leave empty to keep it)" : ""}</label><input id="ghtok" type="password" placeholder="${g.hasToken ? "••••••••" : "github_pat_…"}" autocapitalize="off" autocorrect="off">
+      <div class="row" style="gap:10px;margin-top:8px"><label style="display:flex;gap:6px;align-items:center;margin:0;flex:2"><input id="ghauto" type="checkbox" style="width:auto" ${g.auto ? "checked" : ""}> Send every automatic backup</label><div style="flex:1"><label style="margin-top:0">Keep on GitHub</label><input id="ghkeep" type="number" min="0" max="500" value="${g.keep}"></div></div>
+      <p class="muted" id="ghstat">${g.last ? (g.last.ok ? "✓ Last copy " : "⚠ Last copy failed ") + ago(g.last.at) + (g.last.ok ? "" : ": " + esc(g.last.msg)) : g.repo ? "No copy sent yet." : "Not set up yet."}</p>
+      <div class="row"><button class="b p" id="ghsave">Save and test</button>${g.repo && g.hasToken ? '<button class="b" id="ghlist">Backups on GitHub…</button>' : ""}</div>
+      <details style="margin-top:10px"><summary class="muted">How to set it up (2 minutes)</summary><ol class="muted" style="padding-left:18px">
+        <li>On github.com: <b>New repository</b> → name it e.g. <b>Vigilfall-backups</b> → choose <b>Private</b> → Create.</li>
+        <li>Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token. Repository access: <b>Only select repositories</b> → that repository. Permissions → Repository → <b>Contents: Read and write</b>. Pick a long expiry → Generate → copy it.</li>
+        <li>Paste the repository name and the token here → Save and test.</li></ol></details></div>` : ""}
     <div class="card list" id="fbl">${r.backups.length ? "" : '<div class="muted">No server backups yet.</div>'}</div>`;
   const L = $("#fbl");
   for (const b of r.backups) {
     const d = document.createElement("div"); d.className = "it";
-    d.innerHTML = `<div class="nm"><b>${new Date(b.at).toLocaleString()}</b><span>${tag(b.kind)} · ${kb(b.size)} · ${ago(b.at)}</span></div><button class="b s" data-d>⬇</button><button class="b s" data-r>Restore</button><button class="b s d" data-x>✕</button>`;
+    d.innerHTML = `<div class="nm"><b>${new Date(b.at).toLocaleString()}</b><span>${tag(b.kind)} · ${kb(b.size)} · ${ago(b.at)}</span></div><button class="b s" data-d>⬇</button>${g?.repo && g?.hasToken ? '<button class="b s" data-g title="Copy to GitHub">⬆</button>' : ""}<button class="b s" data-r>Restore</button><button class="b s d" data-x>✕</button>`;
+    d.querySelector("[data-g]") && (d.querySelector("[data-g]").onclick = async () => { toast("Sending to GitHub…"); try { await call(`fullbackups/${encodeURIComponent(b.file)}/github`, "POST"); toast("Copied to GitHub"); fullBackups(); } catch (e) { fail(e); } });
     d.querySelector("[data-d]").onclick = () => download(`fullbackups/${encodeURIComponent(b.file)}/link`);
     d.querySelector("[data-r]").onclick = async () => {
       if (prompt("Restore this server backup? Every player's save is replaced by the one in the backup (a backup of the current state is made first), and everyone is disconnected for a minute. Type RESTORE to go on.") !== "RESTORE") return;
@@ -539,6 +569,14 @@ async function fullBackups() {
     d.querySelector("[data-x]").onclick = async () => { if (!confirm("Delete this server backup for good?")) return; try { await call(`fullbackups/${encodeURIComponent(b.file)}`, "DELETE"); toast("Deleted"); fullBackups(); } catch (e) { fail(e); } };
     L.appendChild(d);
   }
+  $("#ghsave") && ($("#ghsave").onclick = async () => {
+    try {
+      const x = await call("github", "POST", { repo: $("#ghrepo").value, token: $("#ghtok").value, auto: $("#ghauto").checked, keep: +$("#ghkeep").value });
+      if (x.test && !x.test.ok) { $("#ghstat").textContent = "⚠ " + x.test.error; return toast("Saved, but the test failed"); }
+      toast(x.test ? "Saved — GitHub repository works" : "Saved"); fullBackups();
+    } catch (e) { fail(e); }
+  });
+  $("#ghlist") && ($("#ghlist").onclick = () => push(ghBackups));
   $("#fbnow").onclick = async () => { toast("Backing up…"); try { await call("fullbackups", "POST"); toast("Server backed up"); fullBackups(); } catch (e) { fail(e); } };
   $("#fbsave").onclick = async () => { try { await call("config", "POST", { autoBackupHours: +$("#fbh").value, autoBackupKeep: +$("#fbk").value }); toast("Saved"); fullBackups(); } catch (e) { fail(e); } };
   $("#fbup").onclick = () => $("#fbfile").click();

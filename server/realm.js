@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.3.0";
+const SERVER_VERSION = "1.4.0";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -324,8 +324,83 @@ async function makeFull(kind) {
     for (const b of autos.slice(Math.max(1, +cfg.autoBackupKeep || 10))) await fsp.unlink(path.join(FULL, b.file)).catch(() => {});
   }
   log("server backup made", name);
+  if (kind === "auto") ghAuto(name);
   return name;
 }
+// ---------------- copies of server backups in a PRIVATE GitHub repository ----------------
+const GH_FILE = path.join(DATA, "github.json"); // kept apart from config.json, so the token never goes into a backup
+let gh = { repo: "", token: "", branch: "main", folder: "realm-backups", auto: true, keep: 30, last: null };
+try { Object.assign(gh, JSON.parse(fs.readFileSync(GH_FILE, "utf8"))); } catch (e) {}
+const saveGh = () => fs.writeFileSync(GH_FILE, JSON.stringify(gh, null, 2), { mode: 0o600 });
+const ghApi = async (p, opts = {}) => {
+  const r = await fetch((process.env.VF_GH_API || "https://api.github.com") + p, { ...opts, headers: { Authorization: "Bearer " + gh.token, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "vigilfall-realm", ...(opts.headers || {}) } });
+  return r;
+};
+const ghPath = (name) => `/repos/${gh.repo}/contents/${encodeURIComponent(gh.folder)}${name ? "/" + encodeURIComponent(name) : ""}`;
+async function ghTest() {
+  if (!/^[\w.-]+\/[\w.-]+$/.test(gh.repo)) throw new Error("Repository must look like owner/name, e.g. polemarxos/Vigilfall-backups.");
+  if (!gh.token) throw new Error("No GitHub token saved.");
+  const r = await ghApi(`/repos/${gh.repo}`);
+  if (r.status === 401) throw new Error("GitHub refused the token (wrong or expired).");
+  if (r.status === 404) throw new Error("Repository not found, or the token cannot see it.");
+  if (!r.ok) throw new Error("GitHub answered " + r.status);
+  const j = await r.json();
+  if (!j.private) throw new Error("That repository is PUBLIC. Backups hold every player's save and the admin password: use a private repository.");
+  if (j.permissions && !j.permissions.push) throw new Error("The token can read but not write this repository (give it Contents: Read and write).");
+  gh.branch = gh.branch || j.default_branch || "main";
+  return { ok: true, repo: j.full_name, branch: gh.branch };
+}
+async function ghList() {
+  const r = await ghApi(ghPath() + "?ref=" + encodeURIComponent(gh.branch));
+  if (r.status === 404) return [];
+  if (!r.ok) throw new Error("GitHub list failed: " + r.status);
+  const j = await r.json();
+  return (Array.isArray(j) ? j : []).filter((f) => f.type === "file" && /\.tgz$/.test(f.name)).map((f) => ({ name: f.name, size: f.size, sha: f.sha })).sort((a, b) => (a.name < b.name ? 1 : -1));
+}
+async function ghUpload(file) {
+  if (!okFull(file)) throw new Error("No such backup.");
+  await ghTest();
+  const buf = await fsp.readFile(path.join(FULL, file));
+  if (buf.length > 90e6) throw new Error("Backup too big for GitHub (over 90 MB).");
+  let sha;
+  const ex = await ghApi(ghPath(file) + "?ref=" + encodeURIComponent(gh.branch));
+  if (ex.ok) sha = (await ex.json()).sha;
+  const r = await ghApi(ghPath(file), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Realm backup " + file, content: buf.toString("base64"), branch: gh.branch, ...(sha ? { sha } : {}) }) });
+  if (!r.ok) throw new Error("GitHub upload failed: " + r.status + " " + ((await r.json().catch(() => ({}))).message || ""));
+  // keep only the newest N copies on GitHub
+  let pruned = 0;
+  if (+gh.keep > 0) {
+    const all = await ghList();
+    for (const f of all.slice(+gh.keep)) {
+      const d = await ghApi(ghPath(f.name), { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Remove old Realm backup " + f.name, sha: f.sha, branch: gh.branch }) });
+      d.ok && pruned++;
+    }
+  }
+  gh.last = { at: Date.now(), ok: true, file, msg: "sent" + (pruned ? `, ${pruned} old copy(ies) removed` : "") };
+  saveGh();
+  log("backup copied to GitHub", file);
+  return gh.last;
+}
+async function ghFetch(name) {
+  if (!/^[\w.-]+\.tgz$/.test(name)) throw new Error("Bad file name.");
+  await ghTest();
+  const r = await ghApi(ghPath(name) + "?ref=" + encodeURIComponent(gh.branch), { headers: { Accept: "application/vnd.github.raw" } });
+  if (!r.ok) throw new Error("GitHub download failed: " + r.status);
+  const buf = Buffer.from(await r.arrayBuffer());
+  const dst = `${Date.now()}-github.tgz`;
+  await fsp.writeFile(path.join(FULL, dst), buf);
+  try { await runCmd("tar", ["tzf", path.join(FULL, dst)]); } catch (e) { await fsp.unlink(path.join(FULL, dst)).catch(() => {}); throw new Error("That GitHub file is not a Realm backup."); }
+  log("backup brought back from GitHub", name, "->", dst);
+  return dst;
+}
+const ghAuto = (file) => {
+  if (!gh.auto || !gh.repo || !gh.token) return;
+  ghUpload(file).catch((e) => {
+    gh.last = { at: Date.now(), ok: false, file, msg: e.message };
+    saveGh();
+    log("GitHub copy failed", e.message);
+  });
+};
 let backupTimer = null;
 const scheduleBackups = () => {
   clearInterval(backupTimer);
@@ -606,7 +681,26 @@ async function api(req, res, url) {
       return json(res, 200, { ok: true });
     }
     if (p[2] === "restore" && M === "POST") return json(res, 200, { ok: true, ...(await restoreFull(f)) });
+    if (p[2] === "github" && M === "POST") return json(res, 200, await ghUpload(f));
     if (p[2] === "link" && M === "POST") return json(res, 200, { url: "/dl/" + dlToken({ file: path.join(FULL, f), name: "vigilfall-realm-" + f, type: "application/gzip" }) });
+  }
+  if (p[0] === "github") {
+    if (!p[1] && M === "GET") return json(res, 200, { repo: gh.repo, branch: gh.branch, folder: gh.folder, auto: gh.auto, keep: gh.keep, hasToken: !!gh.token, last: gh.last });
+    if (!p[1] && M === "POST") {
+      const b = await body(req);
+      if (typeof b.repo === "string") gh.repo = b.repo.trim().replace(/^https:\/\/github\.com\//, "").replace(/\.git$/, "").replace(/\/+$/, "");
+      if (typeof b.token === "string" && b.token.trim()) gh.token = b.token.trim();
+      if (b.removeToken) gh.token = "";
+      if (typeof b.branch === "string" && b.branch.trim()) gh.branch = b.branch.trim();
+      if (typeof b.auto === "boolean") gh.auto = b.auto;
+      if (b.keep !== undefined) gh.keep = Math.max(0, Math.min(500, Math.round(+b.keep) || 0));
+      saveGh();
+      log("GitHub backup settings changed", gh.repo);
+      if (!gh.repo || !gh.token) return json(res, 200, { ok: true, test: null });
+      try { return json(res, 200, { ok: true, test: await ghTest() }); } catch (e) { return json(res, 200, { ok: true, test: { ok: false, error: e.message } }); }
+    }
+    if (p[1] === "list" && M === "GET") return json(res, 200, { files: await ghList() });
+    if (p[1] === "fetch" && M === "POST") { const b = await body(req); return json(res, 200, { ok: true, file: await ghFetch(String(b.name || "")) }); }
   }
   if (p[0] === "savelink" && M === "POST") {
     const b = await body(req);
