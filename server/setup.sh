@@ -127,6 +127,12 @@ if [ -z "$PORT" ]; then
   echo "{\"port\": $PORT}" > "$APP/data/config.json"; chown vigilfall:vigilfall "$APP/data/config.json"
 fi
 echo "Realm port: $PORT"
+# GitHub copies of server backups (VF_BACKUP_REPO=owner/name VF_BACKUP_TOKEN=github_pat_...) — kept only on this server
+if [ -n "${VF_BACKUP_TOKEN:-}" ] && [ -n "${VF_BACKUP_REPO:-}" ]; then
+  printf '{"repo":"%s","token":"%s","branch":"main","folder":"realm-backups","auto":true,"keep":30,"last":null}\n' "$VF_BACKUP_REPO" "$VF_BACKUP_TOKEN" > "$APP/data/github.json"
+  chown vigilfall:vigilfall "$APP/data/github.json"; chmod 600 "$APP/data/github.json"
+  echo "GitHub backup copies set up for $VF_BACKUP_REPO."
+fi
 # private game repository: the read token for the server (VF_SOURCE_TOKEN=github_pat_...)
 if [ -n "${VF_SOURCE_TOKEN:-}" ]; then
   printf '{"repo":"polemarxos/Vigilfall","branch":"main","token":"%s"}\n' "$VF_SOURCE_TOKEN" > "$APP/data/source.json"
