@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.22.1</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.22.2</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,9 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.22.1";
+  X.VERSION = "1.22.2";
   X.CHANGELOG = {
+    "1.22.2": ["Vigilfall now also lives at vigilfall.duckdns.org: play there in the browser, and the Android app gets its updates from there. Playing on the old address? Export your save (Saves on the main menu) and import it at the new address."],
     "1.22.1": ["The Realm can send gifts: Soul Shards and Ashen Marks from the Realm arrive right away while you play (or the next time you enter the Realm)."],
     "1.22.0": [
       "The Realm: one shared online world that runs on a dedicated server. Enter the Realm on the main menu puts you in the same world as everyone who is online; you see the players and monsters near you. Your own world (solo and with friends) is still there.",
@@ -49036,7 +49037,9 @@ X.EL.quests = {
   const app = () => window.__app;
 
   // ---------------- address of the Realm ----------------
-  X.REALM_DEFAULT = "";
+  // the official Realm; when the game itself is served by a Realm server, that server is the default
+  X.REALM_DEFAULT = "vigilfall.duckdns.org";
+  if (/^https?:$/.test(location.protocol) && location.hostname && !/github\.io$|^localhost$|^127\./.test(location.hostname)) X.REALM_DEFAULT = location.host;
   const norm = (s) => {
     s = String(s || "").trim();
     if (!s) return "";
@@ -49055,7 +49058,7 @@ X.EL.quests = {
           .then((r) => (r.ok ? r.json() : null))
           .then((j) => j?.url && (X.REALM_DEFAULT = j.url))
           .catch(() => {});
-      else X.REALM_DEFAULT ||= "";
+      else X.REALM_DEFAULT ||= "vigilfall.duckdns.org";
     } catch (e) {}
   }
   X.realmStatus = async () => {
@@ -50573,6 +50576,7 @@ Object.assign(X.EL.msg, {
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.22.2"] && (X.CHANGELOG["1.22.2"] = ["Το Vigilfall υπάρχει πλέον και στο vigilfall.duckdns.org: παίξε εκεί στον browser, και η εφαρμογή Android παίρνει τις ενημερώσεις της από εκεί. Παίζεις στην παλιά διεύθυνση; Κάνε εξαγωγή της αποθήκευσης (Αποθηκεύσεις στο κύριο μενού) και εισαγωγή στη νέα διεύθυνση."]);
       X.CHANGELOG && X.CHANGELOG["1.22.1"] && (X.CHANGELOG["1.22.1"] = ["Το Βασίλειο μπορεί να στέλνει δώρα: Θραύσματα Ψυχής και Στακτερά Σημάδια φτάνουν αμέσως όσο παίζεις (ή την επόμενη φορά που θα μπεις στο Βασίλειο)."]);
       X.CHANGELOG && X.CHANGELOG["1.22.0"] && (X.CHANGELOG["1.22.0"] = [
         "Το Βασίλειο: ένας κοινός διαδικτυακός κόσμος που τρέχει σε δικό του διακομιστή. Η Είσοδος στο Βασίλειο στο κύριο μενού σε βάζει στον ίδιο κόσμο με όλους όσους είναι συνδεδεμένοι· βλέπεις τους παίκτες και τα τέρατα κοντά σου. Ο δικός σου κόσμος (μόνος και με φίλους) υπάρχει ακόμη.",

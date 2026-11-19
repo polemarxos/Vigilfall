@@ -92,9 +92,9 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.6";
-const APP_LATEST = "1.5";
-const APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
+const PAGE_VERSION = "1.7";
+const APP_LATEST = "1.6";
+let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
 const older = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
 let pendingReload = false;
@@ -401,6 +401,16 @@ async function server() {
       <div class="row" style="margin-top:10px"><button class="b p" id="ssave">Save</button></div></div>
     <div class="card"><h2>Game version</h2><p class="muted">Server has <b>${esc(s.gameVersion || "?")}</b>, the world runs <b>${esc(s.hostVersion || "?")}</b>.</p>
       <div class="row"><button class="b" id="supd">Check for update now</button><button class="b d" id="srst">Restart world now</button></div></div>
+    <div class="card"><h2>Game source</h2><p class="muted">Where this server gets the game, both Android apps and its own program. Players get them from this server (play at <b>${esc(S.base.replace(/^https?:\/\//, ""))}</b>), so the GitHub repository can be private: then give the server a read-only token.</p>
+      <label>Repository</label><input id="srcrepo" autocapitalize="off" autocorrect="off">
+      <label id="srctoklbl">Read token</label><input id="srctok" type="password" autocapitalize="off" autocorrect="off">
+      <p class="muted" id="srcstat">…</p>
+      <div class="row"><button class="b" id="srcsave">Save and test</button><button class="b s d hide" id="srcdel">Remove token</button></div>
+      <details style="margin-top:8px"><summary class="muted">Make the repository private (steps)</summary><ol class="muted" style="padding-left:18px">
+        <li>github.com → Settings → Developer settings → Fine-grained tokens → Generate. Repository access: only <b>Vigilfall</b>. Permissions: <b>Contents: Read-only</b>. Long expiry.</li>
+        <li>Paste it here → Save and test → it must say ✓.</li>
+        <li>Players: install the newest game app from <b>${esc(S.base.replace(/^https?:\/\//, ""))}/Vigilfall.apk</b> (it updates from this server). Browser players: play at <b>${esc(S.base.replace(/^https?:\/\//, ""))}</b> (export the save on the old site first, import it here).</li>
+        <li>Then on GitHub: the Vigilfall repository → Settings → General → Danger Zone → <b>Change visibility → Private</b>.</li></ol></details></div>
     <div class="card"><h2>Server program</h2><p class="muted" id="sver">Version ${esc(s.serverVersion || "1.0 (old)")} · checking GitHub…</p><div class="row"><button class="b" id="sself" disabled>Update server program</button></div></div>
     <div class="card"><h2>Admin password</h2><input id="spw" type="password" placeholder="new password (8+ characters)"><div class="row" style="margin-top:8px"><button class="b" id="spws">Change password</button></div></div>
     <div class="card"><h2>Server log</h2><div class="row" style="margin-bottom:8px"><button class="b s" id="slog">Refresh</button></div><div class="log" id="log">…</div></div>
@@ -411,6 +421,14 @@ async function server() {
   $("#supd").onclick = async () => { toast("Checking…"); try { const r = await call("update", "POST"); toast(r.changed ? `Downloaded ${r.ver} — world restarts in 60 s` : r.ok ? `Already up to date (${r.ver})` : "Update failed: " + r.why); } catch (e) { fail(e); } };
   $("#srst").onclick = async () => { if (!confirm("Restart the world now? Everyone is disconnected for about a minute.")) return; try { await call("restart", "POST", { delay: 0 }); toast("Restarting…"); } catch (e) { fail(e); } };
   $("#spws").onclick = async () => { const v = $("#spw").value; if (v.length < 8) return toast("At least 8 characters"); try { await call("config", "POST", { newPassword: v }); S.pw = v; store.set("vfa_pw", v); toast("Password changed"); $("#spw").value = ""; } catch (e) { fail(e); } };
+  call("source").then((g) => {
+    if (!$("#srcrepo")) return;
+    $("#srcrepo").value = g.repo; $("#srctok").placeholder = g.hasToken ? "•••••••• (saved — leave empty to keep)" : "github_pat_… (only needed when private)";
+    g.hasToken && $("#srcdel").classList.remove("hide");
+    $("#srcstat").innerHTML = g.last ? (g.last.ok ? `✓ Reached ${g.last.ver ? "game " + esc(g.last.ver) + " " : ""}${ago(g.last.at)}` : `⚠ ${esc(g.last.error)} (${ago(g.last.at)})`) : "Not checked yet.";
+  }).catch(() => { $("#srcstat") && ($("#srcstat").textContent = "This server program is older: update it first (below)."); });
+  $("#srcsave").onclick = async () => { try { const x = await call("source", "POST", { repo: $("#srcrepo").value, token: $("#srctok").value }); $("#srcstat").innerHTML = x.test.ok ? `✓ Works — game ${esc(x.test.ver)} found` : "⚠ " + esc(x.test.error); toast(x.test.ok ? "Game source works" : "Saved, but it does not work yet"); } catch (e) { fail(e); } };
+  $("#srcdel").onclick = async () => { if (!confirm("Remove the token? Only do this while the repository is public.")) return; try { await call("source", "POST", { removeToken: true }); toast("Token removed"); server(); } catch (e) { fail(e); } };
   if (s.serverVersion) call("server").then((v) => {
     const el = $("#sver"); if (!el) return;
     const newer = v.latest && older(v.version, v.latest);
@@ -462,7 +480,8 @@ function conExec(cmd, ask) {
   if (ask && !confirm(ask)) return;
   if (conRun?.busy) return toast("A command is still running — Stop it first");
   if (!VFAApp.hasKey()) return toast("Choose your SSH key first");
-  if (cmd === "@setup") cmd = `curl -fsSL 'https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/setup.sh?t=${Date.now()}' | sudo VF_NONINTERACTIVE=1 VF_DOMAIN=${S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, "")} bash`;
+  // the server's own copy of the setup (works with a private repository: it reuses the saved read token)
+  if (cmd === "@setup") cmd = `D=${S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, "")}; if [ -f /opt/vigilfall-realm/setup.sh ]; then sudo VF_NONINTERACTIVE=1 VF_DOMAIN=$D bash /opt/vigilfall-realm/setup.sh; else curl -fsSL 'https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/setup.sh?t=${Date.now()}' | sudo VF_NONINTERACTIVE=1 VF_DOMAIN=$D bash; fi`;
   const id = "c" + Date.now();
   conRun = { id, busy: true, text: `$ ${cmd}\n` };
   const hist = JSON.parse(store.get("vfa_hist") || "[]").filter((h) => h !== cmd);
@@ -592,7 +611,9 @@ async function fullBackups() {
   };
 }
 
-function start() { $("#login").classList.add("hide"); $("#app").classList.remove("hide"); go("dash"); }
+function start() {
+  APP_URL = S.base + "/VigilfallAdmin.apk";
+  try { window.VFAApp?.setServer?.(S.base); } catch (e) {} $("#login").classList.add("hide"); $("#app").classList.remove("hide"); go("dash"); }
 (async () => {
   if (!S.base || !S.pw) return showLogin();
   try { await call("status"); start(); } catch (e) { showLogin(e.code === 401 ? "Sign in again." : e.message === "Failed to fetch" ? "Could not reach " + S.base.replace(/^https?:\/\//, "") : e.message); }

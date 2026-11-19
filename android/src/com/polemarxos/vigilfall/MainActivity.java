@@ -40,6 +40,8 @@ import java.util.Map;
 public class MainActivity extends Activity {
     static final String HOST = "polemarxos.github.io";
     static final String BASE = "https://" + HOST + "/Vigilfall/";
+    // new versions come from the Realm server (the GitHub repository is private); the page keeps its old address so saves stay
+    static final String UPD = "https://vigilfall.duckdns.org/";
     WebView web;
     PermissionRequest pending;
     long lastBack;
@@ -86,12 +88,12 @@ public class MainActivity extends Activity {
         checking = true;
         new Thread(new Runnable() { public void run() {
             try {
-                HttpURLConnection c = (HttpURLConnection) new URL(BASE + "version.txt?t=" + System.currentTimeMillis()).openConnection();
+                HttpURLConnection c = (HttpURLConnection) new URL(UPD + "version.txt?t=" + System.currentTimeMillis()).openConnection();
                 c.setConnectTimeout(6000); c.setReadTimeout(6000); c.setUseCaches(false);
                 if (c.getResponseCode() != 200) return;
                 String remote = readAll(c.getInputStream());
                 if (!newer(remote, currentVersion())) return;
-                HttpURLConnection d = (HttpURLConnection) new URL(BASE + "index.html?v=" + remote).openConnection();
+                HttpURLConnection d = (HttpURLConnection) new URL(UPD + "index.html?v=" + remote).openConnection();
                 d.setConnectTimeout(10000); d.setReadTimeout(60000); d.setUseCaches(false);
                 if (d.getResponseCode() != 200) return;
                 File tmp = new File(getFilesDir(), "index.tmp");

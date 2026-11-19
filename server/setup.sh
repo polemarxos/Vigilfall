@@ -40,8 +40,14 @@ say "Realm server code"
 id vigilfall >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/vigilfall --shell /usr/sbin/nologin vigilfall
 # fresh shallow copy of the repository every time (older git versions break on sparse clones)
 rm -rf "$SRC"
-git clone --depth 1 "$REPO" "$SRC"
-[ -f "$SRC/server/realm.js" ] || { echo "Could not download the server code from $REPO"; exit 1; }
+# private repository: use the read token (given now, or saved earlier by the admin app)
+if [ -z "${VF_SOURCE_TOKEN:-}" ] && [ -f "$APP/data/source.json" ]; then VF_SOURCE_TOKEN=$(sed -n 's/.*"token": *"\([^"]*\)".*/\1/p' "$APP/data/source.json" | head -1); fi
+if [ -n "${VF_SOURCE_TOKEN:-}" ]; then
+  git clone --depth 1 "https://x-access-token:${VF_SOURCE_TOKEN}@github.com/polemarxos/Vigilfall.git" "$SRC" && git -C "$SRC" remote set-url origin "$REPO"
+else
+  git clone --depth 1 "$REPO" "$SRC"
+fi
+[ -f "$SRC/server/realm.js" ] || { echo "Could not download the server code from $REPO (private? give VF_SOURCE_TOKEN=<read token>)"; exit 1; }
 mkdir -p "$APP"
 cp -r "$SRC/server/." "$APP/"
 mkdir -p "$APP/data" "$APP/game"
@@ -121,6 +127,12 @@ if [ -z "$PORT" ]; then
   echo "{\"port\": $PORT}" > "$APP/data/config.json"; chown vigilfall:vigilfall "$APP/data/config.json"
 fi
 echo "Realm port: $PORT"
+# private game repository: the read token for the server (VF_SOURCE_TOKEN=github_pat_...)
+if [ -n "${VF_SOURCE_TOKEN:-}" ]; then
+  printf '{"repo":"polemarxos/Vigilfall","branch":"main","token":"%s"}\n' "$VF_SOURCE_TOKEN" > "$APP/data/source.json"
+  chown vigilfall:vigilfall "$APP/data/source.json"; chmod 600 "$APP/data/source.json"
+  echo "Game source token saved."
+fi
 
 cat > /etc/caddy/vigilfall.caddy <<EOF
 $DOMAIN {

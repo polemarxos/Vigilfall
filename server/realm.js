@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.4.0";
+const SERVER_VERSION = "1.5.0";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -162,25 +162,67 @@ setInterval(() => {
 let gameVer = null;
 try { gameVer = fs.readFileSync(path.join(GAME, "version.txt"), "utf8").trim(); } catch (e) {}
 let updating = false;
+// ---------------- where everything comes from: the GitHub repository (works private too, with a read token) ----------------
+const SRC_FILE = path.join(DATA, "source.json"); // apart from config.json: the token never goes into a backup
+let src = { repo: "polemarxos/Vigilfall", branch: "main", token: "", last: null };
+try { Object.assign(src, JSON.parse(fs.readFileSync(SRC_FILE, "utf8"))); } catch (e) {}
+const saveSrc = () => fs.writeFileSync(SRC_FILE, JSON.stringify(src, null, 2), { mode: 0o600 });
+async function srcGet(file, opt = {}) {
+  // with a token: the GitHub API (private repos, up to 100 MB a file); without: the public raw address
+  const url = src.token
+    ? `https://api.github.com/repos/${src.repo}/contents/${file.split("/").map(encodeURIComponent).join("/")}?ref=${encodeURIComponent(src.branch)}&t=${Date.now()}`
+    : `https://raw.githubusercontent.com/${src.repo}/${src.branch}/${file}?t=${Date.now()}`;
+  const headers = src.token ? { Authorization: "Bearer " + src.token, Accept: "application/vnd.github.raw", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "vigilfall-realm" } : {};
+  const r = await fetch(url, { headers });
+  if (r.status === 404 && opt.optional) return null;
+  if (r.status === 404) throw new Error(src.token ? `${file} not found in ${src.repo} (or the token cannot read it)` : `${file} not found — if the repository is private, add a read token (Server → Game source)`);
+  if (r.status === 401 || r.status === 403) throw new Error("GitHub refused the game-source token (wrong, expired or no access).");
+  if (!r.ok) throw new Error(`download ${file}: ${r.status}`);
+  return Buffer.from(await r.arrayBuffer());
+}
+// files the server hands out to players (the game, its app files and both Android apps)
+const PUBLIC_FILES = ["index.html", "version.txt", "manifest.webmanifest", "sw.js", "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png", "Vigilfall.apk", "VigilfallAdmin.apk", "VigilfallAdmin.json"];
+let adminAppInfo = null;
+try { adminAppInfo = JSON.parse(fs.readFileSync(path.join(GAME, "VigilfallAdmin.json"), "utf8")); } catch (e) {}
+const putGame = async (name, buf) => {
+  await fsp.writeFile(path.join(GAME, name + ".tmp"), buf);
+  await fsp.rename(path.join(GAME, name + ".tmp"), path.join(GAME, name));
+};
 async function updateGame(force) {
   if (updating) return { ok: false, why: "busy" };
   updating = true;
   try {
-    const base = cfg.gameUrl.replace(/\/?$/, "/");
-    const v = (await (await fetch(base + "version.txt?t=" + Date.now())).text()).trim();
-    if (!force && v === gameVer) return { ok: true, same: true, ver: v };
-    const r = await fetch(base + "index.html?t=" + Date.now());
-    if (!r.ok) throw new Error("download " + r.status);
-    const buf = Buffer.from(await r.arrayBuffer());
-    if (buf.length < 1e6) throw new Error("file too small");
-    await fsp.writeFile(path.join(GAME, "index.html.tmp"), buf);
-    await fsp.rename(path.join(GAME, "index.html.tmp"), path.join(GAME, "index.html"));
-    await fsp.writeFile(path.join(GAME, "version.txt"), v);
+    const v = String(await srcGet("version.txt")).trim();
+    // the admin app can change without a new game version
+    const ai = await srcGet("VigilfallAdmin.json", { optional: true });
+    if (ai) {
+      const j = JSON.parse(String(ai));
+      if (!adminAppInfo || j.versionCode !== adminAppInfo.versionCode || !fs.existsSync(path.join(GAME, "VigilfallAdmin.apk"))) {
+        const apk = await srcGet("VigilfallAdmin.apk", { optional: true });
+        if (apk) await putGame("VigilfallAdmin.apk", apk);
+        await putGame("VigilfallAdmin.json", ai);
+        adminAppInfo = j;
+        log("admin app", j.versionName, "ready for download");
+      }
+    }
+    src.last = { at: Date.now(), ok: true, ver: v };
+    saveSrc();
+    if (!force && v === gameVer && fs.existsSync(path.join(GAME, "index.html"))) return { ok: true, same: true, ver: v };
+    const html = await srcGet("index.html");
+    if (html.length < 1e6) throw new Error("index.html too small");
+    for (const f of PUBLIC_FILES) {
+      if (f === "index.html" || f === "version.txt" || f.startsWith("VigilfallAdmin")) continue;
+      try { const b = await srcGet(f, { optional: true }); b && (await putGame(f, b)); } catch (e) { log("could not get", f, e.message); }
+    }
+    await putGame("index.html", html);
+    await putGame("version.txt", Buffer.from(v));
     const old = gameVer;
     gameVer = v;
     log("game updated", old, "->", v);
     return { ok: true, ver: v, changed: true };
   } catch (e) {
+    src.last = { at: Date.now(), ok: false, error: e.message };
+    try { saveSrc(); } catch (er) {}
     log("update failed", e.message);
     return { ok: false, why: e.message };
   } finally {
@@ -451,10 +493,10 @@ const dlToken = (item) => {
   return t;
 };
 // the server program updates itself from GitHub
-const RAW = "https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/";
+
 const SELF_FILES = ["realm.js", "host.js", "package.json", "admin/index.html", "setup.sh", "README.md"];
 async function latestServer() {
-  const t = await (await fetch(RAW + "realm.js?t=" + Date.now())).text();
+  const t = String(await srcGet("server/realm.js"));
   return (t.match(/SERVER_VERSION = "([\d.]+)"/) || [])[1] || null;
 }
 let selfUpdating = false;
@@ -464,9 +506,7 @@ async function selfUpdate() {
   try {
     const got = {};
     for (const f of SELF_FILES) {
-      const r = await fetch(RAW + f + "?t=" + Date.now());
-      if (!r.ok) throw new Error("download " + f + ": " + r.status);
-      got[f] = Buffer.from(await r.arrayBuffer());
+      got[f] = await srcGet("server/" + f);
     }
     const code = got["realm.js"].toString("utf8");
     const ver = (code.match(/SERVER_VERSION = "([\d.]+)"/) || [])[1];
@@ -702,6 +742,19 @@ async function api(req, res, url) {
     if (p[1] === "list" && M === "GET") return json(res, 200, { files: await ghList() });
     if (p[1] === "fetch" && M === "POST") { const b = await body(req); return json(res, 200, { ok: true, file: await ghFetch(String(b.name || "")) }); }
   }
+  if (p[0] === "source") {
+    if (!p[1] && M === "GET") return json(res, 200, { repo: src.repo, branch: src.branch, hasToken: !!src.token, last: src.last, gameVersion: gameVer });
+    if (!p[1] && M === "POST") {
+      const b = await body(req);
+      if (typeof b.repo === "string" && b.repo.trim()) src.repo = b.repo.trim().replace(/^https:\/\/github\.com\//, "").replace(/\.git$/, "").replace(/\/+$/, "");
+      if (typeof b.branch === "string" && b.branch.trim()) src.branch = b.branch.trim();
+      if (typeof b.token === "string" && b.token.trim()) src.token = b.token.trim();
+      if (b.removeToken) src.token = "";
+      saveSrc();
+      log("game source changed", src.repo, src.token ? "(with token)" : "(public)");
+      try { const v = String(await srcGet("version.txt")).trim(); return json(res, 200, { ok: true, test: { ok: true, ver: v } }); } catch (e) { return json(res, 200, { ok: true, test: { ok: false, error: e.message } }); }
+    }
+  }
   if (p[0] === "savelink" && M === "POST") {
     const b = await body(req);
     if (!okPid(String(b.pid || ""))) return json(res, 400, { error: "bad id" });
@@ -801,9 +854,19 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
       return fs.createReadStream(ADMIN_HTML).pipe(res);
     }
-    if (url.pathname === "/") {
+    // the game and both Android apps, handed out by this server
+    const pub = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
+    if (req.method === "GET" && PUBLIC_FILES.includes(pub) && fs.existsSync(path.join(GAME, pub))) {
+      const type = { html: "text/html; charset=utf-8", txt: "text/plain; charset=utf-8", webmanifest: "application/manifest+json", js: "text/javascript; charset=utf-8", png: "image/png", apk: "application/vnd.android.package-archive", json: "application/json" }[pub.split(".").pop()] || "application/octet-stream";
+      if (pub === "VigilfallAdmin.json" && adminAppInfo) return json(res, 200, { ...adminAppInfo, apk: "/VigilfallAdmin.apk" });
+      const st = fs.statSync(path.join(GAME, pub));
+      res.writeHead(200, { "Content-Type": type, "Content-Length": st.size, "Cache-Control": /\.(png)$/.test(pub) ? "public, max-age=86400" : "no-cache", ...(pub.endsWith(".apk") ? { "Content-Disposition": `attachment; filename="${pub}"` } : {}), ...CORS });
+      return fs.createReadStream(path.join(GAME, pub)).pipe(res);
+    }
+    if (url.pathname === "/realm.json") return json(res, 200, { url: String(req.headers.host || "").replace(/:\d+$/, "") });
+    if (url.pathname === "/info") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      return res.end(`<!doctype html><meta name=viewport content="width=device-width"><body style="background:#111;color:#e8dcc0;font-family:sans-serif;text-align:center;padding-top:20vh"><h1>${cfg.name}</h1><p>This is a Vigilfall Realm server. Play at <a style="color:#ffd070" href="${cfg.gameUrl}">${cfg.gameUrl}</a> and press <b>Enter the Realm</b>.</p><p><a style="color:#9ad0ff" href="/admin">Admin</a></p>`);
+      return res.end(`<!doctype html><meta name=viewport content="width=device-width"><body style="background:#111;color:#e8dcc0;font-family:sans-serif;text-align:center;padding-top:20vh"><h1>${cfg.name}</h1><p>This is a Vigilfall Realm server. <a style="color:#ffd070" href="/">Play here</a> and press <b>Enter the Realm</b> · <a style="color:#ffd070" href="/Vigilfall.apk">Android app</a></p><p><a style="color:#9ad0ff" href="/admin">Admin</a></p>`);
     }
     json(res, 404, { error: "not found" });
   } catch (e) {

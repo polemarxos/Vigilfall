@@ -42,7 +42,7 @@ public class MainActivity extends Activity {
     static final String REPO = "https://raw.githubusercontent.com/polemarxos/Vigilfall/main/";
     static final String LATEST = REPO + "server/admin/index.html";
     static final String APP_INFO = REPO + "VigilfallAdmin.json";
-    static final String VERSION = "1.5";
+    static final String VERSION = "1.6";
     static final String ACTION_INSTALLED = "com.polemarxos.vigilfall.admin.INSTALLED";
     static final int PICK = 42;
     WebView web;
@@ -50,6 +50,9 @@ public class MainActivity extends Activity {
     long lastAppCheck = 0;
     boolean installing = false;
     final Map<String, Session> running = new HashMap<>();
+
+    // the Realm server hands out the admin page and the app (the GitHub repository may be private)
+    String server() { return getSharedPreferences("vfa", MODE_PRIVATE).getString("server", ""); }
 
     File cached() { return new File(getFilesDir(), "admin.html"); }
     File keyFile() { return new File(getFilesDir(), "ssh.key"); }
@@ -100,7 +103,9 @@ public class MainActivity extends Activity {
         new Thread(new Runnable() {
             public void run() {
                 try {
-                    HttpURLConnection c = open(LATEST + "?t=" + System.currentTimeMillis());
+                    String srv = server();
+                    HttpURLConnection c = open((srv.isEmpty() ? LATEST : srv + "/admin") + "?t=" + System.currentTimeMillis());
+                    if (c.getResponseCode() != 200 && !srv.isEmpty()) c = open(LATEST + "?t=" + System.currentTimeMillis());
                     if (c.getResponseCode() != 200) return;
                     byte[] neu = readAll(c.getInputStream());
                     String s = new String(neu, "UTF-8");
@@ -125,7 +130,9 @@ public class MainActivity extends Activity {
         new Thread(new Runnable() {
             public void run() {
                 try {
-                    HttpURLConnection c = open(APP_INFO + "?t=" + System.currentTimeMillis());
+                    String srv = server();
+                    HttpURLConnection c = open((srv.isEmpty() ? APP_INFO : srv + "/VigilfallAdmin.json") + "?t=" + System.currentTimeMillis());
+                    if (c.getResponseCode() != 200 && !srv.isEmpty()) c = open(APP_INFO + "?t=" + System.currentTimeMillis());
                     if (c.getResponseCode() != 200) return;
                     JSONObject j = new JSONObject(new String(readAll(c.getInputStream()), "UTF-8"));
                     int code = j.optInt("versionCode", 0);
@@ -135,7 +142,9 @@ public class MainActivity extends Activity {
                     }
                     installing = true;
                     state("downloading", "0");
-                    HttpURLConnection d = open(j.getString("apk") + "?t=" + System.currentTimeMillis());
+                    String apk = j.getString("apk");
+                    if (apk.startsWith("/")) apk = srv + apk;
+                    HttpURLConnection d = open(apk + "?t=" + System.currentTimeMillis());
                     d.setReadTimeout(120000);
                     if (d.getResponseCode() != 200) throw new Exception("download " + d.getResponseCode());
                     PackageInstaller pi = getPackageManager().getPackageInstaller();
@@ -197,6 +206,10 @@ public class MainActivity extends Activity {
     // ---------- bridge for the page: app updates and the SSH console ----------
     class Bridge {
         @JavascriptInterface public String version() { return VERSION; }
+        @JavascriptInterface public void setServer(String base) {
+            if (base == null || !base.matches("^https?://[A-Za-z0-9.:-]+$")) return;
+            getSharedPreferences("vfa", MODE_PRIVATE).edit().putString("server", base).apply();
+        }
         @JavascriptInterface public void updateApp() { checkApp(true); }
         @JavascriptInterface public boolean canSelfUpdate() { return true; }
         @JavascriptInterface public void selfUpdate(String url) { checkApp(true); }
