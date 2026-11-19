@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.18.6</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.19.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -29647,6 +29647,7 @@ Object.assign(rw.unbound, { hp: 240000 });
         let b = kA("#start");
         if (!b) return;
         let want = this._selMode === "host" ? "Answer the Vigil" : this._selMode === "join" ? "Join " + (X.friendName?.(this._selCode) || this._selCode) : null;
+        want && X.EL?.T && (want = X.EL.T(want));
         want && b.textContent !== want && (b.textContent = want);
       });
       this._menuObs.observe(kA("#menu"), { childList: !0, subtree: !0 });
@@ -30870,6 +30871,7 @@ Object.assign(rw.unbound, { hp: 240000 });
     this._trail ||= [];
     let p = this.player.pos,
       T = this._trail;
+    T.length && T[T.length - 1].distanceTo(p) > 20 && (T.length = 0); // a teleport: the old breadcrumbs lead nowhere
     (!T.length || T[T.length - 1].distanceTo(p) > 1.5) && T.push(p.clone());
     T.length > 120 && T.splice(0, T.length - 120);
     if (this.inst !== this._trailInst) ((this._trailInst = this.inst), (T.length = 0));
@@ -31022,7 +31024,7 @@ Object.assign(rw.unbound, { hp: 240000 });
       }
       // ---- stuck for a while, or left far behind: rejoin the host like a player using a path ----
       let hostD = r.pos.distanceTo(this.player.pos);
-      if ((r.stuck > 5 && hostD > 6) || (hostD > 55 && !(r.combatT > 0))) {
+      if ((r.stuck > 5 && hostD > 6) || (hostD > 55 && !(r.combatT > 0)) || hostD > 75) {
         X.botRejoin(this, r, i);
         X.bots.packet(r);
         continue;
@@ -33724,8 +33726,16 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.18.6";
+  X.VERSION = "1.19.0";
   X.CHANGELOG = {
+    "1.19.0": [
+      "Raids and a new dungeon: the Drowned Deep, Throne of Storms and Reckoning bosses now use the full raid mechanics (tank swaps, interrupts, soak and spread marks, shield phases). New dungeon: The Obsidian Foundry (level 18, south-east of the Black Citadel) with Forgewarden Kraal, and a quest from Brannoc.",
+      "Crafting depth: reforge a stat on any item, temper items (+2 item level, three times) with Obsidian Lumps, Grandmaster recipes for level-60 legendaries from Abyssal Cores, and three saved outfits per hero in the Wardrobe.",
+      "Install as an app: opened from the website, Vigilfall can be installed (Chrome, Edge, Android; on iPhone: Share → Add to Home Screen). It starts full screen, works offline after the first load and updates itself.",
+      "Greek language: Settings → Language. Quests, heroes, skills, talents, people, places, enemies, achievements, help, tutorial and the interface are in Greek; item and cosmetic names stay English.",
+      "Talents & passives: Persistence talents now also lengthen buffs (Vanish, Sanguine Pact, Undying…); Static Charge chains to 5 enemies for 35; Saint's Lantern really gives 10% less damage near the cleric; Bulwark +35% armor; Gravebound also weakens nearby enemies.",
+      "Bug hunt from a long soak test: visited dungeons no longer stay loaded after you leave (thousands of objects), companions that chase enemies far away come back, and companions catch up straight after a teleport.",
+    ],
     "1.18.6": [
       "Skill balance pass — every skill of every hero was measured in the same test fight at level 20. Damage dealers now clearly out-damage tanks and healers with their basic attacks (witch, ranger, warlock and assassin up; cleric, druid and apothecary attacks down).",
       "Reworked weak skills: Aegis of Last Dawn now shields every ally for 40% of the templar's health and turns nearby enemies on the templar; Inferno Requiem's fireballs now land on enemies instead of random ground (more than twice the damage); Panacea heals 40% of each ally's health; Smoke of Oblivion now makes enemies miss half their attacks; Soul Siphon drains twice as much and heals three times as much; Elixir Toss heals 60% more; Wildgrowth heals 70% more; Doom, Plague of Rot and Curse of Agony hit harder.",
@@ -46064,6 +46074,757 @@ body.pause-open #touch-ui,body.pause-open #tleft,body.pause-open #tdeco{display:
   };
 }
 
+/* ---- F3_raid2.js ---- */
+/* 1.19.0 — raid mechanics pass 2: The Drowned Deep gets the full 1.17 toolkit (scripted bosses, tank-swap stacks,
+   interruptible casts, soaks, spreads, tremors, safe zones, shield phases, enrage, bot awareness) on top of its
+   signature moves; The Reckoning and the Throne of Storms get one extra mechanic per boss. */
+{
+  const GP = SC.prototype;
+  const T = X.mech.timer,
+    pick = (g, not) => {
+      let T0 = g.playerTargets().filter((o) => o.id !== not);
+      return T0.length ? T0[(Math.random() * T0.length) | 0] : null;
+    },
+    near = (g, o, r) => g.groundPoint(o.pos.clone().add(ii((Math.random() - 0.5) * r, 0, (Math.random() - 0.5) * r)));
+  // same prologue as EQ_raid's layer: host only, with a target, not dazed; shield + cast ticks
+  const layer = (A, i, I, g) => {
+    if (!g.isHost || !i || !A.alive) return !1;
+    if (A.dazed > g.t) return !1;
+    X.mech.shieldTick(g, A, I);
+    if (X.mech.castTick(g, A, I)) return "casting";
+    return !0;
+  };
+  const wrap = (type, limit, fn) => {
+    let f0 = X.bossAI[type];
+    if (!f0) return;
+    X.bossAI[type] = function (A, i, I, base) {
+      let r = f0.call(this, A, i, I, base);
+      try {
+        if (this.isHost && i && A.alive) X.mech.enrage(this, A, I, limit);
+        let L = layer(A, i, I, this);
+        if (L === "casting") return null;
+        L && !(A.windup > 0) && fn.call(this, A, i, I, r);
+        if (A.cast) return null;
+      } catch (e) {
+        console.error("raid mech 2", type, e);
+      }
+      return r;
+    };
+  };
+  // for bosses that already carry the 1.17 layer (ticks and enrage run there): just add behaviour
+  const extra = (type, fn) => {
+    let f0 = X.bossAI[type];
+    if (!f0) return;
+    X.bossAI[type] = function (A, i, I, base) {
+      let r = f0.call(this, A, i, I, base);
+      try {
+        if (this.isHost && i && A.alive && !(A.dazed > this.t) && !A.cast && !(A.immune > 0) && !(A.windup > 0)) fn.call(this, A, i, I, r);
+        if (A.cast) return null;
+      } catch (e) {
+        console.error("raid mech 2", type, e);
+      }
+      return r;
+    };
+  };
+  // a plain scripted base for bosses that only had timed events so far
+  const simple = (type) => {
+    if (X.bossAI[type]) return;
+    X.bossAI[type] = function (A, i, I) {
+      let b = X.bossBase.call(this, A, i, I);
+      if (b.idle !== void 0) return b.idle;
+      if (b.busy) return b.out;
+      if (A.def.ranged && b.t("bolt", A.def.atkCd * 1.4)) {
+        let o = A.pos.clone().setY(A.pos.y + A.def.height * A.scale * 0.75),
+          l = ii(i.x, i.y + 1, i.z).sub(o).normalize();
+        this.spawnProj({ team: "enemy", kind: "bolt", color: A.def.color, from: o, dir: l, speed: 28, dmg: b.dmg(A.def.dmg * 0.2), radius: 0.6, life: 4, owner: A });
+        this.audio.play("zap", A.pos, 0.8);
+      }
+      return b.end();
+    };
+  };
+  for (const k of ["tidecaller", "leviathan", "choir", "drownedking"]) simple(k);
+
+  // ---- The Drowned Deep ----
+  // Morvath the Tidecaller: Brine stacks on the tank, Undertow soak, Tidal Surge cast (interrupt or the raid is swept)
+  wrap("tidecaller", 420, function (A, i, I) {
+    let D = A.phase || 0;
+    T(A, "m_brine", 8, 5) && X.mech.sunder(this, A, "Brine", 0.25, 6, 18);
+    if (T(A, "m_undertow", 21, 13)) {
+      let o = pick(this);
+      o && X.mech.soak(this, A, near(this, o, 8), 4, 2 + D, 4, 120 * A.dmgMul, 0x40c0ff);
+    }
+    if (T(A, "m_surge", 19, 11))
+      X.mech.cast(this, A, "Tidal Surge", 3.6 - D * 0.4, () => {
+        for (let q of this.playerTargets()) {
+          this.damagePlayer(q.id, 110 * A.dmgMul, { pure: !0, src: A.pos });
+          q.id === "self" && this.addBuff("slowed", 3, {});
+        }
+        this.fx("nova", A.pos, { color: 0x40c0ff, r: 26 });
+        this.shake(0.9);
+        this.audio.play("water", A.pos, 1.3);
+      }, "#40c0ff");
+  });
+  // The Drowned Leviathan: Breach tremor (jump), Maw spread marks, and in the last third a Deluge safe zone
+  wrap("leviathan", 420, function (A, i, I) {
+    let D = A.phase || 0;
+    T(A, "m_breach", 14, 8) && X.mech.jumpWave(this, A, 15, 2.2, 95 * A.dmgMul, 0x60c0e0);
+    T(A, "m_maw", 17, 12) && X.mech.spread(this, A, 6, 4, 80 * A.dmgMul);
+    if (D >= 2 && T(A, "m_deluge", 26, 16)) {
+      let o = pick(this);
+      o && X.mech.safeZone(this, A, near(this, o, 10), 4.5, 4, 170 * A.dmgMul, "DELUGE");
+    }
+  });
+  // The Abyssal Choir: Chorus shield phase with Drowned cantors, Dirge cast, Discord spread
+  wrap("choir", 420, function (A, i, I) {
+    let D = A.phase || 0;
+    A._shD ??= D;
+    if (D !== A._shD) {
+      A._shD = D;
+      X.mech.shieldPhase(this, A, "drowned", 2 + D, 25, "CHORUS");
+    }
+    if (T(A, "m_dirge", 18, 10))
+      X.mech.cast(this, A, "Dirge", 3.4 - D * 0.4, () => {
+        let o = pick(this);
+        o && (this.damagePlayer(o.id, 170 * A.dmgMul, { pure: !0 }), this.fx("beam", A.pos.clone().setY(A.pos.y + 4), { to: o.pos.clone().setY(o.pos.y + 1), color: 0xb080ff }));
+        for (let q of this.playerTargets()) this.damagePlayer(q.id, 50 * A.dmgMul, { pure: !0 });
+        this.audio.play("dark", A.pos, 1.2);
+      }, "#b080ff");
+    T(A, "m_discord", 23, 16) && X.mech.spread(this, A, 7, 4, 75 * A.dmgMul);
+  });
+  // Ythar, the Drowned King: Drown stacks (tank swap), Abyssal Call safe zone, Undertow soak, Tide of Ruin cast when furious
+  wrap("drownedking", 480, function (A, i, I) {
+    let D = A.phase || 0;
+    T(A, "m_drown", 8, 5) && X.mech.sunder(this, A, "Drown", 0.25, 6, 20);
+    if (T(A, "m_call", 24, 15)) {
+      let o = pick(this);
+      o && X.mech.safeZone(this, A, near(this, o, 10), 5 - D * 0.5, 4, 160 * A.dmgMul, "ABYSSAL CALL");
+    }
+    if (T(A, "m_soak", 20, 12)) {
+      let o = pick(this);
+      o && X.mech.soak(this, A, near(this, o, 8), 4.5, 3 + D, 4, 140 * A.dmgMul, 0x40ffd0);
+    }
+    if (D >= 1 && T(A, "m_ruin", 22, 14))
+      X.mech.cast(this, A, "Tide of Ruin", 4, () => {
+        for (let q of this.playerTargets()) this.damagePlayer(q.id, 180 * A.dmgMul, { pure: !0 });
+        this.fx("nova", A.pos, { color: 0x40ffd0, r: 30 });
+        this.shake(1);
+      }, "#40ffd0");
+  });
+
+  // ---- The Reckoning: one more mechanic each ----
+  // General 1: Decree cast (interrupt) — everyone is rooted for 3 s under a tremor
+  extra("general1", function (A, i, I) {
+    let D = A.phase || 0;
+    if (T(A, "m_decree", 24, 16))
+      X.mech.cast(this, A, "Decree", 3.5 - D * 0.3, () => {
+        for (let q of this.playerTargets()) q.id === "self" && this.addBuff("slowed", 3, {});
+        X.mech.jumpWave(this, A, 18, 2.4, 90 * A.dmgMul, 0xffb060);
+      }, "#ffb060");
+  });
+  // General 2: Void Rift safe zone
+  extra("general2", function (A, i, I) {
+    if (T(A, "m_rift", 30, 22)) {
+      let o = pick(this);
+      o && X.mech.safeZone(this, A, near(this, o, 10), 5, 4, 150 * A.dmgMul, "VOID RIFT");
+    }
+  });
+  // General 3: Shrapnel spread marks
+  extra("general3", function (A, i, I) {
+    T(A, "m_shrapnel", 21, 14) && X.mech.spread(this, A, 6, 4, 70 * A.dmgMul);
+  });
+  // ---- The Throne of Storms: one more mechanic each ----
+  // Volk: Pounce tremor
+  extra("volk", function (A, i, I) {
+    T(A, "m_pounce", 16, 11) && X.mech.jumpWave(this, A, 14, 2.1, 85 * A.dmgMul, 0xa0a0ff);
+  });
+  // Azrakul: Static Charge spread marks
+  extra("azrakul", function (A, i, I) {
+    T(A, "m_static", 19, 13) && X.mech.spread(this, A, 6, 4, 80 * A.dmgMul);
+  });
+  // The Unbound: Severance shield phase with wraith guards at each phase change
+  extra("unbound", function (A, i, I) {
+    let D = A.phase || 0;
+    A._shD2 ??= D;
+    if (D !== A._shD2) {
+      A._shD2 = D;
+      X.mech.shieldPhase(this, A, "wraith", 2 + D, 25, "SEVERANCE");
+    }
+  });
+
+  // help text
+  X.HELP && X.HELP.systems && X.HELP.systems.push(["Raid mechanics (Deep)", "The Drowned Deep uses the same language as the other raids: orange stacks mean tank swap, a cast bar under the boss means stun it or burn 6% of its health, blue circles are soaked, purple marks spread out, tremors are jumped, green circles are safe, shield phases end when the guards die."]);
+}
+
+/* ---- F4_dungeon.js ---- */
+/* 1.19.0 — new 5-player dungeon: The Obsidian Foundry (level 18, under the Black Citadel). Boss: Forgewarden Kraal. */
+{
+  const GP = SC.prototype;
+  const portal = [46, 46];
+  Object.assign(rw, {
+    kraal: { name: "Forgewarden Kraal", hp: 15500, dmg: 72, speed: 4.2, range: 4.2, atkCd: 1.9, xp: 4200, armor: 42, radius: 1.6, height: 5.2, color: 0xff7a30, boss: !0, inst: !0 },
+    slag: { name: "Slag Construct", hp: 520, dmg: 28, speed: 3.6, range: 2.2, atkCd: 1.6, xp: 90, armor: 25, radius: 0.7, height: 2.3, color: 0x6a3a1a },
+  });
+  for (const k of ["kraal", "slag"]) Ul.includes(k) || Ul.push(k);
+  Object.assign(Tl, {
+    kraal: { m: "knight", h: 5.2, tint: 0x3a2622, show: ["2H_Axe"], hat: !0, atk: "2H_Melee_Attack_Chop", idle: "2H_Melee_Idle", atkW: 0.6, glow: 0xff6a20 },
+    slag: { m: "skel_warrior", h: 2.3, tint: 0x6a3a1a, R: "w_skeleton_axe", atk: "1H_Melee_Attack_Chop", atkW: 0.5, glow: 0xff5a10 },
+  });
+  X.SKIN && X.SKIN.citadel && (X.SKIN.citadel.slag = ["Slag Construct", 0x6a3a1a, 0xff5a10]);
+  const d = {
+    name: "The Obsidian Foundry",
+    lv: 18,
+    portal,
+    boss: "kraal",
+    zone: "citadel",
+    stat: "dun_foundry",
+    tint: 0x4a3030,
+    fog: 0x1a0c08,
+    mobs: ["cultist", "boneknight", "slag", "abomination"],
+    rooms: 3,
+    ember: !0,
+  };
+  X.DUNGEONS.foundry = d;
+  X.INST.foundry = d;
+  {
+    let k = Object.keys(X.INST).length - 1;
+    ((d.id = "foundry"), (d.pocket = [1000 + k * 320, -200 + (k % 2) * 400]), (d.floorY = 2));
+  }
+  X.portals.push({ id: "foundry", pos: portal, raid: !1, name: d.name, lv: 18 });
+  mM.push({ id: "foundry_dun", name: "The Obsidian Foundry", pos: portal, r: 18, lv: "18 Dungeon" });
+
+  // ---- boss: Forgewarden Kraal ----
+  // Searing stacks on the tank (swap), Slag pools under players, Furnace Blast cast (interrupt), forge seals at each third with Slag Constructs
+  const T = X.mech.timer;
+  X.bossAI.kraal = function (A, i, I) {
+    let b = X.bossBase.call(this, A, i, I);
+    if (b.idle !== void 0) return b.idle;
+    if (b.busy) return b.out;
+    let { t, M, D } = b;
+    if (t("slag", 8)) for (let n of M) X.aoe(this, A, this.groundPoint(n.pos), 3, 1.1, 0xff6a20, b.dmg(30), { fx: "pillar", snd: "explosion" });
+    if (t("hammer", 12)) X.aoe(this, A, A.pos.clone(), 7, 1.3, 0xffa040, b.dmg(42), { fx: "ring", after: () => this.shake(0.5) });
+    return b.end();
+  };
+  let f0 = X.bossAI.kraal;
+  X.bossAI.kraal = function (A, i, I, base) {
+    let r = f0.call(this, A, i, I, base);
+    try {
+      if (!this.isHost || !i || !A.alive) return r;
+      X.mech.shieldTick(this, A, I);
+      if (A.dazed > this.t) return r;
+      if (X.mech.castTick(this, A, I)) return null;
+      if (A.windup > 0) return r;
+      let D = A.phase || 0;
+      T(A, "m_sear", 9, 6) && X.mech.sunder(this, A, "Searing", 0.25, 5, 16);
+      A._shD ??= D;
+      if (D !== A._shD) {
+        A._shD = D;
+        X.mech.shieldPhase(this, A, "slag", 2 + D, 22, "THE FORGE SEALS");
+      }
+      if (T(A, "m_blast", 20, 12))
+        X.mech.cast(this, A, "Furnace Blast", 3.2, () => {
+          for (let q of this.playerTargets()) this.damagePlayer(q.id, 58 * A.dmgMul, { pure: !0, src: A.pos });
+          this.fx("nova", A.pos, { color: 0xff6a20, r: 18 });
+          this.shake(0.8);
+          this.audio.play("explosion", A.pos, 1.1);
+        }, "#ff8a30");
+      if (A.cast) return null;
+    } catch (e) {
+      console.error("kraal mech", e);
+    }
+    return r;
+  };
+
+  // ---- quest, achievement, map ----
+  gB.push({
+    id: "q_foundry",
+    npc: "brannoc",
+    req: "q_king",
+    name: "The Cold Forge",
+    type: "abs",
+    stat: "dun_foundry",
+    goal: 1,
+    lvl: 18,
+    text: "Under the Citadel the Dark Lord's smiths never stopped working. The Forgewarden still pours slag into shapes that walk. Put the fire out — and bring me a lump of that obsidian for the anvil.",
+    obj: "Clear The Obsidian Foundry dungeon (south-east of the Citadel)",
+    rw: { xp: 5200, shards: 1600, marks: 50, item: "epic" },
+  });
+  typeof Yn === "object" && (Yn.q_foundry = portal);
+  WB.push({ id: "dun_foundry1", name: "Forged in Fire", desc: "Clear The Obsidian Foundry.", stat: "dun_foundry", goal: 1, reward: 120 });
+  X.HELP && X.HELP.systems && X.HELP.systems.push(["The Obsidian Foundry", "A level-18 dungeon south-east of the Black Citadel. Forgewarden Kraal stacks Searing on his tank (swap at ×3), drops slag under everyone, seals the forge behind Slag Constructs at each third of his health and casts Furnace Blast — stun it or burn 6% of his health."]);
+}
+
+/* ---- F5_craft.js ---- */
+/* 1.19.0 — crafting depth: reforging and tempering at the anvil, Grandmaster (level-60) recipes, two new endgame
+   materials (Obsidian Lump from dungeons, Abyssal Core from raids and Mythic+), wardrobe outfits (saved transmog sets). */
+{
+  const GP = SC.prototype,
+    U = XC.prototype;
+  const M = (id, name, tier, kind, color) => (X.MATS[id] = { id, name, tier, kind, color });
+  M("obsidian", "Obsidian Lump", 3, "core", "#ff8a40");
+  M("core", "Abyssal Core", 3, "core", "#40ffd0");
+  const STATS = ["power", "vitality", "armor", "haste", "crit", "leech", "grace", "resolve"];
+  const tierOfItem = (it) => (it.level >= 56 ? 3 : it.level >= 40 ? 2 : it.level >= 26 ? 1 : 0);
+
+  // ---- endgame materials drop when an instance is cleared (host and guests both pass through setStat) ----
+  let ss0 = GP.setStat;
+  GP.setStat = function (k, v) {
+    let before = this.profile?.stats?.[k] || 0;
+    let r = ss0.call(this, k, v);
+    try {
+      if (this.inst && v > before && typeof k === "string") {
+        if (k.startsWith("dun_")) X.addMat(this, "obsidian", k === "dun_foundry" ? 2 : 1);
+        else if (k.startsWith("raid_")) X.addMat(this, "core", 1 + (Math.random() < 0.5 ? 1 : 0));
+      }
+    } catch (e) {}
+    return r;
+  };
+  // Mythic+ runs of +5 and above give a core too (D1_endgame's completeInstance handles the keystone)
+  let ci0 = GP.completeInstance;
+  if (ci0)
+    GP.completeInstance = function (...a) {
+      const tier = this.inst?.mtier || 0,
+        raid = !!this.inst?.def?.raid;
+      const r = ci0.apply(this, a);
+      try {
+        !raid && tier >= 5 && X.addMat(this, "core", 1);
+      } catch (e) {}
+      return r;
+    };
+  // salvaging epic+ gear sometimes leaves an Obsidian Lump; legendary/mythic an Abyssal Core
+  let sal0 = GP.salvage;
+  GP.salvage = function (it, ...a) {
+    let rar = it && it.rarity,
+      lvl = it && it.level,
+      r = sal0.call(this, it, ...a);
+    try {
+      if (it && !this.profile.inventory.includes(it) && lvl >= 40) {
+        if ((rar === "legendary" || rar === "mythic") && Math.random() < 0.35) X.addMat(this, "core", 1);
+        else if (rar === "epic" && Math.random() < 0.3) X.addMat(this, "obsidian", 1);
+      }
+    } catch (e) {}
+    return r;
+  };
+
+  // ---- Grandmaster recipes (Artisan materials + Abyssal Cores → item level 60, always legendary) ----
+  const GM = 275;
+  const gmName = { weapon: "Voidforged Weapon", chest: "Voidforged Plate", helm: "Voidforged Crown", boots: "Voidforged Greaves" };
+  for (const slot of ["weapon", "chest", "helm", "boots"]) {
+    X.RECIPES.push({
+      id: "gm_" + slot,
+      prof: "blacksmithing",
+      name: gmName[slot],
+      req: GM + (slot === "weapon" ? 15 : slot === "helm" ? 10 : slot === "boots" ? 5 : 0),
+      mats: [["bar3", slot === "weapon" ? 8 : 6], ["leather3", 2], ["core", slot === "weapon" ? 3 : 2]],
+      item: { slot, lvl: 60 },
+      gm: !0,
+      text: `Grandmaster: item level 60, always legendary — needs Abyssal Cores (raids, Mythic+5, salvaging legendaries)`,
+    });
+  }
+  X.RECIPES.push(
+    { id: "gm_ench_w", prof: "enchanting", name: "Enchant Weapon — Abyssal Edge", req: GM + 10, mats: [["dust3", 6], ["ess3", 2], ["core", 1]], ench: { slot: "weapon", stat: "power", val: 22, label: "+22% damage" }, text: "Weapon: +22% damage (Grandmaster)" },
+    { id: "gm_ench_c", prof: "enchanting", name: "Enchant Chest — Abyssal Bulwark", req: GM + 15, mats: [["dust3", 6], ["ess3", 1], ["core", 1]], ench: { slot: "chest", stat: "vitality", val: 160, label: "+160 vitality" }, text: "Chest: +160 vitality (Grandmaster)" },
+    { id: "gm_ench_h", prof: "enchanting", name: "Enchant Helm — Abyssal Mind", req: GM + 20, mats: [["dust3", 7], ["ess3", 2], ["core", 1]], ench: { slot: "helm", stat: "haste", val: 12, label: "+12% haste" }, text: "Helm: +12% haste (Grandmaster)" },
+    { id: "gm_ench_b", prof: "enchanting", name: "Enchant Boots — Abyssal Stride", req: GM + 5, mats: [["dust3", 5], ["ess3", 1], ["core", 1]], ench: { slot: "boots", stat: "speed", val: 1.2, label: "+1.2 speed" }, text: "Boots: +1.2 move speed (Grandmaster)" },
+    { id: "gm_scroll", prof: "inscription", name: "Scroll of the Abyss", req: GM, mats: [["ink3", 4], ["vellum3", 2], ["obsidian", 1]], scroll: { stat: "power", val: 12, name: "Scroll of the Abyss" }, text: "30 minutes: +12% damage (read at once)" },
+  );
+  // crafted Grandmaster pieces are always legendary
+  let craft0 = X.craft;
+  X.craft = function (g, r, opt = {}) {
+    if (!r.gm || !r.item) return craft0.call(this, g, r, opt);
+    let s = X.skill(g, r.prof);
+    if (s < r.req) return g.toast(`Requires ${X.PROF[r.prof].name} ${r.req}`, "#ff6a5a");
+    if (!X.nearAnvil(g)) return g.toast("You need an anvil: stand near a smith, or forge in your Manor", "#ff9a6a");
+    if (!X.hasMats(r.mats)) return g.toast("Not enough materials", "#ff6a5a");
+    let p = g.profile;
+    if (p.inventory.length >= 40) return g.toast("Inventory full", "#ff4a3a");
+    let it = g.gen(60, 1.5, "legendary");
+    it.slot = r.item.slot;
+    if (it.slot === "weapon") it.wtype = g.hero.weapon;
+    it.name = gmName[it.slot].replace("Weapon", { swordshield: "Blade", axe: "Axe", mace: "Mace", hammer: "Warhammer", staff: "Staff", totem: "Totem", flask: "Flask", orb: "Orb", bow: "Bow", daggers: "Daggers", tide: "Tidecaller", grimoire: "Grimoire" }[g.hero.weapon] || "Blade");
+    it.crafted = !0;
+    p.inventory.push(it);
+    g.ui.lootToast(it, g);
+    X.useMats(r.mats);
+    X.skillUp(g, r.prof, r.req);
+    g.track("crafts");
+    g.track("gm_crafts");
+    g.audio.play("anvil", null, 0.6);
+    g.save();
+    g.ui.curPanel === "prof" && g.ui.panel("prof");
+  };
+
+  // ---- reforge & temper ----
+  // reforge: swap one stat of an item for another (same value); temper: +2 item level, up to three times
+  X.REFORGE_REQ = 200;
+  X.TEMPER_REQ = 250;
+  X.reforgeCost = (it) => [["bar" + tierOfItem(it), 2], ["dust" + tierOfItem(it), 1]];
+  X.temperCost = (it) => [["bar" + tierOfItem(it), 2], ["obsidian", 1]];
+  X.reforge = function (g, it, from, to) {
+    if (X.skill(g, "blacksmithing") < X.REFORGE_REQ) return g.toast(`Requires Blacksmithing ${X.REFORGE_REQ}`, "#ff6a5a");
+    if (!X.nearAnvil(g)) return g.toast("You need an anvil: stand near a smith, or forge in your Manor", "#ff9a6a");
+    if (!it || !it.stats || !(from in it.stats)) return g.toast("Choose a stat to reforge", "#ff9a6a");
+    if (!STATS.includes(to) || to in it.stats) return g.toast("Choose a stat the item does not have yet", "#ff9a6a");
+    let cost = X.reforgeCost(it);
+    if (!X.hasMats(cost)) return g.toast("Not enough materials", "#ff6a5a");
+    let val = it.stats[from];
+    delete it.stats[from];
+    // keep the stat's weight comparable: values are per-stat scaled at generation, so re-scale by base ratio
+    let base = (k) => (vg[k] && vg[k].base) || 10;
+    it.stats[to] = Math.max(1, Math.round((val * base(to)) / base(from)));
+    it.reforged = (it.reforged || 0) + 1;
+    X.useMats(cost);
+    X.skillUp(g, "blacksmithing", X.REFORGE_REQ);
+    g.track("reforges");
+    g.recalcStats();
+    g.audio.play("anvil", null, 0.6);
+    g.toast(`${it.name}: ${from} → ${to}`, "#ffd070");
+    g.save();
+    g.ui.curPanel === "prof" && g.ui.panel("prof");
+  };
+  X.temper = function (g, it) {
+    if (X.skill(g, "blacksmithing") < X.TEMPER_REQ) return g.toast(`Requires Blacksmithing ${X.TEMPER_REQ}`, "#ff6a5a");
+    if (!X.nearAnvil(g)) return g.toast("You need an anvil: stand near a smith, or forge in your Manor", "#ff9a6a");
+    if (!it || !it.stats) return g.toast("Choose an item", "#ff9a6a");
+    if ((it.temper || 0) >= 3) return g.toast("This item is tempered as far as it will go (×3)", "#ff9a6a");
+    let cost = X.temperCost(it);
+    if (!X.hasMats(cost)) return g.toast("Not enough materials", "#ff6a5a");
+    let L0 = it.level,
+      L1 = Math.min(66, L0 + 2),
+      k = (1 + L1 * 0.14) / (1 + L0 * 0.14);
+    for (let s in it.stats) it.stats[s] = Math.max(1, Math.round(it.stats[s] * k));
+    it.level = L1;
+    it.temper = (it.temper || 0) + 1;
+    X.useMats(cost);
+    X.skillUp(g, "blacksmithing", X.TEMPER_REQ);
+    g.track("tempers");
+    g.recalcStats();
+    g.audio.play("anvil", null, 0.6);
+    g.toast(`${it.name} tempered: item level ${L1} (${it.temper}/3)`, "#ffd070");
+    g.save();
+    g.ui.curPanel === "prof" && g.ui.panel("prof");
+  };
+  // tooltip line
+  let tt0 = U.itemHTML;
+  U.itemHTML = function (A, ...a) {
+    let h = tt0.call(this, A, ...a);
+    if (A && (A.temper || A.reforged)) h = h.replace(/(<div class="tip-r"[^>]*>)/, `$1${A.temper ? `Tempered \u00d7${A.temper} \u00b7 ` : ""}${A.reforged ? "Reforged \u00b7 " : ""}`);
+    return h;
+  };
+  // the anvil section in the Professions book (blacksmithing tab)
+  let ph0 = U.profHTML;
+  U.profHTML = function () {
+    let h = ph0.call(this);
+    if ((this._profTab || "herbalism") !== "blacksmithing") return h;
+    let g = this.app.game,
+      p = this.app.profile,
+      gear = Object.values(g.hsave.gear || {}).filter(Boolean),
+      items = [...p.inventory.filter((it) => it.stats), ...gear],
+      mats = X.mats(),
+      s = X.skill(g, "blacksmithing"),
+      opt = (it) => `<option value="${it.uid}">${it.name} (ilvl ${it.level}${it.temper ? ", T" + it.temper : ""})</option>`,
+      costTxt = (c) => c.map(([id, n]) => `<span style="color:${(mats[id] || 0) >= n ? "#8aff9a" : "#ff8a8a"}">${n} ${X.MATS[id].name}</span>`).join(", "),
+      sec = `<h3>Anvil work <small>reforge ${X.REFORGE_REQ}+ · temper ${X.TEMPER_REQ}+ · stand near a smith or in your Manor</small></h3>
+      <div class="recipe ${s >= X.REFORGE_REQ ? "" : "no"}"><div><b style="color:${X.reqColor(g, "blacksmithing", X.REFORGE_REQ)}">Reforge</b> <small>req ${X.REFORGE_REQ}</small><div class="small">Swap one stat on an item for a stat it does not have, at the same strength. Costs 2 bars and 1 dust of the item's tier.</div>
+      <div class="row anvil"><select id="rf-item">${items.map(opt).join("") || "<option value=''>no gear</option>"}</select><select id="rf-from"></select><span>→</span><select id="rf-to">${STATS.map((k) => `<option value="${k}">${k}</option>`).join("")}</select><button class="mini-b" id="rf-go">Reforge</button></div></div></div>
+      <div class="recipe ${s >= X.TEMPER_REQ ? "" : "no"}"><div><b style="color:${X.reqColor(g, "blacksmithing", X.TEMPER_REQ)}">Temper</b> <small>req ${X.TEMPER_REQ}</small><div class="small">+2 item level (all stats grow), up to three times per item. Costs 2 bars of the item's tier and 1 <span style="color:#ff8a40">Obsidian Lump</span> (dungeons, salvaging epics).</div>
+      <div class="row anvil"><select id="tp-item">${items.map(opt).join("") || "<option value=''>no gear</option>"}</select><button class="mini-b" id="tp-go">Temper</button></div></div></div>`;
+    return h.replace("<h3>Recipes</h3>", sec + "<h3>Recipes</h3>");
+  };
+  let bp0 = U.bindProf;
+  U.bindProf = function () {
+    bp0.call(this);
+    let g = this.app.game,
+      p = this.app.profile,
+      Mo = document.getElementById("modal"),
+      all = () => [...p.inventory, ...Object.values(g.hsave.gear || {}).filter(Boolean)],
+      find = (uid) => all().find((it) => it.uid === uid),
+      rfItem = Mo.querySelector("#rf-item"),
+      rfFrom = Mo.querySelector("#rf-from"),
+      rfTo = Mo.querySelector("#rf-to");
+    if (rfItem) {
+      let fill = () => {
+        let it = find(rfItem.value);
+        rfFrom.innerHTML = it ? Object.keys(it.stats).map((k) => `<option value="${k}">${k} ${it.stats[k]}</option>`).join("") : "";
+      };
+      rfItem.onchange = fill;
+      fill();
+      Mo.querySelector("#rf-go").onclick = () => X.reforge(g, find(rfItem.value), rfFrom.value, rfTo.value);
+    }
+    let tp = Mo.querySelector("#tp-item");
+    tp && (Mo.querySelector("#tp-go").onclick = () => X.temper(g, find(tp.value)));
+  };
+
+  // ---- wardrobe outfits: save up to three transmog sets per hero and swap with one click ----
+  let th0 = U.transmogHTML;
+  U.transmogHTML = function () {
+    let h = th0.call(this),
+      p = this.app.profile,
+      hero = X.curHero(),
+      sets = (p.outfits || {})[hero] || [];
+    let row = [0, 1, 2]
+      .map((i) => {
+        let o = sets[i];
+        return `<div class="outfit"><b>Outfit ${i + 1}</b> <small>${o ? Object.entries(o).filter(([k, v]) => v).map(([k, v]) => p.appear?.[v]?.name || v).join(", ") || "no transmog" : "empty"}</small><div class="row"><button class="mini-b" data-outfit-save="${i}">Save current</button><button class="mini-b" data-outfit-load="${i}" ${o ? "" : "disabled"}>Wear</button></div></div>`;
+      })
+      .join("");
+    return h + `<h3>Outfits <small>saved transmog sets for ${FI.find((x) => x.id === hero)?.name || "this hero"}</small></h3><div class="outfits">${row}</div>`;
+  };
+  let be0 = U.bindExtra;
+  U.bindExtra = function (B, A, i) {
+    be0.call(this, B, A, i);
+    if (B !== "wardrobe") return;
+    let app = this.app,
+      p = app.profile,
+      hero = X.curHero(),
+      Mo = document.getElementById("modal");
+    Mo.querySelectorAll("[data-outfit-save]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          ((p.outfits ||= {})[hero] ||= []);
+          p.outfits[hero][+b.dataset.outfitSave] = { ...((p.tmog || {})[hero] || {}) };
+          app.audio.play("ui");
+          app.saveProfile();
+          app.game?.toast?.(`Outfit ${+b.dataset.outfitSave + 1} saved`, "#ffd070");
+          this.panel("wardrobe", i);
+        }),
+    );
+    Mo.querySelectorAll("[data-outfit-load]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          let o = p.outfits?.[hero]?.[+b.dataset.outfitLoad];
+          if (!o) return;
+          ((p.tmog ||= {})[hero] = { ...o });
+          app.audio.play("ui");
+          app.saveProfile();
+          app.game?.applyCosmetics?.();
+          this.panel("wardrobe", i);
+        }),
+    );
+  };
+
+  // achievements, help, CSS
+  WB.push(
+    { id: "reforge1", name: "Second Opinion", desc: "Reforge an item.", stat: "reforges", goal: 1, reward: 40 },
+    { id: "temper3", name: "Tempered Steel", desc: "Temper 3 items.", stat: "tempers", goal: 3, reward: 80 },
+    { id: "gm1", name: "Voidforged", desc: "Craft a Grandmaster item.", stat: "gm_crafts", goal: 1, reward: 200 },
+  );
+  X.HELP && X.HELP.systems && X.HELP.systems.push(["Reforge, temper, Grandmaster", "At an anvil (near a smith or in your Manor) the Professions book (B → Blacksmithing) lets you reforge one stat of any item into another at 200 skill, and temper an item (+2 item level, three times) at 250 with Obsidian Lumps from dungeons. From 275 skill, Grandmaster recipes turn Artisan materials and Abyssal Cores (raids, Mythic+5, salvaged legendaries) into level-60 legendary gear and the strongest enchants. The Wardrobe can save three outfits per hero."]);
+  const css = document.createElement("style");
+  css.textContent = `.anvil{align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}.anvil select{max-width:220px}.outfits{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.outfit{border:1px solid var(--line2);padding:10px;border-radius:2px;background:linear-gradient(90deg,rgba(201,169,106,.06),rgba(0,0,0,.28))}.outfit small{display:block;margin:4px 0 8px;color:var(--ink2)}`;
+  document.head.appendChild(css);
+}
+
+/* ---- F6_pwa.js ---- */
+/* 1.19.0 — install as an app (PWA): manifest + service worker live next to index.html in the repo
+   (manifest.webmanifest, sw.js, icon-*.png). Registration only happens when served over https (or localhost);
+   opening the file directly keeps working exactly as before. */
+{
+  const PWA = (X.pwa = { ready: !1, prompt: null, installed: !1, update: !1 });
+  try {
+    const head = document.head;
+    const link = (rel, href, extra = {}) => {
+      const l = document.createElement("link");
+      l.rel = rel;
+      l.href = href;
+      Object.assign(l, extra);
+      head.appendChild(l);
+      return l;
+    };
+    const meta = (name, content) => {
+      const m = document.createElement("meta");
+      m.name = name;
+      m.content = content;
+      head.appendChild(m);
+    };
+    if (/^https?:$/.test(location.protocol)) {
+      link("manifest", "manifest.webmanifest");
+      link("apple-touch-icon", "apple-touch-icon.png");
+      link("icon", "icon-192.png", { type: "image/png" });
+    }
+    meta("theme-color", "#0b0806");
+    meta("apple-mobile-web-app-capable", "yes");
+    meta("mobile-web-app-capable", "yes");
+    meta("apple-mobile-web-app-status-bar-style", "black-translucent");
+    meta("apple-mobile-web-app-title", "Vigilfall");
+    PWA.installed = matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: fullscreen)").matches || navigator.standalone === !0;
+    const secure = location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    if (secure && "serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("sw.js")
+        .then((reg) => {
+          PWA.ready = !0;
+          PWA.reg = reg;
+          const watch = (w) => {
+            if (!w) return;
+            w.addEventListener("statechange", () => {
+              if (w.state === "installed" && navigator.serviceWorker.controller) {
+                PWA.update = !0;
+                const g = window.__app?.game;
+                g?.toast ? g.toast("A new version of Vigilfall is ready — reload to update", "#ffd070") : null;
+                PWA.onUpdate?.();
+              }
+            });
+          };
+          watch(reg.installing);
+          reg.addEventListener("updatefound", () => watch(reg.installing));
+          setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
+        })
+        .catch(() => {});
+    }
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      PWA.prompt = e;
+      const b = document.querySelector("#menu [data-a=install]");
+      b && (b.style.display = "");
+    });
+    window.addEventListener("appinstalled", () => {
+      PWA.installed = !0;
+      PWA.prompt = null;
+      const b = document.querySelector("#menu [data-a=install]");
+      b && (b.style.display = "none");
+    });
+  } catch (e) {}
+  PWA.install = async function () {
+    if (PWA.prompt) {
+      PWA.prompt.prompt();
+      const r = await PWA.prompt.userChoice.catch(() => null);
+      PWA.prompt = null;
+      return r && r.outcome === "accepted";
+    }
+    return !1;
+  };
+  // main menu: an "Install as app" button (shown when the browser offers it; iPhone/iPad get a hint instead)
+  const UP = XC.prototype,
+    mm0 = UP.mainMenu;
+  UP.mainMenu = function (...a) {
+    const r = mm0.apply(this, a);
+    try {
+      const col = document.querySelector("#menu .menu-col");
+      if (col && !col.querySelector("[data-a=install]") && !PWA.installed) {
+        const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const b = document.createElement("button");
+        b.dataset.a = "install";
+        b.className = "ghost";
+        b.textContent = ios ? "Add to Home Screen (how)" : "Install as app";
+        b.style.display = PWA.prompt || ios ? "" : "none";
+        b.onclick = async () => {
+          this.click?.();
+          if (ios) return this.openModal(`<div class="lore"><div class="lore-t">Install on iPhone / iPad</div><div class="lore-x"><p>In Safari tap <b>Share</b> (the square with an arrow), then <b>Add to Home Screen</b>. Vigilfall then opens full screen like an app, with its own icon.</p></div><button class="close">Close</button></div>`);
+          const ok = await PWA.install();
+          ok ? this.app.game?.toast?.("Installed — find Vigilfall on your home screen", "#ffd070") : null;
+        };
+        const anchor = col.querySelector("[data-a=whatsnew]");
+        anchor ? anchor.before(b) : col.appendChild(b);
+      }
+    } catch (e) {}
+    return r;
+  };
+  X.HELP && X.HELP.systems && X.HELP.systems.push(["Install as an app", "When Vigilfall is opened from a website (https), the main menu offers Install as app (Chrome, Edge, Android). On iPhone and iPad use Safari's Share → Add to Home Screen. The installed app starts full screen, keeps its icon on your home screen and updates itself on the next start."]);
+}
+
+/* ---- F7_el_quests.js ---- */
+/* 1.19.0 — Greek (ελληνικά): quests */
+X.EL = X.EL || {};
+X.EL.quests = {
+  q_flame: ["Άναψε τη Φρουρά", "Άναψε τη φωτιά της Φρουράς", "Η μεγάλη φωτιά της πλατείας έσβησε. Άναψέ την, κι οι νεκροί θα μάθουν ότι κάποιος στέκει ακόμα εδώ."],
+  q_first: ["Οι Νεκροί στην Πόρτα", "Σκότωσε Σκελετούς έξω από το Ντόνμιρ", "Ήταν κάποτε γείτονές μας, πριν τους σηκώσει ο Σκοτεινός Άρχοντας. Τώρα ξύνουν τους φράχτες κάθε νύχτα. Ρίξε οκτώ από αυτούς."],
+  q_matron: ["Η Βασίλισσα του Βάλτου", "Νίκησε τη Μορβένα, τη Βασίλισσα του Βάλτου (Λαμπερόβαλτος, βόρεια)", "Βόρεια, στον Λαμπερόβαλτο, η Μορβένα η Βασίλισσα του Βάλτου τραγουδά και βγάζει τους πνιγμένους από το νερό. Κρατά την πρώτη Σφραγίδα. Σώπασε το τραγούδι της."],
+  q_vhal: ["Ο Βασιλιάς των Οστών", "Νίκησε τον Βαλ, τον Βασιλιά των Οστών (Τυμβοπεδιάδες, ανατολικά)", "Ανατολικά, ο Βασιλιάς των Οστών μετρά τους νεκρούς του σ' έναν θρόνο φτιαγμένο από αυτούς. Η δεύτερη Σφραγίδα κρέμεται από το στέμμα του."],
+  q_bishop: ["Ο Στακτερός Αρχιμάγος", "Νίκησε τον Ιγνάτιο, τον Στακτερό Αρχιμάγο (Πύργος της Θράκας, δυτικά)", "Δυτικά, ο Πύργος της Θράκας καίει ακόμα, κι ο Αρχιμάγος Ιγνάτιος κυβερνά ακόμα τις φωτιές του. Πάρε του την τρίτη Σφραγίδα."],
+  q_king: ["Ο Σκοτεινός Άρχοντας", "Νίκησε τον Μαλγκάρεθ στο Οψιδιανό Κάστρο", "Όταν οι τρεις Σφραγίδες γίνουν δικές μας, το φράγμα θα πέσει. Τότε μπες στο Οψιδιανό Κάστρο και ρίξε τον Μαλγκάρεθ. Θα κρατήσω τη φλόγα αναμμένη ώσπου να γυρίσεις."],
+  q_iron: ["Σίδερο για τη Φρουρά", "Μάζεψε Σκουριασμένες Πλάκες από Σκελετούς Πολεμιστές (Τυμβοπεδιάδες)", "Αυτοί οι Σκελετοί Πολεμιστές βαδίζουν με καλή, παλιά πανοπλία του Τάγματος της Αυγής. Κρίμα να την αφήσουμε πάνω τους. Φέρε μου έξι κομμάτια."],
+  q_coffin: ["Καρφιά και Σανίδες", "Σπάσε κιβώτια, βαρέλια ή φέρετρα", "Χρειάζομαι ξύλο και καρφιά περισσότερο απ' όσο τρόπους. Σπάσε ό,τι κιβώτια, βαρέλια και φέρετρα βρεις εκεί έξω."],
+  q_glands: ["Μόσχος Λύκου", "Μάζεψε Αδένες Μόσχου από Άγριους Λύκους", "Οι Άγριοι Λύκοι έχουν έναν αδένα μόσχου κάτω από το σαγόνι που σταθεροποιεί κάθε ρόφημα. Οκτώ από αυτούς και σου φτιάχνω μεγαλύτερη φλάσκα."],
+  q_witch: ["Η Συνταγή της Αντιζήλου", "Σκότωσε Σκελετούς Μάγους (Λαμπερόβαλτος)", "Οι Σκελετοί Μάγοι του βάλτου ήταν κάποτε βοτανολόγες. Τώρα παρασκευάζουν για τη Βασίλισσα του Βάλτου. Έξι λιγότεροι και η συνείδησή μου καθαρή."],
+  q_lore: ["Λόγια των Νεκρών", "Βρες σελίδες ιστορίας σε όλο το Άλντμουρ", "Οι νεκροί αφήνουν σελίδες πίσω τους. Προσευχές, κατάστιχα, εξομολογήσεις. Φέρε μου την ανάγνωση τεσσάρων και θα χαράξω τα ονόματά τους όπως πρέπει."],
+  q_wraith: ["Ας Αναπαυθούν", "Εξόρισε Φαντάσματα", "Τα Φαντάσματα είναι ό,τι μένει όταν μια ψυχή δεν θέλει να αναπαυθεί. Δέκα από αυτά. Εγώ σκάβω· εσύ τα στέλνεις."],
+  q_rares: ["Ονόματα στην Πέτρα", "Σκότωσε επώνυμους σπάνιους εχθρούς (νεκροκεφαλές στον χάρτη)", "Μερικοί κράτησαν τα ονόματά τους. Ο Γερο-Γκνας. Το Φάντασμα της Αγχόνης. Η Μάνα Βδέλλα. Ο Σερ Πελ. Ο Ψάλτης. Φέρε μου πίσω τρία από αυτά τα ονόματα."],
+  q_scout: ["Μάτια στον Δρόμο", "Άναψε ιερά σε όλο το Άλντμουρ", "Ένα αναμμένο ιερό είναι ένα μέρος να σταθείς. Άναψε τέσσερα σε όλο το Άλντμουρ κι οι φύλακες του δρόμου θα κρατήσουν ξανά τα περάσματα."],
+  q_abom: ["Γκρεμιστής Γκόλεμ", "Σκότωσε Σάρκινα Γκόλεμ", "Κάτι ράβει τους νεκρούς σε γκόλεμ. Τρία από τα μεγάλα περπατούν τώρα στους δρόμους. Ξήλωσέ τα."],
+  q_cult: ["Στάχτη και Ζήλος", "Σκότωσε Σκιώδεις Λάτρεις (Πύργος της Θράκας)", "Οι λάτρεις του Αρχιμάγου καίνε ταξιδιώτες στον δυτικό δρόμο. Δώδεκα από αυτούς θα κάνουν τον δρόμο βατό. Για λίγο."],
+  q_chests: ["Όποιος Βρει, Κρατά", "Άνοιξε σεντούκια θησαυρού", "Υπάρχουν σεντούκια σε όλο το Άλντμουρ που κανείς ζωντανός δεν κατέχει. Άνοιξε πέντε. Θέλω μόνο να το ακούσω."],
+  q_abyss: ["Ό,τι Κοιτά Πίσω", "Καθάρισε την Άβυσσο, Βαθμίδα 3 (τέλος παιχνιδιού)", "Λένε πως άνοιξε ένα ρήγμα εκεί που έπεσε ο Σκοτεινός Άρχοντας. Λένε πως πέφτουν πράγματα από μέσα. Πολύτιμα πράγματα. Πήγαινε να δεις — η τρίτη βαθμίδα αρκεί."],
+  q_passes: ["Πέρα από τα Περάσματα", "Πέρασε από οποιοδήποτε ορεινό πέρασμα στις εξωτερικές χώρες", "Ο Σκοτεινός Άρχοντας έπεσε και τα βουνά άνοιξαν. Τέσσερα περάσματα, τέσσερις χώρες, και σε καθεμιά ένας Τρομερός Στρατηγός που ακόμα τον υπηρετεί. Ξεκίνα από τα Παγοκόρυφα Υψίπεδα, βορειοανατολικά. Η Σίγκρουν περιμένει στον καταυλισμό πέρα από το πέρασμα."],
+  q_f1: ["Παγωμένοι Νεκροί", "Σκότωσε Παγόδετους Σκελετούς (Παγοκόρυφα Υψίπεδα)", "Ο πάγος κρατά τους νεκρούς φρέσκους. Δώδεκα Παγόδετοι περπατούν ανάμεσα σ' εδώ και τον παγετώνα. Αραίωσέ τους."],
+  q_f2: ["Λύκοι του Χειμώνα", "Μάζεψε Τομάρια Χιονόλυκων (Παγοκόρυφα Υψίπεδα)", "Οι Χιονόλυκοι τρέχουν σε αγέλες μεγάλες σαν χωριά. Φέρε μου έξι τομάρια κι ο Μπγιορν θα φτιάξει κάτι ζεστό από αυτά."],
+  q_f3: ["Ο Παγωμένος Ιππότης", "Σκότωσε τον Παγωμένο Ιππότη (επώνυμος σπάνιος, Παγοκόρυφα Υψίπεδα)", "Κάτι με πανοπλία του Τάγματος της Αυγής φυλά το ανατολικό πλάτωμα. Ήταν ιππότης κάποτε. Δώσ' του τέλος με τιμή."],
+  q_f4: ["Ο Θρόνος του Γίγαντα", "Νίκησε τον Χρίμγκαρ, τον Γίγαντα του Πάγου (Θρόνος του Χρίμγκαρ)", "Ο Χρίμγκαρ κάθεται σε θρόνο από πάγο στην άκρη των υψιπέδων. Ήταν κάποτε βασιλιάς γιγάντων. Τώρα είναι ο πρώτος στρατηγός του Σκοτεινού Άρχοντα. Ρίξ' τον."],
+  q_f5: ["Ό,τι Κοιμάται Κάτω από τον Πάγο", "Καθάρισε το μπουντρούμι Παγετώδης Κοιλότητα", "Η Παγετώδης Κοιλότητα αναπνέει ζεστό αέρα. Κάτι κοιμάται εκεί. Πάρε φίλους αν έχεις — και ξύπνησέ το."],
+  q_w1: ["Άμμος στα Δόντια", "Σκότωσε Λάτρεις της Άμμου (Ηλιόκαυτες Ερημιές)", "Η Λατρεία της Άμμου καίει καραβάνια για τον Βάρεκ. Δώδεκα λιγότεροι λάτρεις κι ο δρόμος είναι πάλι δικός μου."],
+  q_w2: ["Θραύσματα Ήλιου", "Μάζεψε Θραύσματα Ήλιου από οποιονδήποτε εχθρό στις Ηλιόκαυτες Ερημιές", "Οι νεκροί εδώ έξω κουβαλούν θραύσματα ηλιόπετρας στα κόκαλά τους. Οκτώ από αυτά και φωτίζω τον δρόμο των καραβανιών για έναν μήνα."],
+  q_w3: ["Ο Κυνηγός των Θινών", "Σκότωσε τον Κυνηγό των Θινών (επώνυμος σπάνιος, Ηλιόκαυτες Ερημιές)", "Κάτι γρήγορο κυνηγά τις Θίνες των Οστών τη νύχτα. Οι φρουροί μου το λένε Κυνηγό των Θινών. Βρες το πριν βρει το επόμενο καραβάνι."],
+  q_w4: ["Ο Χαν της Στάχτης", "Νίκησε τον Χαν της Στάχτης Βάρεκ (Πολεμικός Καταυλισμός του Βάρεκ)", "Ο Βάρεκ κυβερνά τις ερημιές από έναν πολεμικό καταυλισμό στα νοτιοανατολικά. Μας πήρε το νερό. Πάρε του το κεφάλι."],
+  q_w5: ["Ο Βυθισμένος Θησαυροφύλακας", "Καθάρισε το μπουντρούμι Βυθισμένος Θησαυροφύλακας του Χετ", "Ο Βυθισμένος Θησαυροφύλακας του Χετ κρατά μια πηγή που δεν στερεύει ποτέ — κι έναν φαραώ που δεν πέθανε ποτέ. Φέρε πίσω το νερό."],
+  q_t1: ["Στρίγκλες του Δάσους", "Σκότωσε Στρίγκλες του Δάσους (Αγκαθόδασος)", "Οι Στρίγκλες παρασκευάζουν το δηλητήριο της Αγκαθομάνας στις ρίζες. Δεκαπέντε από αυτές, και το δάσος θα ανασάνει ξανά."],
+  q_t2: ["Χυμός Καρδιόξυλου", "Μάζεψε Χυμό Καρδιόξυλου από Βατόμουρους Ιππότες (Αγκαθόδασος)", "Οι Βατόμουροι Ιππότες φυτρώνουν γύρω από καρδιόξυλο. Σκίσε έξι από αυτούς και φέρε μου ό,τι στάζει."],
+  q_t3: ["Φως στο Βάθος", "Άναψε και τα δύο ιερά στο Αγκαθόδασος", "Δύο ιερά στέκουν στο Αγκαθόδασος, και τα δύο σκοτεινά. Άναψέ τα, και τα δέντρα θα θυμηθούν τον ήλιο."],
+  q_t4: ["Η Αγκαθομάνα", "Νίκησε την Αγκαθομάνα (Άλσος της Αγκαθομάνας)", "Κάθεται σε ένα άλσος στην καρδιά του δάσους και τραγουδά το δάσος παράφωνα. Κόψε την, και το Αγκαθόδασος είναι δικό μας."],
+  q_t5: ["Η Καρδιά του Αγκαθόδασους", "Καθάρισε το μπουντρούμι Καρδιά του Αγκαθόδασους", "Κάτω από το μεγάλο δέντρο είναι μια κοιλότητα παλιότερη από το δάσος. Το Βατόμουρο Θηρίο κοιμάται μέσα της. Μην το αφήσεις να κοιμάται."],
+  q_s1: ["Κεραυνός από Σάρκα", "Σκότωσε Φαντάσματα Κεραυνού (Υψώματα του Θυελλοστέμματος)", "Τα Φαντάσματα Κεραυνού είναι οι σπασμένες αλυσίδες με σάρκα. Δεκαπέντε από αυτά, και η έβδομη αλυσίδα κρατά λίγο ακόμα."],
+  q_s2: ["Πυρήνες Θύελλας", "Μάζεψε Πυρήνες Θύελλας από Λάτρεις της Καταιγίδας (Υψώματα του Θυελλοστέμματος)", "Η Λατρεία της Καταιγίδας κουβαλά πυρήνες δεμένου κεραυνού. Πέντε από αυτούς και σφυρηλατώ νέα αλυσίδα."],
+  q_s3: ["Σπάσε τους Επίλεκτους", "Σκότωσε 20 επίλεκτους εχθρούς", "Οι πρωταθλητές του Αζρακούλ περπατούν στα υψώματα. Είκοσι επίλεκτοι, κι ο στρατός του γίνεται όχλος."],
+  q_s4: ["Ο Άρχοντας της Καταιγίδας", "Νίκησε τον Αζρακούλ, Άρχοντα της Καταιγίδας (Πύργος του Αζρακούλ)", "Ο Αζρακούλ στέκει στον πύργο στην άκρη των υψωμάτων, κρατώντας τον ουρανό από την τελευταία αλυσίδα του. Πάρε του την αλυσίδα."],
+  q_s5: ["Ο Θυελλοπύργος", "Καθάρισε το μπουντρούμι Θυελλοπύργος", "Ο Βολκ σφυρηλάτησε τις αλυσίδες που δένουν τον κεραυνό. Τώρα σφυρηλατεί για τον Σκοτεινό Άρχοντα, βαθιά στον Θυελλοπύργο. Σταμάτα το σφυρί."],
+  q_reckoning: ["Η Κρίση", "Καθάρισε την επιδρομή: Η Κρίση (δυτικά του Κάστρου)", "Οι Τρομεροί Στρατηγοί μαζεύονται στα ερείπια του Κάστρου για να στέψουν νέο Σκοτεινό Άρχοντα. Σύναξε τη Φρουρά και διάλυσε το συμβούλιό τους. Η πύλη είναι δυτικά από τα σκαλιά του Κάστρου."],
+  q_throne: ["Ο Θρόνος των Θυελλών", "Καθάρισε την επιδρομή: Ο Θρόνος των Θυελλών (Υψώματα του Θυελλοστέμματος)", "Πάνω από τα Υψώματα του Θυελλοστέμματος, ένας θρόνος από μαύρο γυαλί περιμένει στα σύννεφα — και κάτι σκαρφαλώνει πίσω σ' αυτόν. Ο Μαλγκάρεθ δεν έμεινε νεκρός. Τελείωσέ τον για πάντα."],
+  q_crypt: ["Οι Κρύπτες των Τύμβων", "Καθάρισε το μπουντρούμι Κρύπτες των Τύμβων (ανατολικά, κοντά στην Πύλη των Τύμβων)", "Κάτω από την Πύλη των Τύμβων ο πρώτος επιστάτης του Βασιλιά των Οστών κρατά ακόμα αυλή. Ένας άρχοντας της κρύπτης, ο Όσιαν. Καθάρισε τις κρύπτες, κι οι Τυμβοπεδιάδες θα ησυχάσουν."],
+  q_mount: ["Ένα Άλογο για έναν Ήρωα", "Φτάσε στο επίπεδο 12", "Φτάσε στη δωδέκατη εποχή του όρκου σου και θα σε βάλω σε σέλα δωρεάν. Ό,τι έρθει μετά κοστίζει."],
+  q_comp: ["Ένας Φίλος στο Σκοτάδι", "Σκότωσε Άγριους Λύκους", "Οι Άγριοι Λύκοι πήραν κάθε κουτάβι από το κυνοτροφείο μου εκτός από ένα. Αραίωσε τις αγέλες και το τελευταίο κουτάβι είναι δικό σου — θα γίνει κάτι άγριο."],
+  q_house: ["Ξυλεία και Καρφιά", "Σπάσε κιβώτια, βαρέλια ή φέρετρα", "Σπάσε μου είκοσι πέντε κιβώτια και βαρέλια για την ξυλεία και θα κόψω το ένα τρίτο από την τιμή ενός σπιτιού στο Ντόνμιρ."],
+  q_h1: ["Άδεια Λιμάνια", "Φτάσε στο Χρίμχαβν στη βορειοανατολική ακτή", "Η Σίγκρουν λέει πως ένα λιμάνι στέκει ακόμα στην άκρη του Παγονερού. Ακολούθησε το ποτάμι ως το Χρίμχαβν και δες τι απέμεινε."],
+  q_h2: ["Περίπολος του Παγονερού", "Σκότωσε Χιονόλυκους κοντά στο Παγονερό", "Οι Χιονόλυκοι κατεβαίνουν το Παγονερό το σούρουπο και παίρνουν τα σκυλιά μας, μετά τα παιδιά μας. Αραίωσε τις αγέλες κατά μήκος του ποταμού."],
+  q_h3: ["Φαλαινοκόκαλο και Πάγος", "Μάζεψε Παγωμένο Φαλαινοκόκαλο από εχθρούς στα Παγοκόρυφα Υψίπεδα", "Οι Παγόδετοι κουβαλούν τα εργαλεία των νεκρών φαλαινοθήρων μας στα πλευρά τους. Έξι κομμάτια φαλαινοκόκαλο και η Ύλβα ξαναχτίζει τον στόλο."],
+  q_h4: ["Η Γέφυρα στο Παγονερό", "Πέρασε τη γέφυρα του Παγονερού και νίκησε 8 εχθρούς σε απόσταση ορατότητας", "Οι δούλοι του Χρίμγκαρ κρατούν τη γέφυρα του ποταμού ανάμεσα σ' εδώ και τον καταυλισμό. Πέρασέ τη με δύναμη και κράτησέ τη."],
+  q_o1: ["Η Τειχισμένη Πόλη", "Φτάσε στο Κασρ Ντουνέλ στη νοτιοανατολική ακτή", "Η Ναντίρα εμπορεύεται με το Κασρ Ντουνέλ στην ανατολική ακτή. Ο Σταχτορρούς θα σε οδηγήσει εκεί — ακολούθησέ τον ως τη θάλασσα."],
+  q_o2: ["Στάχτη στο Νερό", "Σκότωσε Λάτρεις της Άμμου στις Ηλιόκαυτες Ερημιές", "Η Λατρεία της Άμμου δηλητηριάζει τον Σταχτορρού ανάντη για να διψάσει η πόλη. Σκότωσέ τους κατά μήκος του ποταμού."],
+  q_o3: ["Αλάτι και Κόκαλο", "Μάζεψε Κρυστάλλους Θαλασσινού Αλατιού από εχθρούς στις Ηλιόκαυτες Ερημιές", "Με το αλάτι κρατάμε τα ψάρια, κι οι νεκροί της λατρείας το κουβαλούν στα κόκαλά τους. Φέρε μου οκτώ κρυστάλλους."],
+  q_o4: ["Η Γέφυρα του Σταχτορρού", "Νίκησε 8 εχθρούς στη γέφυρα του Σταχτορρού", "Οι ιερείς των οστών του Βάρεκ ψέλνουν στη γέφυρα του Σταχτορρού κάθε νύχτα. Σώπασέ τους πάνω στην ίδια τη γέφυρα."],
+  q_b1: ["Σπίτια σε Πασσάλους", "Φτάσε στο Μόσεντ στη νοτιοδυτική ακτή", "Ο Ρόουαν μιλά για το Μόσεντ, εκεί που ο Βρυορρούς συναντά τη θάλασσα. Η πόλη σώπασε. Μάθε γιατί."],
+  q_b2: ["Ό,τι Τρώει τα Δίχτυα", "Σκότωσε Μάγισσες του Βάλτου στο Αγκαθόδασος", "Οι Μάγισσες του Βάλτου σέρνονται πάνω στον Βρυορρού τη νύχτα και τραβούν τις βάρκες μας στον βυθό. Κάψε τες έξω από τα καλάμια."],
+  q_b3: ["Καρδιές Σιδηρόξυλου", "Μάζεψε Καρδιές Σιδηρόξυλου από εχθρούς στο Αγκαθόδασος", "Τα παιδιά της Αγκαθομάνας κουβαλούν σπόρους σιδηρόξυλου. Η Νέσα μπορεί να πλάσει οκτώ από αυτούς σε κάτι που κρατά το δάσος έξω."],
+  q_b4: ["Η Γέφυρα του Βρυορρού", "Νίκησε 8 εχθρούς στη γέφυρα του Βρυορρού", "Τα βάτα κατάπιαν τη γέφυρα του Βρυορρού. Καθάρισέ τη για να εμπορεύονται ξανά ο καταυλισμός κι η πόλη."],
+  q_m1: ["Το Τελευταίο Λιμάνι", "Φτάσε στο Γκάλσριτς στη βορειοδυτική ακτή", "Η έβδομη αλυσίδα της Άστριντ είναι αγκυροβολημένη στη θάλασσα. Το Γκάλσριτς, στο στόμιο του Βροντοπτώματος, κρατά τα μόνα πλοία που ακόμα το τολμούν."],
+  q_m2: ["Πνιγμένοι Άντρες", "Σκότωσε Φαντάσματα της Θύελλας στα Υψώματα του Θυελλοστέμματος", "Τα πνιγμένα πληρώματα του Αζρακούλ βγαίνουν από το κύμα κάθε νύχτα. Στείλε τα πίσω."],
+  q_m3: ["Κεραυνός σε Μπουκάλι", "Μάζεψε Θραύσματα Θυελλογυαλιού από εχθρούς στα Υψώματα του Θυελλοστέμματος", "Εκεί που ο κεραυνός χτυπά την άμμο αφήνει θυελλογυαλί. Οι νεκροί το μαζεύουν. Οκτώ θραύσματα κι ο Πελ φτιάχνει λάμπα που η θύελλα δεν μπορεί να πνίξει."],
+  q_m4: ["Η Γέφυρα του Βροντοπτώματος", "Νίκησε 8 εχθρούς στη γέφυρα του Βροντοπτώματος", "Η γέφυρα πάνω από το Βροντόπτωμα είναι ο μόνος δρόμος προς τον Θρόνο των Θυελλών που δεν παίρνουν τα πλοία. Κράτησέ τη ενάντια στη θύελλα."],
+  q_herbs: ["Ασημόφυλλο για τους Αρρώστους", "Μάζεψε 10 βότανα (Βοτανολογία)", "Τα λαμπερά πράσινα βότανα στα λιβάδια είναι Ασημόφυλλο. Δέκα από αυτά και φτιάχνω βάμμα για τον βήχα των παιδιών. Όλοι μπορούν να τα μαζέψουν — δοκίμασε."],
+  q_ore: ["Χαλκός στους Λόφους", "Εξόρυξε 8 μεταλλεύματα (Εξόρυξη)", "Υπάρχει χαλκός στα βράχια γύρω από το χωριό αν έχεις το μάτι. Φέρε μου οκτώ κομμάτια και θα σου δείξω το σιδηρουργείο."],
+  q_hides: ["Τομάρια Λύκων", "Γδάρε 5 θηρία (Γδάρσιμο)", "Οι Άγριοι Λύκοι ξαναμπήκαν στα πρόβατα. Γδάρε μου πέντε από αυτούς — τίποτα δεν πάει χαμένο."],
+  q_craft1: ["Πρώτη Σφυρηλάτηση", "Κατασκεύασε 3 πράγματα (οποιοδήποτε επάγγελμα)", "Λιώσε ό,τι εξόρυξες και φτιάξε κάτι από αυτό στο αμόνι μου. Τρία κομμάτια τίμιας δουλειάς."],
+  q_wolves2: ["Ο Αρχηγός της Αγέλης", "Σκότωσε 20 Άγριους Λύκους", "Είκοσι λύκοι. Μετά η αγέλη διαλύεται κι οι βοσκοί κοιμούνται."],
+  q_chapel: ["Καμπάνες του Πνιγμένου Παρεκκλησιού", "Σκότωσε 8 Φαντάσματα (Κλαίων Βάλτος)", "Τα φαντάσματα χτυπούν τις καμπάνες του παρεκκλησιού τη νύχτα. Οκτώ λιγότερα φαντάσματα, οκτώ λιγότερες άυπνες νύχτες."],
+  q_tavern: ["Ένας Γύρος για τον Δρόμο", "Μάζεψε Κούφια Νομίσματα από Κούφιους Σκελετούς", "Οι Κούφιοι κουβαλούν ακόμα τα νομίσματα με τα οποία πέθαναν. Δέκα νομίσματα ξοφλούν τον λογαριασμό σου και τους επόμενους τρεις γύρους."],
+  q_bones2: ["Κειμήλια του Οστεοφυλακίου", "Μάζεψε Σφραγίδες Οστών από Ιππότες των Οστών (Οστεοφυλάκιο)", "Οι Ιππότες των Οστών κουβαλούν σφραγίδες των παλιών ταγμάτων. Φέρε μου οκτώ και θα διαβάσω τι θυμούνται ακόμα οι νεκροί."],
+  q_cathedral2: ["Στάχτη στη Στάχτη", "Σκότωσε 15 Λάτρεις (Πύργος της Θράκας)", "Ο Αρχιμάγος είναι νεκρός αλλά η λατρεία του ψέλνει ακόμα στον Πύργο της Θράκας. Δεκαπέντε λάτρεις, και το ψάλσιμο σταματά."],
+  q_invasion: ["Κράτα το Φυλαχτό", "Απόκρουσε μια εισβολή σε οποιονδήποτε οικισμό", "Οι στρατιές του Σκοτεινού Άρχοντα δοκιμάζουν ακόμα τα φυλαχτά μας. Όταν η καμπάνα χτυπήσει για εισβολή, στάσου με το χωριό ώσπου να σπάσει το τελευταίο κύμα."],
+  q_duel: ["Το Ατσάλι Ακονίζει το Ατσάλι", "Ολοκλήρωσε μια μονομαχία", "Πολέμησε έναν φίλο. Σημάδεψέ τον και πάτα U — θα φύγετε και οι δύο με τα πόδια σας, και οι δύο καλύτεροι."],
+  q_keystone: ["Ο Θεμέλιος Λίθος", "Ολοκλήρωσε ένα μπουντρούμι Μυθικό+", "Καθάρισε ένα μπουντρούμι και θα βρεις έναν Θεμέλιο Λίθο. Φέρε τον πίσω στην πύλη του και το Θησαυροφυλάκιο θα θυμάται το κατόρθωμά σου."],
+  q_wren1: ["Μέτρα τις Πέτρες", "Επισκέψου το ιερό στο Σταυροδρόμι της Αγχόνης", "Η παλιά αγχόνη στο σταυροδρόμι. Κάποιος σκάβει εκεί τη νύχτα. Πήγαινε να δεις τι δείχνουν τα φανάρια — εγώ δεν μπορώ να αφήσω τους τάφους."],
+  q_wren2: ["Κλέφτες στον Δρόμο", "Σκότωσε 6 Τοξότες των Οστών στους δρόμους", "Όχι γκουλ, λοιπόν. Άνθρωποι. Τοξότες των οστών που σκοτώνουν ταξιδιώτες από τους φράχτες. Έξι από αυτούς, και άφησε τους υπόλοιπους να το σκεφτούν."],
+  q_wren3: ["Το Αγόρι στο Χαντάκι", "Βρες τον κλέφτη πέρα από το Σταυροδρόμι της Αγχόνης και μετά αποφάσισε", "Ένας από αυτούς ζει ακόμα, κρυμμένος στο χαντάκι πέρα από το σταυροδρόμι. Ένα αγόρι, στην ουσία. Βρες τον και αποφάσισε τι κάνει το Χωριό με τους κλέφτες. Έχω σκάψει αρκετούς τάφους."],
+  q_wren4: ["Ένα Φτυάρι για Δύο", "Μάζεψε 6 Μεταλλεύματα Χαλκού", "Το αγόρι χρειάζεται δικό του φτυάρι. Χαλκό για τα πριτσίνια — έξι κομμάτια από τους λόφους του οστεοφυλακίου, και ο Μπράνοκ κάνει τα υπόλοιπα."],
+  q_wren5: ["Ό,τι Άφησαν τα Κοράκια", "Σκότωσε 8 Κουκουλοφόρους Καραδοκητές", "Οι φίλοι του ήρθαν για το σώμα. Κουκουλοφόροι, γρήγοροι, κυκλώνουν. Δεν θα σταματήσουν στο σταυροδρόμι."],
+  q_finn1: ["Ο Ανατολικός Φράχτης", "Έλεγξε τον ανατολικό φράχτη", "Περπάτα τον ανατολικό φράχτη δίπλα στο κυνοτροφείο και πες μου αν στέκουν ακόμα οι πάσσαλοι. Τα γόνατά μου δεν κάνουν πια για φράχτες."],
+  q_finn2: ["Λύκοι στη Μάντρα", "Σκότωσε 8 Άγριους Λύκους", "Άγριοι λύκοι. Έρχονται τρεις-τρεις τώρα, ένας από κάθε πλευρά όσο κοιτάς τον πρώτο. Αραίωσε την αγέλη."],
+  q_finn3: ["Μίλα στην Κυνηγό", "Μίλησε με την Τάμσιν", "Η Τάμσιν ξέρει τους λύκους καλύτερα απ' όσο ξέρω εγώ τα πρόβατα. Ρώτα την πού είναι η φωλιά. Σε μένα δεν θα το πει — της χρωστάω λεφτά."],
+  q_finn4: ["Η Φωλιά", "Βρες τη φωλιά των λύκων δυτικά του Χωριού", "Δυτικά του Χωριού, κάτω από την κορυφογραμμή. Πήγαινε και σκότωσε ό,τι είναι εκεί μέσα, και φέρε πίσω το κουδούνι του προβάτου μου αν το βρεις."],
+  q_maud1: ["Ασημόφυλλο", "Μάζεψε 5 Ασημόφυλλα", "Το Ασημόφυλλο φυτρώνει εκεί που δεν περπατούν οι νεκροί — που είναι λιγότερα μέρη κάθε χρόνο. Πέντε κλωνάρια, και πρόσεχε τη λάμψη: έτσι το βρίσκεις."],
+  q_maud2: ["Το Σπίτι του Πυρετού", "Παράδωσε το φύλλο στο σπίτι της δυτικής άκρης", "Η οικογένεια στη δυτική άκρη έχει τα ρίγη. Πήγαινε το φύλλο στην πόρτα τους. Μην μπεις μέσα."],
+  q_maud3: ["Κάτι στο Νερό", "Ψάρεψε 3 ψάρια κατηγορίας Ψητό Λασπόψαρο (από οποιαδήποτε ακτή)", "Έπιναν από το ρυάκι, και το ρυάκι έρχεται από τον Βάλτο. Ψάρεψέ μου τρία λασπόψαρα για να δω τι κουβαλά το νερό."],
+  q_aldo1: ["Η Κοάζουσα Χορωδία", "Σκότωσε 6 Σαμάνους των Τάφων στον Βάλτο", "Σαμάνοι στις όχθες, που τραγουδούν τους πνιγμένους ξύπνιους και γιατρεύουν ό,τι σκοτώνεις. Σώπασε έξι από αυτούς."],
+  q_aldo2: ["Τα Διόδια", "Ψάρεψε 4 ψάρια στον Βάλτο", "Το πορθμείο παίρνει τα διόδια του σε ψάρια. Τέσσερα από το νερό του Βάλτου — αυτά που έχουν ακόμα μάτια."],
+  q_aldo3: ["Ό,τι Κρατά το Νερό", "Φτάσε στην καρδιά του Κλαίοντος Βάλτου", "Στη μέση της λίμνης υπάρχει ένα δαχτυλίδι σε ένα πνιγμένο χέρι. Ανήκε στον άντρα της Μητέρας. Πάρε το, και μετά αποφάσισε αν το νερό θα το πάρει πίσω."],
+  q_petra1: ["Όρκοι στις Ρωγμές", "Μάζεψε 8 Ορκοσημαδεμένα κόκαλα από Σκελετούς Πολεμιστές", "Φέρε μου οκτώ σημαδεμένα κόκαλα από τους Σκελετούς Πολεμιστές. Καθένα ορκίστηκε κάτι κάποτε."],
+  q_petra2: ["Το Μάτι της Λόγιας", "Μίλησε με την Έντα", "Η Έντα στο Χωριό διαβάζει την παλιά γραφή. Πήγαινέ της τα κόκαλα και γύρνα με ό,τι λένε οι όρκοι."],
+  q_petra3: ["Ο Όρκος του Κτήνους", "Σκότωσε 5 Στακτερούς Κτηνάνθρωπους", "Οι όρκοι ονομάζουν έναν λοχαγό — ένα κτήνος άνθρωπο που τους έσπασε πρώτος. Το σόι του περπατά ακόμα στους λόφους. Πέντε, και τα κόκαλα ίσως αναπαυθούν."],
+  q_corvin1: ["Στάχτη στα Χέρια μου", "Σκότωσε 10 Στακτερούς Λάτρεις", "Δέκα από τη χορωδία. Αυτούς που θα ήξεραν το πρόσωπό μου. Θα σου πω πού κρύβει ο Επίσκοπος τη Σφραγίδα όταν πεθάνουν."],
+  q_corvin2: ["Η Πύλη της Θράκας", "Στάσου μπροστά στην Πύλη της Θράκας", "Η πύλη κάτω από τον Καθεδρικό. Στάσου μπροστά της και θα ακούσεις τη χορωδία. Μέτρα μου τις φωνές — πρέπει να ξέρω πόσοι έμειναν."],
+  q_corvin3: ["Κρίση", "Μίλησε με τον Πατέρα Όσγουιν για τον Κόρβιν", "Πήγαινε στον Πρεσβύτερο. Πες του τι ήμουν — ή μην του το πεις. Θα δεχτώ ό,τι φέρεις πίσω."],
+  q_corvin4: ["Η Μετάνοια του Λιποτάκτη", "Σκότωσε 20 εχθρούς στον Στακτερό Καθεδρικό", "Ο Κόρβιν ζητά να υπηρετήσει δίπλα σου. Πάρε τον στην άκρη του Καθεδρικού, στο πνεύμα: είκοσι από τους νεκρούς του, στο όνομά του."],
+  q_corvin5: ["Τα Άλλα Τραγούδια", "Μάζεψε 6 σελίδες υμνολογίου από Στακτερούς Λάτρεις", "Τα υμνολόγια κρατούν τα λόγια που δένουν τη χορωδία. Φέρε μου έξι σελίδες και θα σου μάθω το αντι-τραγούδι — ο Επίσκοπος θα το μισήσει."],
+  q_foundry: ["Το Κρύο Σιδηρουργείο", "Καθάρισε το μπουντρούμι Οψιδιανό Χυτήριο (νοτιοανατολικά του Κάστρου)", "Κάτω από το Κάστρο οι σιδηρουργοί του Σκοτεινού Άρχοντα δεν σταμάτησαν ποτέ να δουλεύουν. Ο Φύλακας του Χυτηρίου χύνει ακόμα σκουριά σε σχήματα που περπατούν. Σβήσε τη φωτιά — και φέρε μου ένα κομμάτι από αυτόν τον οψιδιανό για το αμόνι."],
+};
+
 /* ---- F8_looks.js ---- */
 /* 1.19.0 — (1) enemies never wear the human (NPC/hero) KayKit models: they are rebuilt on the skeleton set;
    (2) every NPC gets its own look: skin tone, hair colour and clothing palette are repainted on a per-NPC copy of
@@ -46918,6 +47679,1026 @@ body.pause-open #touch-ui,body.pause-open #tleft,body.pause-open #tdeco{display:
   D("ap_vial", "Lob a flask (physics arc). 17 dmg splash + poison.");
   D("dr_thorn", "Three thorns in a spread. 9 dmg each, poison.");
   D("cr_bolt", "Bolt of light. 20 dmg (x2 vs undead bosses' minions).");
+}
+
+/* ---- FB_passives.js ---- */
+/* 1.19.0 — talents & passives balance.
+   Measured: Persistence (+duration) did nothing on skills whose effect is a buff (Vanish, Sanguine Pact, Undying, Tempest Avatar,
+   Rune Ward, Blood Guard…) — it only stretched zones, heal-over-time and damage-over-time. Static Charge repeated what
+   Thunder Maul already does. Saint's Lantern promised a damage reduction that was never applied. Bulwark (+20% armor)
+   and Gravebound (15% slow) were the weakest tank passives by far. */
+{
+  const GP = SC.prototype;
+  // Persistence talents now also lengthen self-buffs cast by that skill
+  const ab0 = GP.addBuff;
+  GP.addBuff = function (A, i, I, w, g) {
+    if (this._sk && this.tal?.sk?.[this._sk]?.dur && typeof i === "number" && i > 0 && i < 120) i *= this.skMod("dur");
+    return ab0.call(this, A, i, I, w, g);
+  };
+  // Static Charge: the Thunder Maul chain reaches 5 enemies for 35 (was 3 for 20, which the skill already did without the passive)
+  const ch0 = GP.chain;
+  GP.chain = function (B, A, i) {
+    if (this.hero?.id === "thane" && A === 3 && i === 20) { A = 5; i = 35; }
+    return ch0.call(this, B, A, i);
+  };
+  // Saint's Lantern: you and allies within 15 m of a Lightbinder take 10% less damage (and still lose Sanity 50% slower)
+  // Gravebound: enemies close to the Barrow Colossus also deal 10% less damage to him
+  const hp0 = GP.hurtPlayer;
+  GP.hurtPlayer = function (A, i = {}) {
+    if (typeof A === "number" && A > 0 && !i.pure) {
+      if (this.hero?.id === "cleric" || this.remoteNear?.("cleric", 15)) A *= 0.9;
+      if (this.hero?.id === "colossus") {
+        const s = i.src, p = this.player.pos;
+        (i.melee || (s && Math.hypot(s.x - p.x, s.z - p.z) < 6)) && (A *= 0.9);
+      }
+    }
+    return hp0.call(this, A, i);
+  };
+  // Bulwark: +35% armor (was +20%)
+  const rc0 = GP.recalcStats;
+  GP.recalcStats = function (...a) {
+    const r = rc0.apply(this, a);
+    try { this.hero?.id === "templar" && this.stats && (this.stats.armor *= 1.35 / 1.2); } catch (e) {}
+    return r;
+  };
+  // tooltips
+  const H = Object.fromEntries((X.D?.FI || FI).map((h) => [h.id, h]));
+  const setP = (id, i, desc) => H[id]?.passives?.[i] && (H[id].passives[i].desc = desc);
+  setP("templar", 0, "+35% armor.");
+  setP("colossus", 1, "Enemies within 6m are slowed 15% and deal 10% less damage to you.");
+  setP("cleric", 1, "You and allies within 15m take 10% less damage and lose Sanity 50% slower.");
+  setP("thane", 0, "Thunder Maul's lightning chains to 5 enemies for 35 (instead of 3 for 20).");
+}
+
+/* ---- FC_soak.js ---- */
+/* 1.19.0 — soak-test fixes. A dungeon or raid that has been visited stayed in the scene after you left it (about 1,600
+   objects each, walked through every frame by the renderer and the shadow pass): after six dungeons that was ~9,800 extra
+   objects. The pocket now leaves the scene when you exit and comes back when you enter. */
+{
+  const P = SC.prototype;
+  const attach = (d, on) => {
+    const b = d?.built, grp = b?.group;
+    if (!grp) return;
+    if (on) { !grp.parent && b._parent && b._parent.add(grp); }
+    else if (grp.parent) { b._parent = grp.parent; grp.parent.remove(grp); }
+  };
+  X.pocketAttach = attach;
+  const en0 = P.enterInstance;
+  P.enterInstance = function (id, ...a) {
+    attach(X.INST?.[id], !0);
+    const r = en0.call(this, id, ...a);
+    attach(this.inst?.def, !0);
+    return r;
+  };
+  const ex0 = P.exitInstance;
+  P.exitInstance = function (...a) {
+    const d = this.inst?.def;
+    const r = ex0.apply(this, a);
+    !this.inst && d && attach(d, !1);
+    return r;
+  };
+}
+
+/* ---- FY_el_text.js ---- */
+/* 1.19.0 — Greek (ελληνικά): heroes, people, places, foes, deeds, help */
+X.EL = X.EL || {};
+X.EL.heroes = {
+  templar: {
+    name: "Σερ Άλντρικ", title: "Σιδερόφρακτος Ναΐτης",
+    lore: "Ο τελευταίος ιππότης του Τάγματος της Αυγής. Η ασπίδα του φέρει ακόμα τον ήλιο που αλυσόδεσε ο Σκοτεινός Άρχοντας.",
+    skills: [
+      ["Λεπίδα του Όρκου", "Χτύπημα σπαθιού σε τόξο. 34 ζημιά. Γεμίζει Οργή."],
+      ["Φρουρός Πύργος", "Κράτα για άμυνα: -75% ζημιά από μπροστά, σε επιβραδύνει."],
+      ["Χτύπημα Ασπίδας", "Χτύπημα σε κώνο: 45 ζημιά και ζάλη για 1.5s."],
+      ["Καθαγιασμένο Έδαφος", "Ιερό έδαφος: 26 ζημιά/s για 6s, προκαλεί όλους τους εχθρούς μέσα του."],
+      ["Αιγίδα της Τελευταίας Αυγής", "Τελική. Όλοι οι σύμμαχοι σε 20m παίρνουν ασπίδα ίση με το 40% της μέγιστης ζωής σου για 8s· οι εχθροί σε 20m στρέφονται σε σένα."],
+    ],
+    passives: [["Προμαχώνας", "+35% θωράκιση."], ["Εκδικητική Πανοπλία", "Αντανακλά το 15% της ζημιάς σώμα με σώμα που δέχεσαι."]],
+  },
+  warden: {
+    name: "Μόροου", title: "Αιματόρκιστος Φύλακας",
+    lore: "Ορκίστηκε το αίμα του στη Φρουρά. Ο όρκος απάντησε και τον έκανε πιο δυνατό απ' όσο πρέπει να είναι άνθρωπος.",
+    skills: [
+      ["Κόκκινο Σχίσιμο", "Βαρύ χτύπημα τσεκουριού. 38 ζημιά σε φαρδύ τόξο."],
+      ["Αιματοφρουρά", "Ξόδεψε 8% ζωής για ασπίδα 25% της μέγιστης ζωής για 5s."],
+      ["Άλικη Έφοδος", "Έφοδος 14m μπροστά, 40 ζημιά σε ό,τι βρεθεί."],
+      ["Ουρλιαχτό Πρόκλησης", "Προκαλεί τους εχθρούς σε 12m. Δέχεσαι 30% λιγότερη ζημιά για 6s."],
+      ["Συμβόλαιο Αίματος", "Τελική. 40% απορρόφηση ζωής και +25% ζημιά για 10s."],
+    ],
+    passives: [["Δίψα", "Θεραπεύεσαι 4% της μέγιστης ζωής σε κάθε σκοτωμό."], ["Ουλές", "Έως 30% μείωση ζημιάς όσο πέφτει η ζωή σου."]],
+  },
+  colossus: {
+    name: "Τυμβόστομος", title: "Κολοσσός των Τύμβων",
+    lore: "Αίμα γίγαντα κυλά στις φλέβες του. Ξήλωσε τις πέτρες του ίδιου του τύμβου του για να απαντήσει στο κάλεσμα.",
+    skills: [
+      ["Ρόπαλο του Τύμβου", "Συντριπτικό χτύπημα. 42 ζημιά, μεγάλη απώθηση."],
+      ["Τρόμος του Τάφου", "Χτύπα τη γη: 30 ζημιά σε 6m, επιβράδυνση 40%."],
+      ["Αλυσίδες των Καταραμένων", "Τράβα όλους τους εχθρούς σε 16m κοντά σου και προκάλεσέ τους."],
+      ["Τείχος από Ταφόπλακες", "Υψώνει τείχος από ταφόπλακες που σταματά εχθρούς και βλήματα για 8s."],
+      ["Αθάνατος", "Τελική. Δεν μπορείς να πεθάνεις για 6s· στο τέλος θεραπεύεσαι 50%."],
+    ],
+    passives: [["Άφθαρτο Δέρμα", "+25% μέγιστη ζωή."], ["Δεμένος με τον Τάφο", "Οι εχθροί σε 6m επιβραδύνονται 15% και σου κάνουν 10% λιγότερη ζημιά."]],
+  },
+  cleric: {
+    name: "Αδελφή Ισόλντα", title: "Ιερέας του Φωτός",
+    lore: "Κρατά μια σπίθα της Αιώνιας Φλόγας σε μια κρυστάλλινη καρδιά. Δεν έσβησε ποτέ.",
+    skills: [
+      ["Ιερό Βέλος", "Βέλος φωτός. 20 ζημιά (x2 στους ακόλουθους των νεκρών αρχόντων)."],
+      ["Θεραπευτικό Φως", "Θεραπεύει τον σύμμαχο που σημαδεύεις (ή εσένα) κατά 45."],
+      ["Λαμπερή Έκρηξη", "Έκρηξη φωτός: θεραπεύει συμμάχους 70, καίει εχθρούς 50 σε 10m."],
+      ["Άσυλο", "Ιερός κύκλος: 22 ζωή/s για 7s."],
+      ["Αυγή της Ανάστασης", "Τελική. Ανασταίνει όλους τους πεσμένους συμμάχους και θεραπεύει όλους 60%."],
+    ],
+    passives: [["Πιστή", "+20% θεραπεία."], ["Φανάρι της Αγίας", "Εσύ και οι σύμμαχοι σε 15m δέχεστε 10% λιγότερη ζημιά και χάνετε Λογική 50% πιο αργά."]],
+  },
+  druid: {
+    name: "Χόλιν Θορν", title: "Δρυΐδης της Αγκαθόκαρδης",
+    lore: "Ο τελευταίος φύλακας του άλσους. Το δάσος πεθαίνει γύρω του, και είναι πολύ θυμωμένο.",
+    skills: [
+      ["Ριπή Αγκαθιών", "Τρία αγκάθια σε βεντάλια. 9 ζημιά το καθένα, δηλητήριο."],
+      ["Αναζωογόνηση", "Σταδιακή θεραπεία: 80 ζωή σε 6s στον σύμμαχο που σημαδεύεις ή σε σένα."],
+      ["Ρίζες που Πνίγουν", "Ακινητοποιεί εχθρούς σε 8m στον στόχο για 3s, 25 ζημιά/s."],
+      ["Πνευματικός Λύκος", "Καλεί έναν φασματικό λύκο που πολεμά για 20s."],
+      ["Άγρια Βλάστηση", "Τελική. Τεράστιο άλσος: οι σύμμαχοι θεραπεύονται 60 ζωή/s για 8s και δεν ακινητοποιούνται."],
+    ],
+    passives: [["Χλωρό Αίμα", "Αναγεννάς 1% της μέγιστης ζωής κάθε δευτερόλεπτο."], ["Φλοιόδερμα", "+15% θωράκιση. +10% ταχύτητα κίνησης."]],
+  },
+  apothecary: {
+    name: "Γιατρός Βες", title: "Αλχημιστής Φαρμακοποιός",
+    lore: "Μπήκε στον Λαμπερόβαλτο για να μελετήσει τα δηλητήριά του. Βγήκε ξέροντας το καθένα.",
+    skills: [
+      ["Φιαλίδιο Δηλητηρίου", "Πέτα μια φιάλη (σε τόξο). 17 ζημιά με πιτσίλισμα + δηλητήριο."],
+      ["Ελιξίριο", "Πέτα μια θεραπευτική φιάλη. 88 θεραπεία σε πιτσίλισμα 5m."],
+      ["Σμήνος Βδελλών", "Βδέλλες κάνουν 60 ζημιά σε 4s· θεραπεύουν τους κοντινούς συμμάχους κατά 100% αυτής."],
+      ["Καπνός της Λήθης", "Σύννεφο καπνού: οι εχθροί μέσα επιβραδύνονται 50% και αστοχούν στις μισές επιθέσεις."],
+      ["Πανάκεια", "Τελική. Θεραπεύει όλους τους συμμάχους κατά 40% της μέγιστης ζωής τους, τους καθαρίζει και δίνει +30% ζημιά για 8s."],
+    ],
+    passives: [["Μίασμα", "Οι επιθέσεις σου δηλητηριάζουν για 6 ζημιά/s για 4s."], ["Ζοφερός Θεραπευτής", "Οι θεραπείες σε συμμάχους κάτω από 35% ζωή είναι 40% ισχυρότερες."]],
+  },
+  witch: {
+    name: "Μέιβ η Στάχτη", title: "Μάγισσα της Θράκας",
+    lore: "Ο Αρχιμάγος προσπάθησε να την κάψει στην πυρά. Η φωτιά διάλεξε εκείνη.",
+    skills: [
+      ["Πύρινο Βέλος", "Γρήγορο πύρινο βέλος. 36 ζημιά, μπορεί να ανάψει φωτιά."],
+      ["Κύμα Φλόγας", "Κώνος φωτιάς. 55 ζημιά + φωτιά."],
+      ["Πεφτάστερο", "Καλεί μετεωρίτη εκεί που σημαδεύεις: 140 ζημιά σε 6m μετά από 1s."],
+      ["Βήμα της Θράκας", "Τηλεμεταφορά 12m μπροστά, αφήνοντας φωτιά πίσω σου."],
+      ["Ρέκβιεμ της Κόλασης", "Τελική. Για 6s, 4 πύρινες σφαίρες το δευτερόλεπτο πέφτουν σε εχθρούς σε 14m (15 ζημιά σε 3.5m η καθεμία)."],
+    ],
+    passives: [["Προσάναμμα", "Τα κρίσιμα χτυπήματα βάζουν φωτιά για 10 ζημιά/s (4s)."], ["Ψυχή της Πυράς", "+15% ζημιά ξορκιών."]],
+  },
+  ranger: {
+    name: "Ρεν Άσμπι", title: "Ιχνηλάτισσα του Λυκόφωτου",
+    lore: "Κυνηγούσε λύκους για να ζήσει. Ύστερα οι λύκοι άρχισαν να περπατούν στα δύο πόδια.",
+    skills: [
+      ["Βέλος από Μελιό", "Βέλος με φυσική. 42 ζημιά, x2 στο κεφάλι. Κράτα το δεξί κλικ για σημάδι: +50% ζημιά, ευθεία πτήση."],
+      ["Σταθερό Σημάδι", "Κράτα: ζουμ, τα βέλη +50% ζημιά και πετούν ευθεία."],
+      ["Βροχή από Βέλη", "Βροχή βελών στον στόχο: 30 ζημιά x 6 κύματα σε 7m."],
+      ["Απεμπλοκή", "Πήδα προς τα πίσω και άφησε παγίδα (ακινητοποιεί 3s)."],
+      ["Καταιγισμός του Κυνηγού", "Τελική. Ρίχνει 14 διαπεραστικά βέλη σε 2.5s, 40 ζημιά το καθένα."],
+    ],
+    passives: [["Αλάνθαστο Μάτι", "+15% πιθανότητα κρίσιμου. Τα κρίσιμα κάνουν 2.2x."], ["Γοργοπόδαρη", "+10% ταχύτητα κίνησης."]],
+  },
+  assassin: {
+    name: "Νυξ", title: "Δολοφόνος του Πέπλου",
+    lore: "Κανείς δεν θυμάται να την προσέλαβε. Κανείς δεν θυμάται το πρόσωπό της. Ο Σκοτεινός Άρχοντας θα τη θυμάται.",
+    skills: [
+      ["Δίδυμοι Κυνόδοντες", "Γρήγορα χτυπήματα με στιλέτο. 25 ζημιά στον εχθρό μπροστά, +60% από πίσω."],
+      ["Βήμα Σκιάς", "Τηλεμεταφορά πίσω από τον εχθρό που σημαδεύεις."],
+      ["Βεντάλια Μαχαιριών", "Μαχαίρια προς όλες τις κατευθύνσεις: 45 ζημιά + αιμορραγία."],
+      ["Εξαφάνιση", "Γίνεσαι αόρατη για 5s. Το επόμενο χτύπημα κάνει x3."],
+      ["Λωτός του Θανάτου", "Τελική. Δίνη από λεπίδες: 45 ζημιά κάθε 0.25s για 2s σε 7m."],
+    ],
+    passives: [["Πισώπλατο Χτύπημα", "+60% ζημιά από πίσω."], ["Αιμορραγία", "Τα χτυπήματα προκαλούν αιμορραγία: 8 ζημιά/s για 3s."]],
+  },
+  thane: {
+    name: "Χάλβαρντ", title: "Θάνος της Θύελλας",
+    lore: "Τον χτύπησε κεραυνός τη μέρα που αλυσοδέθηκε ο ήλιος. Από τότε κουβαλά μέσα του την καταιγίδα.",
+    skills: [
+      ["Σφυρί της Βροντής", "Χτύπημα σφυριού, 36 ζημιά. Κάθε 3ο χτύπημα στέλνει κεραυνό σε 3 εχθρούς για 20."],
+      ["Ρουνική Φρουρά", "5s: δέχεσαι 35% λιγότερη ζημιά· όποιος σε χτυπά από κοντά παθαίνει ηλεκτροπληξία για 15."],
+      ["Βροντή", "40 ζημιά σε 8m, προκαλεί και επιβραδύνει τους εχθρούς 40% για 3s."],
+      ["Άλμα της Θύελλας", "Πήδα εκεί που σημαδεύεις (18m): 60 ζημιά σε 5m και ζάλη 1.5s."],
+      ["Ενσάρκωση της Θύελλας", "Τελική. 10s: κεραυνός χτυπά έναν κοντινό εχθρό κάθε 0.5s για 55· δέχεσαι 30% λιγότερη ζημιά."],
+    ],
+    passives: [["Στατικό Φορτίο", "Ο κεραυνός του Σφυριού της Βροντής φτάνει σε 5 εχθρούς για 35 (αντί για 3 για 20)."], ["Αγωγός", "25% πιθανότητα, όταν σε χτυπούν από κοντά, να πάθει ηλεκτροπληξία ο επιτιθέμενος (15 ζημιά, ζάλη 0.5s)."]],
+  },
+  mystic: {
+    name: "Αδελφή Νήρυς", title: "Μυστικίστρια της Παλίρροιας",
+    lore: "Κουβαλά νερό από την τελευταία καθαρή πηγή του Άλντμουρ. Όπου πέφτει, κλείνουν οι πληγές.",
+    skills: [
+      ["Μαστίγιο της Παλίρροιας", "Βέλος νερού, 26 ζημιά. Κάθε χτύπημα θεραπεύει τον πιο τραυματισμένο σύμμαχο σε 20m κατά 8."],
+      ["Ανανεωτική Ομίχλη", "Σταδιακή θεραπεία: 100 ζωή σε 8s στον σύμμαχο που σημαδεύεις ή σε σένα. Στοιβάζεται."],
+      ["Βροχή της Ζωής", "Βροχή εκεί που σημαδεύεις (7m, 8s): οι σύμμαχοι παίρνουν 16 ζωή/s· οι εχθροί 14 ζημιά/s και επιβράδυνση 25%."],
+      ["Γαλήνιο Ρεύμα", "Σύμμαχοι σε 20m: 70 ζωή σε 6s, καθαρισμός, +20% ταχύτητα κίνησης."],
+      ["Αιώνια Άνοιξη", "Τελική. Οι σύμμαχοι σε 25m παίρνουν 420 ζωή σε 10s και δέχονται 25% λιγότερη ζημιά."],
+    ],
+    passives: [["Υπερχείλιση", "Οι σταδιακές θεραπείες σου κάνουν την περίσσεια θεραπεία ασπίδα (έως 15% της μέγιστης ζωής)."], ["Υπόρευμα", "Οι σύμμαχοι με σταδιακή θεραπεία σου δέχονται 10% λιγότερη ζημιά."]],
+  },
+  warlock: {
+    name: "Μορντεκάι Βέιν", title: "Καταραμένος Μάγος",
+    lore: "Διάβασε το βιβλίο κατάρων του ίδιου του Σκοτεινού Άρχοντα από την αρχή ως το τέλος. Το βιβλίο τον διαβάζει ακόμα πίσω.",
+    skills: [
+      ["Βέλος Μαρασμού", "Σκιώδες βέλος, 26 ζημιά + Μαρασμός: 11 ζημιά/s για 6s (στοιβάζεται 3 φορές)."],
+      ["Κατάρα της Αγωνίας", "Καταράσαι τον εχθρό που σημαδεύεις: 240 ζημιά σε 8s. Ανανεώνεται αν ξαναριχτεί."],
+      ["Πανούκλα της Σήψης", "Σάπιο έδαφος εκεί που σημαδεύεις (7m, 6s): οι εχθροί μέσα σαπίζουν για 17 ζημιά/s."],
+      ["Ρούφηγμα Ψυχής", "Ρουφάς τον εχθρό που σημαδεύεις: 200 ζημιά σε 4s, θεραπεύοντάς σε κατά 150."],
+      ["Καταδίκη", "Τελική. Σημαδεύει κάθε εχθρό σε 12m από το σημάδι σου. Μετά από 4s ο καθένας δέχεται 340 ζημιά."],
+    ],
+    passives: [["Μετάδοση", "Όταν πεθαίνει ένας καταραμένος εχθρός, οι κατάρες του πηδούν στον κοντινότερο εχθρό σε 10m."], ["Ανάθεμα", "Οι σταδιακές σου ζημιές κάνουν 25% περισσότερη ζημιά."]],
+  },
+};
+X.EL.roles = { Tank: "Αμυντικός", Healer: "Θεραπευτής", DPS: "Ζημιάς" };
+X.EL.res = { Rage: "Οργή", Mana: "Μάνα", Energy: "Ενέργεια", Focus: "Συγκέντρωση", Faith: "Πίστη", Blood: "Αίμα", Fury: "Μανία", Soul: "Ψυχή", Essence: "Ουσία", Tide: "Παλίρροια", Ember: "Θράκα", Storm: "Θύελλα" };
+X.EL.npcs = {
+  oswin: ["Πατέρας Όσγουιν", "Πρεσβύτερος της Φρουράς", "Η φλόγα καίει ακόμα, παιδί μου. Όσο καίει, υπάρχει δουλειά."],
+  brannoc: ["Μπράνοκ", "Σιδεράς", "Το ατσάλι δεν νοιάζεται τι σκοτώνει. Τυχεροί είμαστε."],
+  marta: ["Γριά Μάρτα", "Βοτανολόγα", "Πιες το γρήγορα και μη ρωτάς τι έχει μέσα."],
+  edda: ["Έντα", "Νεκροθάφτισσα", "Τους θάβω. Τελευταία δεν μένουν θαμμένοι. Τελευταία μετράω δύο φορές."],
+  tamsin: ["Τάμσιν", "Φύλακας των Δρόμων", "Τίποτα σ' αυτούς τους δρόμους δεν είναι χαμένο. Όλα κυνηγούν."],
+  hobb: ["Χομπ", "Πλανόδιος Έμπορος", "Το πιο κοντινό μαγαζί στο τέλος του κόσμου! Οι τιμές ταιριάζουν με τη θέα."],
+  sigrun: ["Σίγκρουν", "Κυνηγός των Υψιπέδων", "Το χιόνι κρατά ό,τι παίρνει. Βοήθα με να πάρω κάτι πίσω."],
+  bjorn: ["Μπιορν", "Γουνάς και Σιδεράς", "Κρύο ατσάλι για κρύα γη."],
+  nadira: ["Ναντίρα", "Κυρά του Καραβανιού", "Το νερό εδώ έξω αξίζει πιο πολύ από το χρυσάφι. Ευτυχώς, πουλάω και τα δύο."],
+  jassim: ["Τζασίμ", "Φρουρός του Καραβανιού", "Πιες. Ο ήλιος δεν συγχωρεί τους διψασμένους."],
+  rowan: ["Πρεσβύτερος Ρόουαν", "Φύλακας του Άλσους", "Το δάσος θυμάται ποιος ήσουν. Μπορεί να ξεχάσει — με αντίτιμο."],
+  fern: ["Φερν", "Μάγισσα του Δάσους", "Εδώ όλα δαγκώνουν. Φόρα κάτι που δαγκώνει κι αυτό."],
+  astrid: ["Φύλακας Άστριντ", "Τελευταία Φύλακας του Στέμματος", "Έξι αλυσίδες έσπασαν. Μένει μία. Βιάσου."],
+  ulf: ["Ουλφ", "Σιδεράς της Θύελλας", "Σφυρηλατημένο από κεραυνό. Μην το ρίξεις στη βροχή."],
+  gellert: ["Γκέλερτ", "Σταβλάρχης", "Κάθε δρόμος του Άλντμουρ είναι πιο κοντός με τέσσερα πόδια."],
+  ilse: ["Ίλσε", "Θηριοφύλακας", "Κανείς δεν πρέπει να περπατά μόνος στο σκοτάδι. Ούτε κι εσύ."],
+  tobin: ["Τόμπιν", "Πρωτομάστορας", "Ένας ήρωας χρειάζεται μια εστία να γυρίζει. Μπορώ να σου χτίσω μία."],
+  harald: ["Λιμενάρχης Χάραλντ", "Άρχοντας του Χρίμχαβν", "Οι φάλαινες έφυγαν όταν ξύπνησε ο γίγαντας. Φέρε μας πίσω τη θάλασσα."],
+  ylva: ["Ύλβα", "Διχτυοράφτρα", "Φωκόδερμα και φαλαινοκόκαλο. Πιο ζεστά από το ατσάλι, και πιο ελαφριά."],
+  sefa: ["Σέφα", "Πανδοχέας", "Ζεστό υδρόμελι, ζεστό φαγητό κι ένα κρεβάτι που δεν κουνιέται."],
+  omar: ["Εμίρης Ομάρ", "Άρχοντας του Κασρ Ντουνέλ", "Η πόλη μου στέκει γιατί τη θρέφει η θάλασσα. Η αίρεση θέλει να μας δει να πεινάμε."],
+  layla: ["Λέιλα", "Έμπορος Μπαχαρικών", "Ό,τι περνά τη θάλασσα περνά πρώτα από το τραπέζι μου."],
+  tariq: ["Ταρίκ", "Οπλουργός", "Το ατσάλι των θινών κρατά την κόψη του στη ζέστη."],
+  brigid: ["Πρεσβυτέρα Μπρίτζιντ", "Φωνή του Μόσεντ", "Το δάσος έρχεται πιο κοντά κάθε νύχτα. Δεν χτίζουμε τα σπίτια μας σε πασσάλους τυχαία."],
+  cael: ["Κέιλ", "Ψαράς", "Κάτι στο νερό τρώει την ψαριά μου. Και τα δίχτυα μου. Και τον ξάδερφό μου."],
+  nessa: ["Νέσα", "Ξυλουργός", "Τόξα και ασπίδες από σιδηρόξυλο. Τα αγκάθια μάς έδωσαν τουλάχιστον ένα δώρο."],
+  maren: ["Καπετάνισσα Μάρεν", "Φύλακας του Γκάλσριτς", "Κάθε πλοίο που πλέει βόρεια γυρίζει άδειο ή δεν γυρίζει καθόλου. Η θύελλα του Αζρακούλ πεινά."],
+  pell: ["Πελ", "Κηροπλάστης", "Λάδι για λάμπες, σκοινί και άσχημα νέα. Δεν μου τελειώνουν ποτέ."],
+  ingrid: ["Ίνγκριντ", "Μαθητευόμενη του Σιδερά της Θύελλας", "Ο Ουλφ μου έμαθε τα πάντα. Εκτός από το πώς να σταματώ τη βροντή."],
+  edith: ["Θησαυροφύλακας Ίντιθ", "Φύλακας του Μεγάλου Θησαυροφυλακίου", "Το Θησαυροφυλάκιο θυμάται κάθε κατόρθωμα της εβδομάδας. Έλα ξανά όταν αλλάξει η εβδομάδα."],
+  garrick: ["Μεσίτης Γκάρικ", "Υλικά και Τράπεζα", "Μετάλλευμα, βότανα, τομάρια — αγοράζω ό,τι σκάβεις και πουλάω ό,τι σου λείπει. Κι η αποθήκη σου είναι εδώ, με μικρή αμοιβή."],
+  kessa: ["Αρενάρχισσα Κέσα", "Κυρά του Λάκκου", "Αίμα, άμμος και δόξα. Τι θέλεις πρώτα;"],
+  brann: ["Επιμελητής Μπραν", "Φύλακας των Αποθηκών της Φρουράς", "Μάρκες για τη δουλειά της Φρουράς. Καραβάνια, παγκόσμιοι αρχηγοί — φέρε μου απόδειξη και διάλεξε."],
+  odile: ["Μεσίτρια Οντίλ", "Πίνακας Δημοπρασιών", "Πουλάς; Αγοράζεις; Ό,τι είναι στον πίνακα έρχεται από ανθρώπους της Φρουράς σ' αυτόν εδώ τον κόσμο."],
+  mara: ["Ληξίαρχος Μάρα", "Φύλακας των Μητρώων των Συντεχνιών", "Λάβαρα, όρκοι και κατάστιχα. Ίδρυσε συντεχνία ή βρες την αίθουσά σου."],
+  wren: ["Ρεν", "Η Κόρη του Νεκροθάφτη", "Ο πατέρας έσκαβε τους τάφους. Τώρα οι τάφοι ανοίγουν μόνοι τους, κι εγώ κρατάω το μέτρημα."],
+  finn: ["Φιν", "Βοσκός", "Σαράντα πρόβατα το φθινόπωρο. Έντεκα τώρα. Κάνε εσύ τον λογαριασμό."],
+  maud: ["Γριά Μοντ", "Βοτανολόγα", "Ασημόφυλλο για τον πυρετό, αγκαθόριζα για τη λύπη. Μου τελείωσαν και τα δύο."],
+  aldo: ["Άλντο", "Ο Πορθμέας", "Κανείς δεν περνά τον Βάλτο τζάμπα. Ούτε οι νεκροί — πληρώνουν με ό,τι θυμούνται."],
+  petra: ["Αδελφή Πέτρα", "Οστεομάντισσα", "Κάθε σκελετός που περπατά ήταν κάποτε ιππότης. Διαβάζω τους όρκους του στις ρωγμές."],
+  corvin: ["Κόρβιν", "Λιποτάκτης", "Φορούσα τη στάχτη τους. Τραγουδούσα σ' εκείνη τη χορωδία. Μη με κοιτάς έτσι — θα τραγουδούσες κι εσύ."],
+};
+X.EL.wayNames = { way_hamlet: "Ιλόνα", way_frost: "Τόρβαλντ", way_waste: "Σαμίρα", way_thorn: "Μπραν", way_storm: "Γκαλ", way_mire: "Σετζ", way_ossuary: "Πετρονέλ", way_cathedral: "Ας" };
+X.EL.way = ["Ταξιδευτής", "Ταξιδευτής των Δράκων", "Οι δράκοι ξέρουν κάθε στέγη του Άλντμουρ. Πού πάμε;"];
+X.EL.zones = {
+  hamlet: "Κοιλάδα του Ντόνμιρ", mire: "Λαμπερόβαλτος", ossuary: "Τυμβοπεδιάδες", cathedral: "Πύργος της Θράκας", citadel: "Οψιδιανό Κάστρο",
+  frost: "Παγοκόρυφα Υψίπεδα", waste: "Ηλιόκαυτες Ερημιές", thorn: "Αγκαθόδασος", storm: "Υψώματα του Θυελλοστέμματος", sea: "Θάλασσα του Διχασμού",
+};
+X.EL.enemies = {
+  hollow: "Σκελετός", hound: "Άγριος Λύκος", boneknight: "Σκελετός Πολεμιστής", wraith: "Φάντασμα", cultist: "Σκιώδης Λάτρης", abomination: "Σάρκινο Γκόλεμ",
+  matron: "Μορβένα, η Βασίλισσα του Βάλτου", vhal: "Βαλ, ο Βασιλιάς των Οστών", bishop: "Ιγνάτιος, ο Στακτερός Αρχιμάγος", malgareth: "Μαλγκάρεθ, ο Σκοτεινός Άρχοντας",
+  ghoul: "Σκελετός Κλέφτης", bogwitch: "Σκελετός Μάγος", hrimgar: "Χρίμγκαρ, ο Γίγαντας του Πάγου", varek: "Χαν της Στάχτης Βάρεκ", thornmother: "Η Αγκαθομάνα",
+  azrakul: "Αζρακούλ, Άρχοντας της Καταιγίδας", ossian: "Άρχοντας της Κρύπτης Όσιαν", rimefang: "Παγόδοντος", khet: "Χετ, ο Αθάνατος Φαραώ", briar: "Το Θηρίο των Βάτων",
+  volk: "Βολκ ο Βροντοτέχνης", general1: "Φοβερή Στρατηγός Καέλιθ", general2: "Φοβερός Στρατηγός Μιρ", general3: "Φοβερός Στρατηγός Ούλθαρ", unbound: "Μαλγκάρεθ, ο Αδέσμευτος",
+  tidecaller: "Μόρβαθ ο Καλεστής της Παλίρροιας", leviathan: "Ο Πνιγμένος Λεβιάθαν", choir: "Η Χορωδία της Αβύσσου", drownedking: "Ύθαρ, ο Πνιγμένος Βασιλιάς", drowned: "Πνιγμένος Σκλάβος",
+  wb_hamlet: "Ο Φύλακας της Αγχόνης", wb_frost: "Ο Βρυκόλακας της Σκάντι", wb_waste: "Χαζ ο Στακτοληστής", wb_thorn: "Γέρο-Μεγαλόβατος", wb_storm: "Ισόλντα η Φύλακας των Ανέμων",
+  archer: "Τοξότης των Οστών", stalker: "Κουκουλοφόρος Καραδοκητής", shaman: "Σαμάνος των Τάφων", brute: "Στακτερός Κτηνάνθρωπος", kraal: "Κράαλ ο Φύλακας του Καμινιού", slag: "Κατασκεύασμα Σκουριάς",
+};
+X.EL.titles = {
+  vigilant: ["ο Άγρυπνος", "Άναψε τη φωτιά της Φρουράς"], wolfsbane: ["Λυκοκτόνος", "Σκότωσε 100 άγριους λύκους"], gravedigger: ["ο Νεκροθάφτης", "Σκότωσε 1.000 εχθρούς"],
+  matron: ["Χηροποιός", "Νίκησε τη Βασίλισσα του Βάλτου"], sigils: ["Σφραγιδοφόρος", "Κράτα και τις τρεις Σφραγίδες"], darklord: ["Φωτοφόρος", "Νίκησε τον Μαλγκάρεθ"],
+  reckoning: ["της Κρίσης", "Καθάρισε την επιδρομή Η Κρίση"], throne: ["Θυελλοθραύστης", "Καθάρισε τον Θρόνο των Θυελλών"], deep: ["Παλιρροιοθραύστης", "Καθάρισε τα Πνιγμένα Βάθη"],
+  sixty: ["ο Αθάνατος", "Φτάσε στο επίπεδο 60"], angler: ["ο Ψαράς", "Ψάρεψε 100 ψάρια"], smith: ["Αρχισιδεράς", "Κατασκεύασε 60 πράγματα"],
+  founder: ["Ιδρυτής Συντεχνίας", "Ίδρυσε μια συντεχνία"], homemaker: ["ο Νοικοκύρης", "Τοποθέτησε 10 έπιπλα"], wayfarer: ["ο Ταξιδευτής", "Κάνε 10 πτήσεις με δράκο"],
+  explorer: ["ο Εξερευνητής", "Μάθε κάθε διαδρομή πτήσης"], gladiator: ["Μονομάχος", "Κέρδισε 25 αγώνες αρένας"], merciful: ["ο Ελεήμων", "Χάρισε τη ζωή στον κλέφτη, επίστρεψε το δαχτυλίδι, συγχώρεσε τον Κόρβιν"],
+  iron: ["Σιδερόχερος", "Κρέμασε τον κλέφτη, κράτα το δαχτυλίδι, κατάγγειλε τον Κόρβιν"], collector: ["ο Συλλέκτης", "Κέρδισε 25 επιτεύγματα"], legend: ["Θρύλος του Άλντμουρ", "Κέρδισε 60 επιτεύγματα"],
+};
+X.EL.hints = {
+  node_herb: ["Βοτανολογία", "Τα φυτά που λάμπουν είναι βότανα. Πάτα F για να τα μαζέψεις· η δεξιότητα Βοτανολογίας ανεβαίνει όσο μαζεύεις. Άνοιξε το βιβλίο Επαγγελμάτων (B) για να φτιάξεις πράγματα."],
+  node_ore: ["Εξόρυξη", "Οι βράχοι που σπινθηρίζουν είναι φλέβες μεταλλεύματος. Πάτα F για εξόρυξη. Λιώσε ράβδους στο αμόνι του Μπράνοκ από το βιβλίο Επαγγελμάτων (B)."],
+  fish: ["Ψάρεμα", "Πάτα F στο νερό για να ρίξεις πετονιά· όταν βουλιάξει ο φελλός, πάτα ξανά F. Μαγείρεψε την ψαριά σε οποιαδήποτε φωτιά για μπόνους Χορτάτος."],
+  shrine: ["Ιερά", "Ένα αναμμένο ιερό γίνεται σημείο επιστροφής, γεμίζει λάδι και φίλτρα και σε αφήνει να ταξιδεύεις ανάμεσα σε αναμμένα ιερά με το G."],
+  chest: ["Σεντούκια", "Τα σεντούκια έχουν Θραύσματα Ψυχής, έναν εξοπλισμό και γιατρικά. Ανανεώνονται κάθε μέρα. Ό,τι δεν χρειάζεσαι: δεξί κλικ στην τσάντα για διάλυση σε θραύσματα."],
+  portal: ["Αναζήτηση Μπουντρουμιού", "Πάτα F σε μια πύλη για ουρά. Τα μπουντρούμια θέλουν 4 (αμυντικό, θεραπευτή, 2 ζημιάς), οι επιδρομές 8. Αν δεν μπει κανείς σε 20 s, σύντροφοι γεμίζουν τις άδειες θέσεις — μπορείς να τα κάνεις όλα μόνος."],
+  raid: ["Επιδρομές", "Οι αρχηγοί επιδρομών έχουν μηχανισμούς: πρόσεχε τα πανό — οι μπλε κύκλοι θέλουν παίκτες μέσα, τα μωβ σημάδια θέλουν απόσταση, οι πράσινοι κύκλοι είναι το μόνο ασφαλές σημείο, τα ξόρκια πρέπει να διακόπτονται."],
+  home: ["Το σπίτι σου", "Μέσα: ένα κρεβάτι (+15% εμπειρία για 20 λεπτά), η αποθήκη σου και αργότερα ντουλάπα και βωμός ταλέντων. Ο πάγκος πουλά έπιπλα που βάζεις όπου θέλεις."],
+  stable: ["Άλογα", "Ο Γκέλερτ πουλά άλογα για θραύσματα. Πάτα Z για να ανέβεις και να κατέβεις· στο άλογο βλέπεις τον ήρωα σε τρίτο πρόσωπο."],
+  kennel: ["Σύντροφοι", "Η Ίλσε φροντίζει συντρόφους: διακοσμητικοί φίλοι που σε ακολουθούν από απόσταση. Οι εχθροί τούς αγνοούν."],
+  guild: ["Συντεχνίες", "Η Μάρα ιδρύει συντεχνίες για 500 θραύσματα. Μια συντεχνία έχει τράπεζα, εβδομαδιαίες αποστολές με ανταμοιβές, συνομιλία (/g) και αίθουσα."],
+  auction: ["Πίνακας δημοπρασιών", "Η Οντίλ βάζει αντικείμενα από παίκτες του κόσμου σου και των φίλων σου. Αγόρασε με θραύσματα· βάλε τα δικά σου με μια προμήθεια."],
+  tokens: ["Παγκόσμια γεγονότα", "Κάθε λίγα λεπτά εμφανίζεται ένας παγκόσμιος αρχηγός ή καραβάνι — ακολούθησε τον χρυσό δείκτη. Οι ανταμοιβές έχουν Μάρκες Φρουράς, για τον Επιμελητή Μπραν."],
+  arena: ["PvP", "Η Κέσα τρέχει κατατάξεις αρένας 2v2 / 3v3 και το πεδίο μάχης Wardfall. Bots γεμίζουν τις άδειες θέσεις. Σημάδεψε έναν παίκτη έξω και πάτα G για μονομαχία."],
+  event: ["Ξεκινά παγκόσμιο γεγονός", "Ακολούθησε τον χρυσό δείκτη στον μικρό χάρτη. Όποιος είναι σε 90 m όταν τελειώσει παίρνει ανταμοιβή."],
+  rare: ["Σπάνιος εχθρός", "Οι επώνυμοι εχθροί με ασημένιο πλαίσιο ρίχνουν καλύτερα λάφυρα και μετρούν στις Συλλογές (,)."],
+  blood: ["Ματωμένο Φεγγάρι", "Οι νεκροί είναι πιο δυνατοί και πιο πολλοί απόψε — αλλά και τα θραύσματα και τα λάφυρα είναι πλουσιότερα. Κράτα το φανάρι αναμμένο."],
+  mount_first: ["Ιππασία", "Το Z σε ανεβάζει και σε κατεβάζει. Το άλογο είναι πιο γρήγορο από το τρέξιμο και μερικά κολυμπούν· δεν μπορείς να πολεμήσεις από τη σέλα."],
+  deco: ["Επίπλωση", "Το κομμάτι ακολουθεί το βλέμμα σου. Αριστερό κλικ ή F το τοποθετεί, Q/E ή η ροδέλα το γυρίζουν, R το μαζεύει. Πάτα F σε τοποθετημένο κομμάτι για να το μετακινήσεις."],
+  death: ["Έπεσες", "Κράτα F πάνω σε πεσμένο σύμμαχο για να τον αναστήσεις· ένας θεραπευτής σύντροφος θα σε αναστήσει όταν είναι ασφαλές. Ο θάνατος κοστίζει μόνο χρόνο — ο εξοπλισμός δεν φθείρεται."],
+};
+X.EL.help = {
+  "Lantern & Oil": ["Φανάρι και Λάδι (Oil)", "Το φανάρι σε προστατεύει από την απώλεια λογικής στο σκοτάδι τη νύχτα. Το λάδι δεν καίγεται τη μέρα ούτε κοντά σε φωτιά· τα ιερά το ξαναγεμίζουν."],
+  Shrines: ["Ιερά", "Άναψέ τα (F) για να ταξιδεύεις ανάμεσά τους (G σε αναμμένο ιερό), να γεμίζεις λάδι και φίλτρα και να ορίζεις το σημείο επιστροφής."],
+  "Loot & Soul Shards": ["Λάφυρα και Θραύσματα Ψυχής", "Δεξί κλικ σε αντικείμενο για διάλυση σε θραύσματα· τα Κειμήλια/Καταραμένα δίνουν και Στακτερά Σημάδια για διακοσμητικά. Με θραύσματα αγοράζεις εξοπλισμό, άλογα, σπίτια και συντεχνίες."],
+  "Dungeon Finder": ["Αναζήτηση Μπουντρουμιού", "Πάτα F σε οποιαδήποτε πύλη μπουντρουμιού ή επιδρομής για ουρά: 4 παίκτες για μπουντρούμια, 8 για επιδρομές· σύντροφοι γεμίζουν τις άδειες θέσεις μετά από 20 s."],
+  Professions: ["Επαγγέλματα", "Τα βότανα λάμπουν πράσινα, τα μεταλλεύματα σπινθηρίζουν· πάτα F για συλλογή. Άνοιξε το βιβλίο με B για κατασκευή. Μαγείρευε σε φωτιά, σφυρηλάτα σε αμόνι, ψάρευε από κάθε ακτή."],
+  "World events": ["Παγκόσμια γεγονότα", "Κάθε 6–8 λεπτά εμφανίζεται παγκόσμιος αρχηγός ή καραβάνι — ακολούθησε τον χρυσό δείκτη. Ξόδεψε Μάρκες Φρουράς στον Επιμελητή Μπραν."],
+  Guilds: ["Συντεχνίες", "Η Ληξίαρχος Μάρα ιδρύει μία για 500 θραύσματα. Καρτέλα Συντεχνίας για μέλη, τράπεζα και εβδομαδιαίες αποστολές· /g για συνομιλία."],
+  PvP: ["PvP", "Αρενάρχισσα Κέσα: κατατάξεις 2v2/3v3 και το πεδίο μάχης Wardfall. Σημάδεψε έναν παίκτη και πάτα G για μονομαχία έξω."],
+  Housing: ["Σπίτι", "Αγόρασε οικόπεδο από τον μεσίτη και μπες στο σπίτι σου για αποθήκη, κρεβάτι (+15% εμπειρία), ντουλάπα και βωμό ταλέντων."],
+  Alts: ["Άλλοι ήρωες", "Οι αποστολές είναι ανά ήρωα· οι ήρωες κάτω από το καλύτερο επίπεδό σου παίρνουν +50% εμπειρία (Δώρο του Βετεράνου)."],
+  Furnishing: ["Επίπλωση", "Μέσα στο σπίτι πάτα F στον πάγκο για έπιπλα, φώτα, λάβαρα, κομμάτια κήπου και τρόπαια αρχηγών· τοποθέτησέ τα εκεί που κοιτάς (Q/E περιστροφή, R μάζεμα), πάτα F σε τοποθετημένο κομμάτι για μετακίνηση."],
+  "Raid mechanics": ["Μηχανισμοί επιδρομών", "Οι αρχηγοί επιδρομών έχουν αληθινούς μηχανισμούς: στοιβαζόμενες αδυναμίες στον αμυντικό (αλλαγή αμυντικού με Πρόκληση στο ×3), ξόρκια που πρέπει να διακόψεις (ζάλη ή 6% ζημιά), μπλε κύκλους απορρόφησης, μωβ σημάδια διασποράς, σεισμούς που πηδάς, πράσινες ασφαλείς ζώνες, φάσεις ασπίδας με φρουρούς και τελική οργή."],
+  Enemies: ["Εχθροί", "Οι τοξότες κρατούν απόσταση, οι καραδοκητές πάνε πίσω σου (γύρνα να τους αντικρίσεις), οι σαμάνοι θεραπεύουν την αγέλη — σκότωσέ τους πρώτους — οι κτηνάνθρωποι χτυπούν φαρδιά και εφορμούν, οι λύκοι σε περικυκλώνουν. Οι περίπολοι κινούνται, οπότε ένας ήσυχος δρόμος μπορεί να μη μείνει ήσυχος."],
+  Stories: ["Ιστορίες", "Κάποιες αποστολές τελειώνουν με απόφαση — η επιλογή είναι μόνιμη για τον λογαριασμό, αλλάζει τι λέει μετά ο χαρακτήρας και ποιες αποστολές ακολουθούν. Οι αποστολές επίσκεψης ολοκληρώνονται όταν φτάσεις στο μέρος, οι αποστολές συζήτησης όταν ανοίξεις τον σωστό διάλογο."],
+  "Weather & seasons": ["Καιρός και εποχές", "Στα Παγοκόρυφα χιονίζει, στο Αγκαθόδασος πέφτουν φύλλα, στις Ερημιές φυσά άμμος αντί για βροχή και στο Θυελλόστεμμα αστράφτει. Το πραγματικό ημερολόγιο ορίζει την εποχή στο χωριό: χιόνι τον χειμώνα, πέταλα την άνοιξη, φύλλα το φθινόπωρο."],
+  "Fast travel": ["Γρήγορο ταξίδι", "Οι Ταξιδευτές στο Χωριό, στα τέσσερα λιμάνια και στα τρία εσωτερικά ιερά σε πετούν με δράκο σε όποιον Ταξιδευτή έχεις συναντήσει (κόστος ανάλογα με την απόσταση). Τα αναμμένα ιερά σε μεταφέρουν ακόμα με το G."],
+  Titles: ["Τίτλοι", "Τα κατορθώματα δίνουν τίτλους (Επιτεύγματα, K): φόρεσε έναν και φαίνεται κάτω από το όνομά σου για όλους. Τα μετα-επιτεύγματα ανταμείβουν τη συλλογή επιτευγμάτων."],
+  "Levelling pace": ["Ρυθμός εξέλιξης", "Η εμπειρία επιβραδύνεται μετά το επίπεδο 5 (πλήρως από το 20): ο δρόμος ως το 60 είναι μακρύς. Ξεκούραση (+15%), Δώρο του Βετεράνου (+50%) και επίπεδα συντεχνίας προστίθενται."],
+  "Raid mechanics (Deep)": ["Μηχανισμοί επιδρομών (Βάθη)", "Τα Πνιγμένα Βάθη μιλούν την ίδια γλώσσα με τις άλλες επιδρομές: πορτοκαλί στοίβες σημαίνουν αλλαγή αμυντικού, μπάρα ξορκιού κάτω από τον αρχηγό σημαίνει ζάλισέ τον ή κάψε το 6% της ζωής του, οι μπλε κύκλοι απορροφώνται, τα μωβ σημάδια απλώνονται, οι σεισμοί πηδιούνται, οι πράσινοι κύκλοι είναι ασφαλείς, οι φάσεις ασπίδας τελειώνουν όταν πεθάνουν οι φρουροί."],
+  "The Obsidian Foundry": ["Το Οψιδιανό Χυτήριο", "Μπουντρούμι επιπέδου 18 νοτιοανατολικά του Μαύρου Κάστρου. Ο Κράαλ στοιβάζει Καψάλισμα στον αμυντικό του (αλλαγή στο ×3), ρίχνει σκουριά κάτω από όλους, σφραγίζει το καμίνι πίσω από Κατασκευάσματα Σκουριάς σε κάθε τρίτο της ζωής του και ρίχνει Έκρηξη Καμινιού — ζάλισέ τον ή κάψε το 6% της ζωής του."],
+  "Reforge, temper, Grandmaster": ["Αναχύτευση, βαφή, Αρχιμάστορας", "Σε αμόνι (κοντά σε σιδερά ή στο Αρχοντικό σου) το βιβλίο Επαγγελμάτων (B → Σιδηρουργία) σου επιτρέπει να αλλάξεις ένα χαρακτηριστικό οποιουδήποτε αντικειμένου σε άλλο με δεξιότητα 200, και να βάψεις ένα αντικείμενο (+2 επίπεδο, τρεις φορές) με 250 και Οψιδιανούς Σβώλους από μπουντρούμια. Από 275, οι συνταγές Αρχιμάστορα κάνουν υλικά Τεχνίτη και Αβυσσαλέους Πυρήνες (επιδρομές, Μυθικό+5, διαλυμένα θρυλικά) θρυλικό εξοπλισμό επιπέδου 60 και τις ισχυρότερες μαγείες. Η Ντουλάπα αποθηκεύει τρία σύνολα ανά ήρωα."],
+  "Install as an app": ["Εγκατάσταση ως εφαρμογή", "Όταν το Vigilfall ανοίγει από ιστότοπο (https), το κύριο μενού προσφέρει Εγκατάσταση ως εφαρμογή (Chrome, Edge, Android). Σε iPhone και iPad χρησιμοποίησε στο Safari Κοινοποίηση → Προσθήκη στην οθόνη Αφετηρίας. Η εφαρμογή ανοίγει σε πλήρη οθόνη, κρατά το εικονίδιό της και ενημερώνεται μόνη της στην επόμενη εκκίνηση."],
+  "Enemy level": ["Επίπεδο εχθρού", "Ένας εχθρός πάνω από το επίπεδό σου χτυπά πιο δυνατά και δέχεται λιγότερη ζημιά — επικίνδυνος στο +2, θανάσιμος στο +4, αδύνατος πιο πάνω. Το χρώμα του επιπέδου στο πλαίσιο στόχου σε προειδοποιεί· ☠ σημαίνει 5 ή περισσότερα επίπεδα πάνω από σένα."],
+  Language: ["Γλώσσα", "Ρυθμίσεις → Γλώσσα αλλάζει ανάμεσα σε Αγγλικά και Ελληνικά. Τα ονόματα αντικειμένων, διακοσμητικών και υλικών μένουν στα αγγλικά."],
+};
+X.EL.tut = [
+  "Κινήσου με <b>W A S D</b> και κοίτα γύρω με το <b>ποντίκι</b>.",
+  "Κράτα <b>Shift</b> για τρέξιμο, <b>Space</b> για άλμα και πάτα <b>C</b> για τούμπα — δεν μπορούν να σε χτυπήσουν όσο κυλάς.",
+  "Πήγαινε στη μεγάλη φωτιά και πάτα <b>F</b> για να την ανάψεις. Τα ιερά γεμίζουν λάδι και φίλτρα και εκεί επιστρέφεις όταν πεθαίνεις (δεν θεραπεύουν — ξεκουράσου εκτός μάχης ή βρες θεραπευτή).",
+  "Οι κάτοικοι με χρυσό <b>!</b> έχουν δουλειά για σένα. Μίλα στον <b>Πατέρα Όσγουιν</b> με <b>F</b> και δέξου την αποστολή του.",
+  "Επιτέσου με το <b>αριστερό κλικ</b>. Οι άλλες δεξιότητες είναι στο <b>δεξί κλικ, Q, E</b> και <b>R</b> (τελική). Πάτα <b>P</b> για να διαβάσεις τι κάνει η καθεμία.",
+  "Βγες από το άνοιγμα στον φράχτη και σκότωσε κάτι. Οι εχθροί δυναμώνουν όσο απομακρύνεσαι — ο χάρτης (<b>M</b>) δείχνει το επίπεδο κάθε περιοχής.",
+  "Το <b>I</b> ανοίγει τα αντικείμενα: κλικ σε λάφυρο για να το φορέσεις και φαίνεται στον χαρακτήρα σου. Το <b>N</b> ανοίγει τα ταλέντα — παίρνεις έναν πόντο σε κάθε επίπεδο.",
+  "Κράτα το φανάρι αναμμένο (<b>L</b>) και πρόσεχε τη <b>Λογική</b> σου: το σκοτάδι σε τρελαίνει. Ο Μπράνοκ και η Γριά Μάρτα στο Χωριό θα κάνουν εμπόριο μαζί σου. Καλό κυνήγι.",
+];
+X.EL.tutTouch = [
+  "Σύρε τον <b>αριστερό μοχλό</b> για κίνηση και σύρε στη <b>δεξιά πλευρά</b> της οθόνης για να κοιτάξεις γύρω.",
+  "Πάτα <b>⚡</b> για τρέξιμο, <b>⬆</b> για άλμα και <b>↻</b> για τούμπα — δεν μπορούν να σε χτυπήσουν όσο κυλάς.",
+  "Πήγαινε στη μεγάλη φωτιά και πάτα <b>F</b> για να την ανάψεις. Τα ιερά γεμίζουν λάδι και φίλτρα και εκεί επιστρέφεις όταν πεθαίνεις (δεν θεραπεύουν — ξεκουράσου εκτός μάχης ή βρες θεραπευτή).",
+  "Οι κάτοικοι με χρυσό <b>!</b> έχουν δουλειά για σένα. Πήγαινε στον <b>Πατέρα Όσγουιν</b>, πάτα <b>F</b> και δέξου την αποστολή του.",
+  "Πάτα <b>⚔</b> για επίθεση. Οι άλλες δεξιότητες είναι <b>🛡, Q, E</b> και <b>R</b> (τελική). Το <b>☰ μενού → Δεξιότητες</b> εξηγεί την καθεμία.",
+  "Βγες από το άνοιγμα στον φράχτη και σκότωσε κάτι. Οι εχθροί δυναμώνουν όσο απομακρύνεσαι — το κουμπί του χάρτη δείχνει το επίπεδο κάθε περιοχής.",
+  "Το κουμπί <b>🎒</b> ανοίγει τα αντικείμενα: πάτα σε λάφυρο για να το φορέσεις. Τα ταλέντα είναι στο <b>☰ μενού</b> — παίρνεις έναν πόντο σε κάθε επίπεδο.",
+  "Το φανάρι καίει <b>Oil</b> (κάτω αριστερά) — τάιζέ το και πρόσεχε τη <b>Λογική</b> σου: το σκοτάδι σε τρελαίνει. Ο Μπράνοκ και η Γριά Μάρτα στο Χωριό θα κάνουν εμπόριο μαζί σου. Καλό κυνήγι.",
+];
+
+/* ---- FY_el_ui.js ---- */
+/* 1.19.0 — Greek (ελληνικά): achievements, interface words, messages */
+X.EL = X.EL || {};
+X.EL.ach = {
+  first_blood: ["Πρώτο Αίμα στο Σκοτάδι", "Σκότωσε τον πρώτο σου εχθρό."],
+  kills_100: ["Νεκροθάφτης", "Σκότωσε 100 εχθρούς."],
+  kills_1000: ["Ο Μαθητής του Θεριστή", "Σκότωσε 1.000 εχθρούς."],
+  bonfire: ["Φύλακας της Φλόγας", "Άναψε τη φωτιά της Φρουράς."],
+  shrines_all: ["Προσκυνητής της Στάχτης", "Άναψε 14 ιερά σε όλο το Άλντμουρ."],
+  matron: ["Τέλος στο Κλάμα", "Νίκησε τη Βασίλισσα του Βάλτου."],
+  vhal: ["Χώμα στο Χώμα", "Νίκησε τον Βαλ, τον Βασιλιά των Οστών."],
+  bishop: ["Σώπασε τη Χορωδία", "Νίκησε τον Στακτερό Αρχιμάγο."],
+  kingslayer: ["Βασιλοκτόνος", "Νίκησε τον Μαλγκάρεθ, τον Σκοτεινό Άρχοντα. (Ξεκλειδώνει το φινίρισμα Κούφιο Στέμμα)"],
+  victory: ["Ο Ήλιος Ανατέλλει", "Τελείωσε την ιστορία. (Ξεκλειδώνει τη φλόγα Πρώτη Αυγή)"],
+  legendary: ["Κυνηγός Κειμηλίων", "Βρες ένα Κειμήλιο (θρυλικό αντικείμενο)."],
+  cursed: ["Ψιθυρίζει Πίσω", "Βρες ένα Καταραμένο αντικείμενο."],
+  healer: ["Χέρια της Αγίας", "Θεράπευσε συνολικά 10.000 ζωή."],
+  tank: ["Το Τείχος", "Απορρόφησε ή απόκρουσε 10.000 ζημιά."],
+  revive: ["Όχι Σήμερα", "Ανάστησε έναν σύμμαχο σε συνεργατικό παιχνίδι."],
+  coop: ["Συντροφιά της Φλόγας", "Παίξε μια συνεργατική συνεδρία."],
+  no_light: ["Περιπατητής στο Σκοτάδι", "Πέρασε συνολικά 3 λεπτά με χαμηλωμένο φανάρι. (Ξεκλειδώνει τον μανδύα Voidweave)"],
+  blood_moon_5: ["Νυχτερινή Βάρδια", "Δες 5 αυγές στο πεδίο. (Ξεκλειδώνει την αύρα Ματωμένο Φεγγάρι)"],
+  level_10: ["Ορκισμένος", "Φτάσε στο επίπεδο 10."],
+  level_25: ["Άρχοντας της Φρουράς", "Φτάσε στο επίπεδο 25."],
+  abomination: ["Ο Λογαριασμός του Χασάπη", "Σκότωσε 10 Σάρκινα Γκόλεμ."],
+  crates: ["Τυμβωρύχος", "Σπάσε 50 κιβώτια, βαρέλια ή φέρετρα."],
+  lore: ["Φύλακας Μυστικών", "Βρες και τις 16 σελίδες ιστορίας."],
+  all_heroes: ["Τα Πολλά Πρόσωπα της Φρουράς", "Παίξε με 9 διαφορετικούς ήρωες."],
+  abyss_1: ["Μέσα στη Ρωγμή", "Καθάρισε την Άβυσσο, Βαθμίδα 1."],
+  abyss_5: ["Περιπατητής της Αβύσσου", "Καθάρισε την Άβυσσο, Βαθμίδα 5."],
+  abyss_10: ["Ό,τι Κοιτά Πίσω", "Καθάρισε την Άβυσσο, Βαθμίδα 10."],
+  dailies: ["Ευσυνείδητος", "Ολοκλήρωσε 10 ημερήσια συμβόλαια."],
+  quests_5: ["Χρήσιμα Χέρια", "Ολοκλήρωσε 5 αποστολές."],
+  quests_all: ["Τίποτα Ατελείωτο", "Ολοκλήρωσε 40 αποστολές."],
+  rares_all: ["Δεκατρία Ονόματα", "Σκότωσε και τους 13 επώνυμους σπάνιους εχθρούς."],
+  explorer: ["Χαρτογράφος των Ερειπίων", "Ανακάλυψε 30 τοποθεσίες."],
+  chests_10: ["Κολλημένα Δάχτυλα", "Άνοιξε 10 σεντούκια θησαυρού."],
+  talents: ["Κύριος του Όρκου", "Ξόδεψε 25 πόντους ταλέντων σε έναν ήρωα."],
+  all_heroes_12: ["Δώδεκα Κεριά", "Παίξε με όλους τους 12 ήρωες."],
+  dodge: ["Δεν Είμαι Εκεί", "Κάνε τούμπα 100 φορές."],
+  dawnbringer: ["Φέρνων την Αυγή", "Ρίξε τον Μαλγκάρεθ τον Αδέσμευτο στον Θρόνο των Θυελλών."],
+  level_40: ["Πρωταθλητής της Φρουράς", "Φτάσε στο επίπεδο 40."],
+  level_60: ["Θρύλος του Άλντμουρ", "Φτάσε στο επίπεδο 60."],
+  generals: ["Όλεθρος των Στρατηγών", "Νίκησε και τους τέσσερις Φοβερούς Στρατηγούς των εξωτερικών χωρών."],
+  dungeons_5: ["Εξερευνητής Βαθών", "Καθάρισε 5 μπουντρούμια."],
+  dungeons_25: ["Αρχιεξερευνητής Βαθών", "Καθάρισε 25 μπουντρούμια."],
+  raids_1: ["Επιδρομέας", "Καθάρισε μια επιδρομή."],
+  mounts_3: ["Σταβλάρχης", "Απόκτησε 3 άλογα."],
+  house: ["Επιτέλους Σπίτι", "Αγόρασε σπίτι στο Ντόνμιρ."],
+  transmog_20: ["Ντυμένος για το Σκοτάδι", "Ξεκλείδωσε 20 εμφανίσεις."],
+  ach_towns: ["Από Λιμάνι σε Λιμάνι", "Επισκέψου και τις τέσσερις παραθαλάσσιες πόλεις"],
+  ach_bridges: ["Γεφυροφύλακας", "Κράτα και τις τέσσερις γέφυρες των ποταμών"],
+  ach_herbalism: ["Δάσκαλος της Βοτανολογίας", "Φτάσε τη Βοτανολογία στο 300"],
+  ach_mining: ["Δάσκαλος της Εξόρυξης", "Φτάσε την Εξόρυξη στο 300"],
+  ach_skinning: ["Δάσκαλος του Γδαρσίματος", "Φτάσε το Γδάρσιμο στο 300"],
+  ach_blacksmithing: ["Δάσκαλος της Σιδηρουργίας", "Φτάσε τη Σιδηρουργία στο 300"],
+  ach_enchanting: ["Δάσκαλος της Μαγείας", "Φτάσε τη Μαγεία στο 300"],
+  ach_inscription: ["Δάσκαλος της Χαρακτικής", "Φτάσε τη Χαρακτική στο 300"],
+  ach_crafts: ["Χειροποίητο", "Κατασκεύασε 100 πράγματα"],
+  ach_gather: ["Προμηθευτής", "Μάζεψε 500 υλικά"],
+  ach_mplus: ["Κύριος του Θεμέλιου Λίθου", "Ολοκλήρωσε εγκαίρως ένα μπουντρούμι Μυθικό +10"],
+  ach_duel: ["Μονομάχος", "Κέρδισε 10 μονομαχίες"],
+  ach_inv: ["Τείχος Ασπίδων", "Απόκρουσε 5 εισβολές"],
+  raid_deep1: ["Στα Βάθη", "Καθάρισε τα Πνιγμένα Βάθη."],
+  mythic1: ["Αβυσσαλέο Κειμήλιο", "Βρες ένα Μυθικό αντικείμενο."],
+  side_rooms: ["Εκτός Πεπατημένης", "Άνοιξε 10 κρυφές αίθουσες θησαυρού σε μπουντρούμια."],
+  arena_first: ["Πρώτο Αίμα (Αρένα)", "Κέρδισε έναν αγώνα αρένας."],
+  arena_10: ["Αγαπημένος του Πλήθους", "Κέρδισε 10 αγώνες αρένας."],
+  arena_25: ["Πρωταθλητής του Λάκκου", "Κέρδισε 25 αγώνες αρένας. (Ξεκλειδώνει το άλογο του Μονομάχου)"],
+  arena_1800: ["Μονομάχος", "Φτάσε τα 1800 βαθμούς αρένας. (Ξεκλειδώνει την αύρα Δόξα του Μονομάχου)"],
+  mount_10: ["Γεμάτος Στάβλος", "Συγκέντρωσε 10 άλογα."],
+  mount_20: ["Ένα Άλογο για Κάθε Διάθεση", "Συγκέντρωσε 20 άλογα."],
+  pet_10: ["Καλό Σκυλί", "Μεγάλωσε έναν σύντροφο στο επίπεδο 10."],
+  pet_bouts: ["Πρωταθλητής του Κυνοτροφείου", "Κέρδισε 10 αγώνες συντρόφων."],
+  bg_first: ["Κατακτητής Φυλαχτών", "Κέρδισε ένα πεδίο μάχης Wardfall."],
+  bg_10: ["Φύλακας του Πεδίου", "Κέρδισε 10 πεδία μάχης Wardfall."],
+  ev_boss1: ["Φύλακας των Δρόμων", "Νίκησε έναν παγκόσμιο αρχηγό."],
+  ev_boss10: ["Μάστιγα των Δρόμων", "Νίκησε 10 παγκόσμιους αρχηγούς."],
+  ev_car1: ["Συνοδεία", "Φέρε ένα καραβάνι στο σπίτι."],
+  ev_car10: ["Αρχηγός Καραβανιών", "Φέρε 10 καραβάνια στο σπίτι."],
+  fish_50: ["Υπομονετικός Ψαράς", "Ψάρεψε 50 ψάρια."],
+  fish_coffer: ["Τυχερή Ρίψη", "Ψάρεψε ένα βυθισμένο σεντούκι."],
+  meals_25: ["Μάγειρας της Κατασκήνωσης", "Μαγείρεψε 25 γεύματα."],
+  auction_5: ["Έμπορος", "Πούλησε 5 αντικείμενα στον πίνακα δημοπρασιών."],
+  guild_found: ["Σημαιοφόρος", "Ίδρυσε μια συντεχνία."],
+  guild_q5: ["Ώμο με Ώμο", "Κέρδισε 5 ανταμοιβές αποστολών συντεχνίας."],
+  guild_q25: ["Πυλώνας της Συντεχνίας", "Κέρδισε 25 ανταμοιβές αποστολών συντεχνίας."],
+  deco_first: ["Νοικοκύρης", "Τοποθέτησε ένα έπιπλο στο σπίτι σου"],
+  deco_ten: ["Διακοσμητής", "Τοποθέτησε 10 έπιπλα"],
+  deco_trophy: ["Αίθουσα Τροπαίων", "Αγόρασε ή κέρδισε 15 έπιπλα"],
+  fly_first: ["Φτερά πάνω από το Άλντμουρ", "Κάνε μια πτήση με δράκο"],
+  fly_ten: ["Συχνός Ταξιδιώτης", "Κάνε 10 πτήσεις με δράκο"],
+  meta_10: ["Πολυτεχνίτης", "Κέρδισε 10 επιτεύγματα"],
+  meta_25: ["Συλλέκτης Κατορθωμάτων", "Κέρδισε 25 επιτεύγματα"],
+  meta_60: ["Θρύλος του Άλντμουρ", "Κέρδισε 60 επιτεύγματα"],
+  photo_first: ["Τέλεια Φωτογραφία", "Βγάλε μια φωτογραφία σε λειτουργία φωτογραφίας"],
+  dun_foundry1: ["Σφυρηλατημένος στη Φωτιά", "Καθάρισε το Οψιδιανό Χυτήριο."],
+  reforge1: ["Δεύτερη Γνώμη", "Αναχύτευσε ένα αντικείμενο."],
+  temper3: ["Βαμμένο Ατσάλι", "Βάψε 3 αντικείμενα."],
+  gm1: ["Σφυρηλατημένο στο Κενό", "Κατασκεύασε ένα αντικείμενο Αρχιμάστορα."],
+};
+X.EL.achClass = {
+  emblem: ["Ορκισμένος", "Φτάσε στο επίπεδο 10 ως {h}. (Ξεκλειδώνει το Έμβλημα του Όρκου)"],
+  sigil: ["Θραύστης Φοβεραρχών", "Νίκησε οποιονδήποτε Φοβεράρχη ως {h}. (Ξεκλειδώνει το Στέμμα από Θράκα)"],
+  wings: ["Βασιλοκτόνος", "Νίκησε τον Μαλγκάρεθ ως {h}. (Ξεκλειδώνει τα Φτερά της Φρουράς)"],
+  ascendant: ["Ανερχόμενος", "Καθάρισε την Άβυσσο, Βαθμίδα 5 ως {h}. (Ξεκλειδώνει το Ανερχόμενος)"],
+};
+// exact interface strings (whitespace-trimmed); item, cosmetic and material names stay English
+X.EL.ui = {
+  // menus
+  "New game": "Νέο παιχνίδι", Continue: "Συνέχεια", "Click to begin": "Κάνε κλικ για να ξεκινήσεις", "The Last Light of Aldmoor": "Το Τελευταίο Φως του Άλντμουρ",
+  "Best with headphones · A first-person fantasy RPG · Solo or co-op": "Καλύτερα με ακουστικά · RPG φαντασίας σε πρώτο πρόσωπο · Μόνος ή με φίλους",
+  "Opening the gates of Aldmoor…": "Ανοίγουν οι πύλες του Άλντμουρ…", "Raising the dead…": "Οι νεκροί σηκώνονται…", "Choose your Oath": "Διάλεξε τον Όρκο σου",
+  "Answer the Vigil": "Απάντησε στη Φρουρά", "⚔ Answer the Vigil": "⚔ Απάντησε στη Φρουρά", "Change Hero": "Αλλαγή Ήρωα", Settings: "Ρυθμίσεις", Saves: "Αποθηκεύσεις",
+  "Install as app": "Εγκατάσταση ως εφαρμογή", "Start a new journey here.": "Ξεκίνα ένα νέο ταξίδι εδώ.", Prologue: "Πρόλογος", Back: "Πίσω", Close: "Κλείσιμο", Accept: "Αποδοχή",
+  Decline: "Άρνηση", Delete: "Διαγραφή", Export: "Εξαγωγή", Import: "Εισαγωγή", Load: "Φόρτωση", Play: "Παίξε", Solo: "Μόνος", Host: "Φιλοξενία", Join: "Σύνδεση",
+  Resume: "Συνέχεια", Inventory: "Αντικείμενα", Skills: "Δεξιότητες", Talents: "Ταλέντα", Quests: "Αποστολές", "Contracts & Lore": "Συμβόλαια και Ιστορία",
+  "Save now": "Αποθήκευση τώρα", "Saved ✓": "Αποθηκεύτηκε ✓", Achievements: "Επιτεύγματα", Wardrobe: "Ντουλάπα", Map: "Χάρτης", "Save & Quit to Menu": "Αποθήκευση και Έξοδος στο Μενού",
+  "Begin New Game+": "Ξεκίνα Νέο Παιχνίδι+", "Help & Controls": "Βοήθεια και Χειρισμός", Help: "Βοήθεια", Social: "Κοινωνικά", Guild: "Συντεχνία", Collections: "Συλλογές",
+  Contracts: "Συμβόλαια", "Quest Log": "Ημερολόγιο Αποστολών", Professions: "Επαγγέλματα", Cosmetics: "Διακοσμητικά", Transmog: "Μεταμφίεση", Furniture: "Έπιπλα", Furnishings: "Επίπλωση",
+  // settings
+  "Graphics quality": "Ποιότητα γραφικών", Low: "Χαμηλή", Medium: "Μεσαία", High: "Υψηλή", Ultra: "Πολύ υψηλή", "(applies on next start)": "(ισχύει στην επόμενη εκκίνηση)",
+  "Resolution scale": "Κλίμακα ανάλυσης", "50% (Performance)": "50% (Απόδοση)", "67% (Balanced)": "67% (Ισορροπία)", "77% (Quality)": "77% (Ποιότητα)", "100% (Native)": "100% (Εγγενής)", "125% (Supersample)": "125% (Υπερδειγματοληψία)",
+  Bloom: "Λάμψη", "Ambient occlusion (SSAO)": "Σκίαση περιβάλλοντος (SSAO)", "View distance": "Απόσταση ορατότητας", "Near (fastest)": "Κοντινή (ταχύτερη)", Normal: "Κανονική", Far: "Μακρινή",
+  "Very far": "Πολύ μακρινή", "Extreme (slow on weak PCs)": "Ακραία (αργή σε αδύναμους υπολογιστές)", "Field of view": "Οπτικό πεδίο", "Mouse sensitivity": "Ευαισθησία ποντικιού", Brightness: "Φωτεινότητα",
+  "Master volume": "Κύρια ένταση", "Music volume": "Ένταση μουσικής", "Effects volume": "Ένταση εφέ", "Show FPS": "Εμφάνιση FPS", "Reset all settings to default": "Επαναφορά όλων των ρυθμίσεων",
+  "Replay the tutorial": "Ξαναπαίξε τον οδηγό", "Show first-time hints again": "Δείξε ξανά τις πρώτες συμβουλές", "Voice chat": "Φωνητική συνομιλία", Microphone: "Μικρόφωνο", "Voice volume": "Ένταση φωνής",
+  "Voice range": "Εμβέλεια φωνής", "Push-to-talk (hold V)": "Πάτα για ομιλία (κράτα V)", "Open mic (click the mic icon to mute)": "Ανοιχτό μικρόφωνο (κλικ στο εικονίδιο για σίγαση)",
+  "Off (you still hear others)": "Κλειστό (ακούς ακόμα τους άλλους)", "(group members are always heard)": "(τα μέλη της ομάδας ακούγονται πάντα)", "Mouse look speed.": "Ταχύτητα κοιτάγματος με το ποντίκι.",
+  "Wider shows more but distorts the edges.": "Πιο φαρδύ δείχνει περισσότερα αλλά παραμορφώνει τις άκρες.", "Internal rendering resolution. Below 100% is faster and softer.": "Εσωτερική ανάλυση απόδοσης. Κάτω από 100% είναι πιο γρήγορη και πιο θολή.",
+  "Shadow quality, lights and effects. Low for weak laptops and phones.": "Ποιότητα σκιών, φώτα και εφέ. Χαμηλή για αδύναμα laptop και κινητά.", "Zone music and stingers.": "Μουσική περιοχών και ηχητικά.",
+  "Weapons, creatures, interface.": "Όπλα, πλάσματα, διεπαφή.", "Your lantern light": "Το φως του φαναριού σου", "Sun shadows": "Σκιές ήλιου", "God rays (sun shafts)": "Ακτίνες ήλιου",
+  "Water & sea": "Νερό και θάλασσα", "Sky dome": "Ουράνιος θόλος", "Troubleshooting": "Επίλυση προβλημάτων", "Wind on trees (applies on next start)": "Άνεμος στα δέντρα (ισχύει στην επόμενη εκκίνηση)",
+  "First-person hands & weapon": "Χέρια και όπλο πρώτου προσώπου", "Torch / lantern point lights": "Φώτα πυρσών / φαναριών", "Merged props (batched meshes)": "Ενωμένα αντικείμενα (ομαδοποιημένα πλέγματα)",
+  "Vegetation & fences (instanced)": "Βλάστηση και φράχτες", "Village wards (blue domes)": "Φυλαχτά χωριών (μπλε θόλοι)", "Flame meshes": "Φλόγες", "Glow sprites": "Λάμψεις",
+  "If part of the screen goes black, untick these one at a time (they apply instantly) and tell me which one makes it stop. All of them are normally ON.": "Αν μέρος της οθόνης μαυρίζει, ξετσέκαρε αυτά ένα-ένα (ισχύουν αμέσως) και πες μου ποιο το σταματά. Κανονικά είναι όλα ΑΝΟΙΧΤΑ.",
+  Language: "Γλώσσα", "Language (reloads the game)": "Γλώσσα (ξαναφορτώνει το παιχνίδι)",
+  // HUD and panels
+  Armor: "Θωράκιση", Armour: "Θωράκιση", Power: "Δύναμη", Haste: "Ταχύτητα", Critical: "Κρίσιμο", Lifesteal: "Απορρόφηση ζωής", Speed: "Ταχύτητα", "Max HP": "Μέγ. ζωή", Resolve: "Αποφασιστικότητα",
+  vitality: "ζωτικότητα", power: "δύναμη", haste: "ταχύτητα", crit: "κρίσιμο", armor: "θωράκιση", leech: "απορρόφηση", grace: "χάρη", resolve: "αποφασιστικότητα",
+  Weapon: "Όπλο", weapon: "όπλο", Head: "Κεφάλι", helm: "κράνος", Chest: "Θώρακας", chest: "θώρακας", Boots: "Μπότες", boots: "μπότες", relic: "κειμήλιο", Cloak: "Μανδύας", Hat: "Καπέλο",
+  Hats: "Καπέλα", Cloaks: "Μανδύες", Wings: "Φτερά", Auras: "Αύρες", Aura: "Αύρα", Lights: "Φώτα", Walls: "Τοίχοι", Garden: "Κήπος", Relics: "Κειμήλια", Remedies: "Γιατρικά", Weapons: "Όπλα",
+  Upgrades: "Αναβαθμίσεις", Wares: "Εμπορεύματα", Buy: "Αγορά", Sort: "Ταξινόμηση", Wear: "Φόρεσε", Place: "Τοποθέτηση", Craft: "Κατασκευή", Recipes: "Συνταγές", Materials: "Υλικά",
+  Reforge: "Αναχύτευση", Temper: "Βαφή", Disenchant: "Απομάγευση", Unlearn: "Ξέχασε", Refresh: "Ανανέωση", Locked: "Κλειδωμένο", Available: "Διαθέσιμο", equipped: "φορεμένο", "in use": "σε χρήση",
+  "empty slot": "άδεια θέση", "— empty —": "— άδειο —", empty: "άδειο", None: "Κανένα", All: "Όλα", Name: "Όνομα", free: "δωρεάν", reward: "ανταμοιβή", showing: "εμφάνιση", alone: "μόνος",
+  Weekly: "Εβδομαδιαίο", Daily: "Ημερήσιο", Objective: "Στόχος", "Quest reward": "Ανταμοιβή αποστολής", "Rare drop": "Σπάνιο λάφυρο", "Real item": "Πραγματικό αντικείμενο",
+  "Salvage all": "Διάλυση όλων", "Item sets": "Σετ αντικειμένων", Appearances: "Εμφανίσεις", Outfits: "Σύνολα", "Save current": "Αποθήκευση τρέχοντος", "No title": "Χωρίς τίτλο",
+  Passives: "Παθητικά", "(ultimate)": "(τελική)", "No cooldown": "Χωρίς αναμονή", "Keystone talents": "Ταλέντα-κλειδιά", "Hover a talent to see what it does.": "Πέρασε το ποντίκι πάνω από ένα ταλέντο για να δεις τι κάνει.",
+  "Skills (see the bar)": "Δεξιότητες (δες τη μπάρα)", "Dodge Roll": "Τούμπα", "Dodge roll": "Τούμπα", "Roll 5.5m in the direction you are moving. You cannot be damaged while rolling.": "Κυλά 5.5m προς την κατεύθυνση που κινείσαι. Δεν δέχεσαι ζημιά όσο κυλάς.",
+  "Healing Draught": "Θεραπευτικό Φίλτρο", "Healing draught": "Θεραπευτικό φίλτρο", "Refill one healing draught.": "Ξαναγεμίζει ένα θεραπευτικό φίλτρο.", Draught: "Φίλτρο",
+  "👁 Sanity": "👁 Λογική", Sanity: "Λογική", Health: "Ζωή", Rage: "Οργή", Mana: "Μάνα", Energy: "Ενέργεια", Focus: "Συγκέντρωση",
+  "Equip something first.": "Φόρεσε κάτι πρώτα.", "Glyphs in your bag": "Γλυφές στην τσάντα σου", "No glyphs written yet.": "Δεν έχεις γράψει ακόμα γλυφές.",
+  "Click an item to equip · Right-click to salvage (Soul Shards; Relic/Cursed also give Ashen Marks) · Click equipped gear to unequip": "Κλικ σε αντικείμενο για να το φορέσεις · Δεξί κλικ για διάλυση (Θραύσματα Ψυχής· τα Κειμήλια/Καταραμένα δίνουν και Στακτερά Σημάδια) · Κλικ σε φορεμένο για να το βγάλεις",
+  "ⓘ drag · right-click": "ⓘ σύρε · δεξί κλικ", "drag to turn": "σύρε για περιστροφή", "Every item you pick up unlocks its look for transmog at the Wardrobe.": "Κάθε αντικείμενο που παίρνεις ξεκλειδώνει την εμφάνισή του για μεταμφίεση στην Ντουλάπα.",
+  "Every item you pick up unlocks its look forever. Choose a look per slot: your stats come from the item you wear, the appearance from the one you choose. Other players see your transmog.": "Κάθε αντικείμενο που παίρνεις ξεκλειδώνει για πάντα την εμφάνισή του. Διάλεξε εμφάνιση ανά θέση: τα χαρακτηριστικά έρχονται από αυτό που φοράς, η όψη από αυτό που διαλέγεις. Οι άλλοι παίκτες βλέπουν τη μεταμφίεσή σου.",
+  "Cosmetics are purely visual and shared by all your heroes. Earn Ashen Marks from achievements, contracts, bosses, dungeons and salvaging Relics. Hover anything to preview it on your hero.": "Τα διακοσμητικά είναι μόνο εμφάνιση και κοινά για όλους τους ήρωές σου. Κέρδισε Στακτερά Σημάδια από επιτεύγματα, συμβόλαια, αρχηγούς, μπουντρούμια και διάλυση Κειμηλίων. Πέρασε το ποντίκι από πάνω για προεπισκόπηση.",
+  "Glowing regalia earned by this class alone. Other players see it on you; you see it in your inventory portrait.": "Λαμπερά διάσημα που κερδίζει μόνο αυτή η κλάση. Οι άλλοι τα βλέπουν πάνω σου· εσύ στο πορτρέτο των αντικειμένων σου.",
+  "shared by all your heroes": "κοινά για όλους τους ήρωές σου", "(all classes)": "(όλες οι κλάσεις)", "Armor Finish": "Φινίρισμα Πανοπλίας", "Armor finishes": "Φινιρίσματα πανοπλίας", "Lantern flames": "Φλόγες φαναριού", "Lantern Flame": "Φλόγα Φαναριού",
+  "One point per level, so you cannot take everything: choose. Each row needs 2 more points in that tree than the row above. Talents with a skill picture change that skill. Hover a talent to read it, click to learn. Edda the Gravekeeper resets talents.": "Ένας πόντος ανά επίπεδο, άρα δεν τα παίρνεις όλα: διάλεξε. Κάθε σειρά θέλει 2 πόντους παραπάνω σε εκείνο το δέντρο από την από πάνω. Τα ταλέντα με εικόνα δεξιότητας αλλάζουν εκείνη τη δεξιότητα. Πέρασε το ποντίκι για να το διαβάσεις, κλικ για να το μάθεις. Η Έντα η Νεκροθάφτισσα επαναφέρει τα ταλέντα.",
+  // quests, contracts, lore
+  "No active quests. Townsfolk with a gold": "Καμία ενεργή αποστολή. Οι κάτοικοι με χρυσό", "over their heads have work for you.": "πάνω από το κεφάλι έχουν δουλειά για σένα.",
+  "! Quest available · ? Quest ready": "! Διαθέσιμη αποστολή · ? Έτοιμη αποστολή", "Tip: follow the gold arrow under the zone name — it points to your next quest.": "Συμβουλή: ακολούθησε το χρυσό βέλος κάτω από το όνομα της περιοχής — δείχνει την επόμενη αποστολή σου.",
+  "Daily — resets at 00:00 UTC": "Ημερήσια — ανανεώνονται στις 00:00 UTC", "??? — undiscovered page": "??? — σελίδα που δεν βρέθηκε", "Choose one reward per week. Mythic+ runs count only when timed.": "Διάλεξε μία ανταμοιβή την εβδομάδα. Οι διαδρομές Μυθικό+ μετρούν μόνο όταν είναι εγκαίρως.",
+  "The Great Vault": "Το Μεγάλο Θησαυροφυλάκιο", "See the Achievements tab for the full list.": "Δες την καρτέλα Επιτευγμάτων για όλη τη λίστα.", Lore: "Ιστορία", Legend: "Υπόμνημα",
+  "• Townsfolk / merchant": "• Κάτοικος / έμπορος", "🔥 Shrine (lit / unlit)": "🔥 Ιερό (αναμμένο / σβηστό)", "☠ Named rare enemy": "☠ Επώνυμος σπάνιος εχθρός", "☠ Boss": "☠ Αρχηγός",
+  "⚔ Raid": "⚔ Επιδρομή", "☖ Dungeon": "☖ Μπουντρούμι", "▣ Strongbox": "▣ Σεντούκι", "✉ Lore page": "✉ Σελίδα ιστορίας", "Map (wheel/pinch to zoom, drag to pan)": "Χάρτης (ροδέλα/τσίμπημα για ζουμ, σύρε για μετακίνηση)",
+  "Hatched areas are unexplored. Four mountain passes lead to the outer lands (levels 17–60).": "Οι διαγραμμισμένες περιοχές είναι ανεξερεύνητες. Τέσσερα ορεινά περάσματα οδηγούν στις εξωτερικές χώρες (επίπεδα 17–60).",
+  "Bestiary — what the dead can do": "Θηριολόγιο — τι μπορούν να κάνουν οι νεκροί", "a survey of the dying kingdom": "μια περιήγηση στο βασίλειο που πεθαίνει", Aldmoor: "Άλντμουρ", "The Vigil": "Η Φρουρά",
+  // help
+  "How things work": "Πώς δουλεύουν τα πράγματα", Controls: "Χειρισμός", Move: "Κίνηση", Jump: "Άλμα", Sprint: "Τρέξιμο", Dodge: "Τούμπα", Mouse: "Ποντίκι", "Mount / dismount": "Ανέβα / κατέβα από το άλογο",
+  "Lantern on/off": "Φανάρι αναμμένο/σβηστό", "Menu / close": "Μενού / κλείσιμο", "This help": "Αυτή η βοήθεια", "press F1 any time": "πάτα F1 οποτεδήποτε", "Photo mode (F8)": "Λειτουργία φωτογραφίας (F8)",
+  "Interact / talk / gather / fish / cast line": "Αλληλεπίδραση / ομιλία / συλλογή / ψάρεμα", "Look · LMB attack · RMB block / secondary": "Κοίτα · Αριστερό κλικ επίθεση · Δεξί κλικ άμυνα / δεύτερη",
+  "Trade with aimed player": "Εμπόριο με τον παίκτη που σημαδεύεις", "Chat · /g guild chat": "Συνομιλία · /g συνομιλία συντεχνίας", "Z mount · F interact · dungeons and raids reset daily / weekly": "Z άλογο · F αλληλεπίδραση · μπουντρούμια και επιδρομές ανανεώνονται ημερήσια / εβδομαδιαία",
+  "Photo mode: free camera, hidden interface, filters (F), capture (Space / click)": "Λειτουργία φωτογραφίας: ελεύθερη κάμερα, κρυφή διεπαφή, φίλτρα (F), λήψη (Space / κλικ)",
+  "WASD move · Mouse aim · LMB/RMB attacks · Q E R skills · T taunt (tanks) · Shift sprint · Space jump · C dodge · F interact · H potion · L lantern · Z mount · V talk · I inventory · O social · P skills · N talents · J quests · K achievements · M map · Enter chat · Esc pause": "WASD κίνηση · Ποντίκι σημάδι · Αριστερό/Δεξί κλικ επιθέσεις · Q E R δεξιότητες · T πρόκληση (αμυντικοί) · Shift τρέξιμο · Space άλμα · C τούμπα · F αλληλεπίδραση · H φίλτρο · L φανάρι · Z άλογο · V ομιλία · I αντικείμενα · O κοινωνικά · P δεξιότητες · N ταλέντα · J αποστολές · K επιτεύγματα · M χάρτης · Enter συνομιλία · Esc παύση",
+  // social, guild, voice
+  "Friends & Groups": "Φίλοι και Ομάδες", "👥 Friends & Groups": "👥 Φίλοι και Ομάδες", "Add friend": "Προσθήκη φίλου", "Friend code:": "Κωδικός φίλου:", "your friend code:": "ο κωδικός φίλου σου:",
+  "Players in this world": "Παίκτες σ' αυτόν τον κόσμο", "You are not in a group": "Δεν είσαι σε ομάδα", "to invite,": "για πρόσκληση,", "to trade,": "για εμπόριο,", "In the world: aim at a player and press": "Στον κόσμο: σημάδεψε έναν παίκτη και πάτα",
+  "to duel. Group members always hear each other in voice chat. The Dungeon Finder queues your whole group.": "για μονομαχία. Τα μέλη της ομάδας ακούγονται πάντα στη φωνητική συνομιλία. Η Αναζήτηση Μπουντρουμιού βάζει όλη την ομάδα στην ουρά.",
+  "No friends yet. Ask a friend for their code — it is shown on their main menu.": "Δεν έχεις φίλους ακόμα. Ζήτα από έναν φίλο τον κωδικό του — φαίνεται στο κύριο μενού του.",
+  "Nobody else is here yet. Share your friend code or use the Dungeon Finder at any portal.": "Δεν είναι κανείς άλλος εδώ ακόμα. Μοιράσου τον κωδικό φίλου σου ή χρησιμοποίησε την Αναζήτηση Μπουντρουμιού σε μια πύλη.",
+  "Friends can join your world with this code (also in the Esc menu and the Social panel [O])": "Οι φίλοι μπαίνουν στον κόσμο σου με αυτόν τον κωδικό (και στο μενού Esc και στα Κοινωνικά [O])",
+  "No guild yet — Registrar Mara in Dawnmere founds one for 500 shards.": "Καμία συντεχνία ακόμα — η Ληξίαρχος Μάρα στο Ντόνμιρ ιδρύει μία για 500 θραύσματα.",
+  "You are not in a guild. Found one at Registrar Mara in Dawnmere (500 shards), or ask an officer of an existing guild to invite you.": "Δεν είσαι σε συντεχνία. Ίδρυσε μία στη Ληξίαρχο Μάρα στο Ντόνμιρ (500 θραύσματα) ή ζήτα από αξιωματικό μιας συντεχνίας να σε προσκαλέσει.",
+  "Already in a guild elsewhere? Ask an officer to invite you — from the same world, or by friend code.": "Είσαι ήδη σε συντεχνία αλλού; Ζήτα από έναν αξιωματικό να σε προσκαλέσει — από τον ίδιο κόσμο ή με κωδικό φίλου.",
+  "A guild is shared by its members wherever they play: roster, bank, chat (": "Η συντεχνία είναι κοινή για τα μέλη της όπου κι αν παίζουν: μέλη, τράπεζα, συνομιλία (",
+  "in chat), weekly guild quests and a hall. Members sync whenever they meet — in the same world, or through friend pings.": "στη συνομιλία), εβδομαδιαίες αποστολές και αίθουσα. Τα μέλη συγχρονίζονται όταν συναντιούνται — στον ίδιο κόσμο ή μέσω φίλων.",
+  "Connection lost — reconnecting…": "Η σύνδεση χάθηκε — επανασύνδεση…", "🎤 no mic": "🎤 χωρίς μικρόφωνο", "🎤 hold V": "🎤 κράτα V",
+  // professions
+  Herbalism: "Βοτανολογία", Mining: "Εξόρυξη", Skinning: "Γδάρσιμο", Blacksmithing: "Σιδηρουργία", Enchanting: "Μαγεία", Inscription: "Χαρακτική", Fishing: "Ψάρεμα", Cooking: "Μαγειρική",
+  "Anvil work": "Δουλειά στο αμόνι", "Where to look": "Πού να ψάξεις", "Where to fish": "Πού να ψαρέψεις",
+  "Pick herbs across Aldmoor. Herbs become inks for Inscription.": "Μάζεψε βότανα σε όλο το Άλντμουρ. Τα βότανα γίνονται μελάνια για τη Χαρακτική.",
+  "Skin slain beasts for hides. Hides become leather and vellum.": "Γδάρε τα σκοτωμένα θηρία για τομάρια. Τα τομάρια γίνονται δέρμα και περγαμηνή.",
+  "Smelt bars and forge weapons and armour at an anvil (near any smith, or in your Manor).": "Λιώσε ράβδους και σφυρηλάτησε όπλα και πανοπλίες σε αμόνι (κοντά σε σιδερά ή στο Αρχοντικό σου).",
+  "Disenchant unwanted gear into dust and essence; enchant weapons, chests and boots permanently.": "Απομάγευσε τον εξοπλισμό που δεν θέλεις σε σκόνη και ουσία· μάγεψε μόνιμα όπλα, θώρακες και μπότες.",
+  "Mill herbs into inks. Write glyphs that change your skills, and scrolls that buff you for 30 minutes.": "Άλεσε βότανα σε μελάνια. Γράψε γλυφές που αλλάζουν τις δεξιότητές σου και πάπυρους που σε ενισχύουν για 30 λεπτά.",
+  "Cook fish and meat over any fire (the Vigil bonfire, a camp, your Manor hearth). Food gives a 20-minute Well Fed buff.": "Μαγείρεψε ψάρι και κρέας σε οποιαδήποτε φωτιά (τη φωτιά της Φρουράς, μια κατασκήνωση, το τζάκι του Αρχοντικού). Το φαγητό δίνει 20 λεπτά Χορτάτος.",
+  "Cast a line from any shore, river bank or pier. Fish feed the Cooking pot — and the sea keeps stranger things than fish.": "Ρίξε πετονιά από ακτή, όχθη ή προβλήτα. Τα ψάρια πάνε στην κατσαρόλα — και η θάλασσα κρύβει πιο παράξενα πράγματα από ψάρια.",
+  "Stand on a shore facing the water and press F to cast. When the float dips and you see \"!\", press F again within a second. Sunken coffers hold shards and sometimes gear. Fish are cooked over any fire.": "Στάσου σε ακτή κοιτάζοντας το νερό και πάτα F. Όταν βουλιάξει ο φελλός και δεις «!», πάτα ξανά F μέσα σε ένα δευτερόλεπτο. Τα βυθισμένα σεντούκια έχουν θραύσματα και καμιά φορά εξοπλισμό. Τα ψάρια μαγειρεύονται σε φωτιά.",
+  "Cooking needs a fire nearby. Meat comes from wolves and beasts; fish from Fishing.": "Η μαγειρική θέλει φωτιά κοντά. Το κρέας έρχεται από λύκους και θηρία· τα ψάρια από το ψάρεμα.",
+  "Nothing gathered yet. Herbs glow green, ore veins sparkle; beasts can be skinned after they fall.": "Τίποτα μαζεμένο ακόμα. Τα βότανα λάμπουν πράσινα, οι φλέβες σπινθηρίζουν· τα θηρία γδέρνονται αφού πέσουν.",
+  "Skill-ups: orange nodes always, yellow often, green rarely, grey never. Nodes regrow after a few minutes.": "Άνοδος δεξιότητας: πορτοκαλί πάντα, κίτρινα συχνά, πράσινα σπάνια, γκρι ποτέ. Τα σημεία ξαναφυτρώνουν μετά από λίγα λεπτά.",
+  "Swap one stat on an item for a stat it does not have, at the same strength. Costs 2 bars and 1 dust of the item's tier.": "Άλλαξε ένα χαρακτηριστικό ενός αντικειμένου με άλλο που δεν έχει, στην ίδια ισχύ. Κοστίζει 2 ράβδους και 1 σκόνη της βαθμίδας του.",
+  "Turns an item into dust (common/rare) or essence (epic and up) of its tier.": "Κάνει ένα αντικείμενο σκόνη (κοινό/σπάνιο) ή ουσία (επικό και πάνω) της βαθμίδας του.",
+  "reforge 200+ · temper 250+ · stand near a smith or in your Manor": "αναχύτευση 200+ · βαφή 250+ · στάσου κοντά σε σιδερά ή στο Αρχοντικό σου",
+  "press B · every hero can learn all eight": "πάτα B · κάθε ήρωας μαθαίνει και τα οκτώ", "(dungeons, salvaging epics).": "(μπουντρούμια, διάλυση επικών).",
+  // mounts, home, furnishing
+  "press Z in the field to mount · attacking or taking a hit dismounts you": "πάτα Z έξω για να ανέβεις · αν επιτεθείς ή σε χτυπήσουν κατεβαίνεις",
+  "cosmetic — they follow you and keep you company; one at a time": "διακοσμητικοί — σε ακολουθούν και σου κρατούν συντροφιά· ένας τη φορά",
+  "You own no house yet.": "Δεν έχεις σπίτι ακόμα.", "A roof, a bed and a stash chest.": "Μια στέγη, ένα κρεβάτι και ένα σεντούκι αποθήκης.", "Build a Cottage": "Χτίσε ένα Εξοχικό", "Empty Plot": "Άδειο Οικόπεδο",
+  "Buy a piece, then": "Αγόρασε ένα κομμάτι, μετά", "it: it follows where you look;": "το: ακολουθεί το βλέμμα σου·", "or the wheel turn it,": "ή η ροδέλα το γυρίζουν,", "sets it down,": "το τοποθετεί,", "to move it.": "για να το μετακινήσεις.",
+  // tutorial / prompts
+  "Backspace to skip": "Backspace για παράλειψη", "Light the Vigil bonfire in the Hamlet [F]": "Άναψε τη φωτιά της Φρουράς στο Χωριό [F]",
+  "To sell loot, open your inventory (I) and right-click an item to salvage it for Soul Shards.": "Για να πουλήσεις λάφυρα, άνοιξε τα αντικείμενα (I) και κάνε δεξί κλικ για διάλυση σε Θραύσματα Ψυχής.",
+  "Three save slots. The game saves automatically; you can also export a slot to a": "Τρεις θέσεις αποθήκευσης. Το παιχνίδι αποθηκεύει αυτόματα· μπορείς και να εξαγάγεις μια θέση σε",
+  "file as a backup or to move it to another PC, and import it again. Save files are sealed — a file that has been edited will be rejected.": "αρχείο για αντίγραφο ή για μεταφορά σε άλλο υπολογιστή, και να την εισαγάγεις ξανά. Τα αρχεία είναι σφραγισμένα — ένα επεξεργασμένο αρχείο θα απορριφθεί.",
+  // time of day and misc
+  Morning: "Πρωί", Noon: "Μεσημέρι", Afternoon: "Απόγευμα", Evening: "Βράδυ", Dusk: "Σούρουπο", Night: "Νύχτα", Midnight: "Μεσάνυχτα", Dawn: "Αυγή", Tank: "Αμυντικός", Healer: "Θεραπευτής", DPS: "Ζημιάς",
+  melee: "σώμα με σώμα", ranged: "από απόσταση", heal: "θεραπεία", tank: "αμυντικός",
+};
+// exact one-off messages (toasts, banners, prompts)
+X.EL.msg = {
+  "Not enough Soul Shards": "Δεν έχεις αρκετά Θραύσματα Ψυχής", "Not enough shards": "Δεν έχεις αρκετά θραύσματα", "Not enough materials": "Δεν έχεις αρκετά υλικά", "Not enough ingredients": "Δεν έχεις αρκετά υλικά",
+  "Inventory full": "Η τσάντα είναι γεμάτη", "Your bag is full": "Η τσάντα σου είναι γεμάτη", "Inventory full! [I] to salvage items": "Η τσάντα γέμισε! [I] για διάλυση αντικειμένων", "Your stash is full": "Η αποθήκη σου είναι γεμάτη",
+  "No target": "Κανένας στόχος", "Not while in danger": "Όχι όσο κινδυνεύεις", "Too steep to climb.": "Πολύ απότομο για σκαρφάλωμα.", "Only tanks can taunt": "Μόνο οι αμυντικοί προκαλούν", "No enemy to taunt in range": "Κανένας εχθρός για πρόκληση κοντά",
+  "No healing draughts left — rest at a shrine": "Δεν έμειναν θεραπευτικά φίλτρα — ξεκουράσου σε ιερό", "Your draughts are full": "Τα φίλτρα σου είναι γεμάτα", "The chest creaks open.": "Το σεντούκι ανοίγει τρίζοντας.",
+  "Rested. Health, oil, sanity and potions restored. Respawn point set.": "Ξεκουράστηκες. Ζωή, λάδι, λογική και φίλτρα αναπληρώθηκαν. Ορίστηκε σημείο επιστροφής.",
+  "The Dark Lord's barrier repels you. Reclaim the three Sigils.": "Το φράγμα του Σκοτεινού Άρχοντα σε απωθεί. Πάρε πίσω τις τρεις Σφραγίδες.",
+  "Tip: Esc → Change Hero swaps your class anywhere outside combat": "Συμβουλή: Esc → Αλλαγή Ήρωα αλλάζει κλάση οπουδήποτε εκτός μάχης",
+  "Third person while riding — press Z to dismount": "Τρίτο πρόσωπο στο άλογο — πάτα Z για να κατέβεις", "You dismount": "Κατεβαίνεις από το άλογο",
+  "You have no mount. Gellert the Stablemaster in Dawnmere can help.": "Δεν έχεις άλογο. Ο Γκέλερτ ο Σταβλάρχης στο Ντόνμιρ μπορεί να βοηθήσει.",
+  "You cannot mount while in danger": "Δεν ανεβαίνεις σε άλογο όσο κινδυνεύεις", "You cannot ride here": "Δεν μπορείς να ιππεύσεις εδώ", "You cannot travel while in danger": "Δεν ταξιδεύεις όσο κινδυνεύεις",
+  "You cannot enter while in danger": "Δεν μπαίνεις όσο κινδυνεύεις", "You cannot leave while in danger": "Δεν φεύγεις όσο κινδυνεύεις", "You cannot go home while in danger": "Δεν πας σπίτι όσο κινδυνεύεις",
+  "You cannot change hero while in danger": "Δεν αλλάζεις ήρωα όσο κινδυνεύεις", "You cannot change hero inside a dungeon or raid": "Δεν αλλάζεις ήρωα μέσα σε μπουντρούμι ή επιδρομή",
+  "You need an anvil: stand near a smith, or forge in your Manor": "Χρειάζεσαι αμόνι: στάσου κοντά σε σιδερά ή σφυρηλάτησε στο Αρχοντικό σου",
+  "You need a fire to cook on — the Vigil bonfire, a camp fire or your Manor hearth": "Χρειάζεσαι φωτιά για μαγείρεμα — τη φωτιά της Φρουράς, μια κατασκήνωση ή το τζάκι του Αρχοντικού",
+  "Choose an item": "Διάλεξε αντικείμενο", "Choose a stat to reforge": "Διάλεξε χαρακτηριστικό για αναχύτευση", "Choose a stat the item does not have yet": "Διάλεξε χαρακτηριστικό που δεν έχει ακόμα το αντικείμενο",
+  "This item is tempered as far as it will go (×3)": "Αυτό το αντικείμενο έχει βαφτεί στο μέγιστο (×3)", "This item is as strong as you can wield yet": "Αυτό το αντικείμενο είναι όσο δυνατό μπορείς να χειριστείς προς το παρόν",
+  "Gathering interrupted": "Η συλλογή διακόπηκε", "It got away…": "Ξέφυγε…", "Trade complete": "Το εμπόριο ολοκληρώθηκε", "Offer sent…": "Η προσφορά στάλθηκε…",
+  "The way out opens behind you. Press F at the entrance, or wait 25 seconds.": "Η έξοδος ανοίγει πίσω σου. Πάτα F στην είσοδο ή περίμενε 25 δευτερόλεπτα.",
+  "You have already cleared this instance this period: no loot or quest credit until it resets.": "Έχεις ήδη καθαρίσει αυτό το μέρος σ' αυτή την περίοδο: ούτε λάφυρα ούτε πρόοδος αποστολών ως την ανανέωση.",
+  "The currents of the Sundering Sea drag you back to shore": "Τα ρεύματα της Θάλασσας του Διχασμού σε σέρνουν πίσω στην ακτή", "The ground shakes — move out of the circles!": "Η γη τρέμει — βγες από τους κύκλους!",
+  "MARKED — move away from your allies!": "ΣΗΜΑΔΕΜΕΝΟΣ — απομακρύνσου από τους συμμάχους!", "A new version of Vigilfall is ready — reload to update": "Μια νέα έκδοση του Vigilfall είναι έτοιμη — ξαναφόρτωσε για ενημέρωση",
+  "Hints will show again as you meet each system": "Οι συμβουλές θα εμφανιστούν ξανά καθώς συναντάς κάθε σύστημα", "You are no longer Well Fed": "Δεν είσαι πια Χορτάτος", "Your elixir has worn off": "Το ελιξίριό σου έληξε",
+  "QUEST COMPLETE": "ΑΠΟΣΤΟΛΗ ΟΛΟΚΛΗΡΩΘΗΚΕ", "YOU HAVE FALLEN": "ΕΠΕΣΕΣ", "REVIVED": "ΑΝΑΣΤΗΘΗΚΕΣ", "FLAME KINDLED": "Η ΦΛΟΓΑ ΑΝΑΨΕ", "SIGIL RECLAIMED": "Η ΣΦΡΑΓΙΔΑ ΑΝΑΚΤΗΘΗΚΕ",
+  "RARE SLAIN": "Ο ΣΠΑΝΙΟΣ ΕΠΕΣΕ", "WORLD BOSS SLAIN": "Ο ΠΑΓΚΟΣΜΙΟΣ ΑΡΧΗΓΟΣ ΕΠΕΣΕ", "WELL RESTED": "ΞΕΚΟΥΡΑΣΜΕΝΟΣ", "TALENTS RESET": "ΤΑ ΤΑΛΕΝΤΑ ΕΠΑΝΗΛΘΑΝ", "GROUP FOUND": "ΒΡΕΘΗΚΕ ΟΜΑΔΑ",
+  "GROUP LOST": "Η ΟΜΑΔΑ ΧΑΘΗΚΕ", "DUNGEON FINDER": "ΑΝΑΖΗΤΗΣΗ ΜΠΟΥΝΤΡΟΥΜΙΟΥ", "ENRAGE": "ΟΡΓΗ", "SPREAD OUT": "ΑΠΛΩΘΕΙΤΕ", SOAK: "ΑΠΟΡΡΟΦΗΣΗ", MARKED: "ΣΗΜΑΔΕΜΕΝΟΣ", TREMOR: "ΣΕΙΣΜΟΣ",
+  "THE BLOOD MOON RISES": "ΑΝΑΤΕΛΛΕΙ ΤΟ ΜΑΤΩΜΕΝΟ ΦΕΓΓΑΡΙ", "The Blood Moon wanes": "Το Ματωμένο Φεγγάρι χάνεται", INVASION: "ΕΙΣΒΟΛΗ", "INVASION REPELLED": "Η ΕΙΣΒΟΛΗ ΑΠΟΚΡΟΥΣΤΗΚΕ", "INVASION OVER": "Η ΕΙΣΒΟΛΗ ΤΕΛΕΙΩΣΕ",
+  "THE WARD HAS FALLEN": "ΤΟ ΦΥΛΑΧΤΟ ΕΠΕΣΕ", HOME: "ΣΠΙΤΙ", TRAVELLING: "ΤΑΞΙΔΙ", "TAKING FLIGHT": "ΑΠΟΓΕΙΩΣΗ", "NEW MOUNT": "ΝΕΟ ΑΛΟΓΟ", "NEW COMPANION": "ΝΕΟΣ ΣΥΝΤΡΟΦΟΣ",
+  "CONNECTION LOST": "Η ΣΥΝΔΕΣΗ ΧΑΘΗΚΕ", RECONNECTED: "ΕΠΑΝΑΣΥΝΔΕΘΗΚΕ", "RECONNECT FAILED": "Η ΕΠΑΝΑΣΥΝΔΕΣΗ ΑΠΕΤΥΧΕ", OFFLINE: "ΕΚΤΟΣ ΣΥΝΔΕΣΗΣ", "HOST LEFT": "Ο ΟΙΚΟΔΕΣΠΟΤΗΣ ΕΦΥΓΕ",
+  DUEL: "ΜΟΝΟΜΑΧΙΑ", FIGHT: "ΜΑΧΗ", "FIGHT!": "ΜΑΧΗ!", "WELL FOUGHT": "ΚΑΛΗ ΜΑΧΗ", "THE PIT": "Ο ΛΑΚΚΟΣ", "ONE MINUTE": "ΕΝΑ ΛΕΠΤΟ", "LAST STAND": "ΤΕΛΕΥΤΑΙΑ ΑΝΤΙΣΤΑΣΗ",
+  MATERIALS: "ΥΛΙΚΑ", "GUILD HALL": "ΑΙΘΟΥΣΑ ΣΥΝΤΕΧΝΙΑΣ", "GUILD QUEST COMPLETE": "ΑΠΟΣΤΟΛΗ ΣΥΝΤΕΧΝΙΑΣ ΟΛΟΚΛΗΡΩΘΗΚΕ", "NEW SEASON": "ΝΕΑ ΣΕΖΟΝ", "THE ABYSS CLOSES": "Η ΑΒΥΣΣΟΣ ΚΛΕΙΝΕΙ",
+  "THE BARRIER SHATTERS": "ΤΟ ΦΡΑΓΜΑ ΣΠΑΕΙ", "THE SKY FALLS": "Ο ΟΥΡΑΝΟΣ ΠΕΦΤΕΙ", "THE SKY IS FREE": "Ο ΟΥΡΑΝΟΣ ΕΙΝΑΙ ΕΛΕΥΘΕΡΟΣ",
+  "Back into the fight": "Πίσω στη μάχη", "Gathering the party…": "Η ομάδα μαζεύεται…", "Group is full": "Η ομάδα είναι γεμάτη", "Invite expired": "Η πρόσκληση έληξε", "Already in your group": "Είναι ήδη στην ομάδα σου",
+  "You are now the group leader": "Είσαι τώρα αρχηγός της ομάδας", "You were removed from the group": "Αφαιρέθηκες από την ομάδα", "Your leader left the queue": "Ο αρχηγός σου βγήκε από την ουρά",
+  "Leave the Dungeon Finder queue first": "Βγες πρώτα από την ουρά της Αναζήτησης Μπουντρουμιού", "Only the host can open a dungeon": "Μόνο ο οικοδεσπότης ανοίγει μπουντρούμι", "The host decides when the party leaves": "Ο οικοδεσπότης αποφασίζει πότε φεύγει η ομάδα",
+  "Aim at a player within 8 m to trade": "Σημάδεψε έναν παίκτη σε 8 m για εμπόριο", "Aim at a player within 10 m to challenge them": "Σημάδεψε έναν παίκτη σε 10 m για πρόκληση", "Move closer to trade": "Πλησίασε για εμπόριο",
+  "No player to trade with": "Κανένας παίκτης για εμπόριο", "Already trading": "Ήδη σε εμπόριο", "Already duelling": "Ήδη σε μονομαχία", "No duels inside a ward — step outside the village": "Όχι μονομαχίες μέσα σε φυλαχτό — βγες από το χωριό",
+  "The drake won't take off while you are in danger": "Ο δράκος δεν απογειώνεται όσο κινδυνεύεις", "The ward turns your blow aside": "Το φυλαχτό εκτρέπει το χτύπημά σου",
+  "Your house stands east of the square (the plot by the stable). Walk to its door and press F; it is marked on the map.": "Το σπίτι σου είναι ανατολικά της πλατείας (το οικόπεδο δίπλα στον στάβλο). Πήγαινε στην πόρτα και πάτα F· είναι σημειωμένο στον χάρτη.",
+  "You have no talents to reset": "Δεν έχεις ταλέντα για επαναφορά", "Something from the deep surfaces: a Mythic relic.": "Κάτι αναδύεται από τα βάθη: ένα Μυθικό κειμήλιο.",
+};
+
+/* ---- FZ_el.js ---- */
+/* 1.19.0 — language: English / Ελληνικά. Settings → Language (reloads). Greek replaces the game's own text tables at load
+   (quests, heroes and skills, people, places, foes, deeds, help, tutorial) and translates the interface as it is drawn
+   (exact strings + patterns, through a MutationObserver). Item, cosmetic and material names stay English. */
+{
+  const KEY = "vf_lang";
+  let stored = null;
+  try { stored = localStorage.getItem(KEY); } catch (e) {}
+  const LANG = stored === "el" || stored === "en" ? stored : /^el\b/i.test(navigator.language || "") ? "el" : "en";
+  X.lang = LANG;
+  X.setLang = function (l) {
+    try { localStorage.setItem(KEY, l); } catch (e) {}
+    try { window.__app?.saveProfile?.(); } catch (e) {}
+    location.reload();
+  };
+  const U = XC.prototype;
+  // ---- Settings: language selector (both languages) ----
+  const bs0 = U.bindSettings;
+  U.bindSettings = function (...a) {
+    const r = bs0.apply(this, a);
+    try {
+      const box = document.querySelector(".settings");
+      if (box && !box.querySelector("#s-lang")) {
+        const l = document.createElement("label");
+        l.innerHTML = `${LANG === "el" ? "Γλώσσα (ξαναφορτώνει το παιχνίδι)" : "Language (reloads the game)"} <select id="s-lang"><option value="en">English</option><option value="el">Ελληνικά</option></select>`;
+        box.insertBefore(l, box.firstChild);
+        const s = l.querySelector("select");
+        s.value = LANG;
+        s.oninput = s.onchange = (e) => { e.stopPropagation(); s.value !== LANG && X.setLang(s.value); };
+      }
+    } catch (e) {}
+    return r;
+  };
+  LANG === "en" && X.HELP?.systems?.push(["Language", "Settings → Language switches between English and Ελληνικά (Greek). Item, cosmetic and material names stay English in Greek."]);
+  if (LANG === "el") {
+    const D = X.D || {}, EL = X.EL || {};
+    document.documentElement.lang = "el";
+    // ---- data tables ----
+    try { for (const q of D.gB || []) { const t = EL.quests?.[q.id]; if (t) { q.name = t[0]; q.obj = t[1]; q.text = t[2]; } } } catch (e) {}
+    const heroTitleEn = {};
+    try {
+      for (const h of D.FI || []) {
+        const t = EL.heroes?.[h.id];
+        heroTitleEn[h.id] = h.title;
+        if (!t) continue;
+        h.name = t.name; h.title = t.title; h.lore = t.lore;
+        (h.skills || []).forEach((s, i) => t.skills[i] && ((s.name = t.skills[i][0]), (s.desc = t.skills[i][1])));
+        (h.passives || []).forEach((s, i) => t.passives[i] && ((s.name = t.passives[i][0]), (s.desc = t.passives[i][1])));
+      }
+    } catch (e) {}
+    try {
+      for (const n of D.qI || []) {
+        const t = EL.npcs?.[n.id];
+        if (t) { n.name = t[0]; n.title = t[1]; n.greet && (n.greet = t[2]); }
+        else if (/^way_/.test(n.id) && EL.way) {
+          n.name = EL.way[0] + " " + (EL.wayNames?.[n.id] || n.name.replace(/^Wayfarer /, ""));
+          n.title = EL.way[1]; n.greet && (n.greet = EL.way[2]);
+        }
+      }
+    } catch (e) {}
+    try { for (const k in D.UI || {}) EL.zones?.[k] && (D.UI[k].name = EL.zones[k]); } catch (e) {}
+    try { for (const k in D.rw || {}) EL.enemies?.[k] && (D.rw[k].name = EL.enemies[k]); } catch (e) {}
+    const INST = { crypt: "Κρύπτες των Τύμβων", glacier: "Παγετώδης Κοιλότητα", vault: "Βυθισμένος Θησαυροφύλακας του Χετ", heart: "Καρδιά του Αγκαθόδασους", stormspire: "Θυελλοπύργος",
+      citadel: "Η Κρίση", throne: "Ο Θρόνος των Θυελλών", deep: "Τα Πνιγμένα Βάθη", foundry: "Οψιδιανό Χυτήριο" };
+    const instEn = {};
+    try { for (const k in X.INST || {}) INST[k] && ((instEn[X.INST[k].name] = INST[k]), (X.INST[k].name = INST[k])); } catch (e) {}
+    try {
+      const heroById = Object.fromEntries((D.FI || []).map((h) => [h.id, h]));
+      for (const a of D.WB || []) {
+        const t = EL.ach?.[a.id];
+        if (t) { a.name = t[0]; a.desc = t[1]; continue; }
+        const m = /^c_([a-z]+)_([a-z]+)$/.exec(a.id), k = m && EL.achClass?.[m[2]], h = m && heroById[m[1]];
+        if (k && h) { a.name = `${h.title}: ${k[0]}`; a.desc = k[1].replace("{h}", h.title); }
+      }
+    } catch (e) {}
+    try { for (const t of X.TITLES || []) { const g = EL.titles?.[t.id]; g && ((t.name = g[0]), (t.how = g[1])); } } catch (e) {}
+    try { for (const k in X.HINTS || {}) EL.hints?.[k] && (X.HINTS[k] = EL.hints[k]); } catch (e) {}
+    try {
+      const sys = X.HELP?.systems;
+      if (sys) { for (let i = 0; i < sys.length; i++) { const t = EL.help?.[sys[i][0]]; t && (sys[i] = t); } EL.help.Language && sys.push(EL.help.Language); }
+    } catch (e) {}
+    try { for (const k in D.nI || {}) { const n = D.nI[k]; n && EL.res?.[n.name] && (n.name = EL.res[n.name]); } } catch (e) {}
+    // ---- talents: names and descriptions come from templates, translated where they are built ----
+    const TAL = {
+      Brutality: "Βαρβαρότητα", "Killing Edge": "Θανάσιμη Κόψη", Cruelty: "Σκληρότητα", Quickness: "Γρηγοράδα", "Blood for Blood": "Αίμα για Αίμα", "Lingering Pain": "Παρατεταμένος Πόνος",
+      "Giant Slayer": "Γιγαντοφόνος", "Dreadlord's Bane": "Όλεθρος των Φοβεραρχών", "First Blood": "Πρώτο Αίμα", "Barbed Plate": "Αγκαθωτή Πανοπλία", "Gentle Hands": "Απαλά Χέρια",
+      "Slow Mercy": "Αργό Έλεος", "Deep Well": "Βαθύ Πηγάδι", Reservoir: "Δεξαμενή", Economy: "Οικονομία", "Thick Hide": "Χοντρό Δέρμα", Tempered: "Σκληραγωγημένος", Unshaken: "Ακλόνητος",
+      Stoic: "Στωικός", Cornered: "Στριμωγμένος", "Apothecary's Friend": "Φίλος του Φαρμακοποιού", Fleet: "Γοργός", "Light Feet": "Ελαφριά Πόδια",
+      Executioner: "Δήμιος", Overkill: "Υπερβολή", "Guardian Spirit": "Πνεύμα Φύλακας", Renewal: "Ανανέωση", "Second Wind": "Δεύτερη Πνοή", "Last Stand": "Τελευταία Αντίσταση", Flow: "Ροή", Momentum: "Ορμή",
+      Mastery: "Μαεστρία", Haste: "Επιτάχυνση", Efficiency: "Αποδοτικότητα", Persistence: "Επιμονή", Reach: "Εμβέλεια", Compounding: "Συσσώρευση",
+      Avenger: "Εκδικητής", Fortress: "Φρούριο", Rally: "Συσπείρωση", Lifebloom: "Άνθος Ζωής", Martyr: "Μάρτυρας", "Font of Light": "Πηγή Φωτός", "Executioner's Mark": "Σημάδι του Δήμιου",
+      Shadowmeld: "Σκιόσμιξη", Overclock: "Υπερχρονισμός",
+      Wrath: "Οργή", Bulwark: "Προμαχώνας", Warcraft: "Πολεμική Τέχνη", Grace: "Χάρη", Resolve: "Αποφασιστικότητα", Communion: "Κοινωνία", Ruin: "Όλεθρος", Survival: "Επιβίωση",
+    };
+    const TALTX = {
+      "Deal 20% more damage to enemies below 30% health.": "Κάνεις 20% περισσότερη ζημιά σε εχθρούς κάτω από 30% ζωή.",
+      "Enemies you kill explode, dealing 35 damage to others within 3.5m.": "Οι εχθροί που σκοτώνεις εκρήγνυνται, κάνοντας 35 ζημιά σε άλλους σε 3.5m.",
+      "Your heals have a 20% chance to be doubled.": "Οι θεραπείες σου έχουν 20% πιθανότητα να διπλασιαστούν.",
+      "Your direct heals also restore 25% more over 4 seconds.": "Οι άμεσες θεραπείες σου δίνουν και 25% επιπλέον σε 4 δευτερόλεπτα.",
+      "Kills heal you for 5% of your max health.": "Οι σκοτωμοί σε θεραπεύουν κατά 5% της μέγιστης ζωής σου.",
+      "Once every 90s, a killing blow leaves you at 30% health instead.": "Μία φορά κάθε 90s, ένα θανάσιμο χτύπημα σε αφήνει αντί γι' αυτό στο 30% της ζωής.",
+      "Critical hits restore 4 of your resource.": "Τα κρίσιμα χτυπήματα επιστρέφουν 4 από τον πόρο σου.",
+      "Every 4th basic attack deals 200% damage and heals you for 5% of your max health.": "Κάθε 4η βασική επίθεση κάνει 200% ζημιά και σε θεραπεύει κατά 5% της μέγιστης ζωής σου.",
+      "After standing still for 1s you take 20% less damage and melee attackers take 10% of their damage back.": "Αφού μείνεις ακίνητος 1s δέχεσαι 20% λιγότερη ζημιά και όσοι σε χτυπούν από κοντά παίρνουν πίσω το 10% της ζημιάς τους.",
+      "Your ultimate also heals all allies within 20m for 20% and grants them +15% damage for 10s.": "Η τελική σου θεραπεύει επίσης όλους τους συμμάχους σε 20m κατά 20% και τους δίνει +15% ζημιά για 10s.",
+      "Your direct heals also restore 25% more over 6s, and critical heals are 50% stronger.": "Οι άμεσες θεραπείες σου δίνουν και 25% επιπλέον σε 6s, και οι κρίσιμες θεραπείες είναι 50% ισχυρότερες.",
+      "Below 50% health you heal 30% more and take 15% less damage.": "Κάτω από 50% ζωή θεραπεύεις 30% περισσότερο και δέχεσαι 15% λιγότερη ζημιά.",
+      "+40% resource regeneration and all skills cost 20% less.": "+40% αναγέννηση πόρου και όλες οι δεξιότητες κοστίζουν 20% λιγότερο.",
+      "Enemies below 20% health take 40% more damage from you.": "Οι εχθροί κάτω από 20% ζωή δέχονται 40% περισσότερη ζημιά από σένα.",
+      "Dodging grants +30% move speed for 3s and makes your next hit a guaranteed critical.": "Η τούμπα δίνει +30% ταχύτητα κίνησης για 3s και κάνει το επόμενο χτύπημα σίγουρα κρίσιμο.",
+      "Every 20s your next skill (not the basic attack) has no cooldown and costs nothing.": "Κάθε 20s η επόμενη δεξιότητά σου (όχι η βασική επίθεση) δεν έχει αναμονή και δεν κοστίζει τίποτα.",
+    };
+    const TALP = [
+      [/^\+([\d.]+)% damage with everything$/, "+$1% ζημιά σε όλα"], [/^\+([\d.]+)% critical chance$/, "+$1% πιθανότητα κρίσιμου"], [/^\+([\d.]+)% critical damage$/, "+$1% κρίσιμη ζημιά"],
+      [/^All skills recharge ([\d.]+)% faster$/, "Όλες οι δεξιότητες επαναφορτίζουν $1% γρηγορότερα"], [/^Heal for ([\d.]+)% of the damage you deal$/, "Θεραπεύεσαι κατά $1% της ζημιάς που κάνεις"],
+      [/^\+([\d.]+)% damage over time$/, "+$1% σταδιακή ζημιά"], [/^\+([\d.]+)% damage to elite and rare enemies$/, "+$1% ζημιά σε επίλεκτους και σπάνιους εχθρούς"],
+      [/^\+([\d.]+)% damage to bosses$/, "+$1% ζημιά σε αρχηγούς"], [/^\+([\d.]+)% damage to enemies above 80% health$/, "+$1% ζημιά σε εχθρούς πάνω από 80% ζωή"],
+      [/^Enemies that hit you in melee take ([\d.]+) damage$/, "Οι εχθροί που σε χτυπούν από κοντά δέχονται $1 ζημιά"], [/^\+([\d.]+)% healing$/, "+$1% θεραπεία"],
+      [/^\+([\d.]+)% healing over time$/, "+$1% σταδιακή θεραπεία"], [/^\+([\d.]+)% resource regeneration$/, "+$1% αναγέννηση πόρου"], [/^\+([\d.]+) maximum resource$/, "+$1 μέγιστος πόρος"],
+      [/^All skills cost ([\d.]+)% less$/, "Όλες οι δεξιότητες κοστίζουν $1% λιγότερο"], [/^\+([\d.]+)% max health$/, "+$1% μέγιστη ζωή"], [/^\+([\d.]+)% armor$/, "+$1% θωράκιση"],
+      [/^-([\d.]+)% Sanity loss$/, "-$1% απώλεια Λογικής"], [/^-([\d.]+)% damage taken$/, "-$1% ζημιά που δέχεσαι"], [/^-([\d.]+)% damage taken below 35% health$/, "-$1% ζημιά που δέχεσαι κάτω από 35% ζωή"],
+      [/^\+([\d.]+)% healing from draughts$/, "+$1% θεραπεία από φίλτρα"], [/^\+([\d.]+)% move speed$/, "+$1% ταχύτητα κίνησης"], [/^Dodge recharges ([\d.]+)% faster$/, "Η τούμπα επαναφορτίζει $1% γρηγορότερα"],
+      [/^(.+) is ([\d.]+)% stronger \(damage, healing and shields\)$/, "$1: $2% ισχυρότερο (ζημιά, θεραπεία και ασπίδες)"], [/^(.+) recharges ([\d.]+)% faster$/, "$1: επαναφορτίζει $2% γρηγορότερα"],
+      [/^(.+) costs ([\d.]+)% less$/, "$1: κοστίζει $2% λιγότερο"], [/^(.+) effects last ([\d.]+)% longer$/, "$1: τα αποτελέσματα κρατούν $2% περισσότερο"],
+      [/^(.+) reaches ([\d.]+)% further \/ wider$/, "$1: φτάνει $2% μακρύτερα / φαρδύτερα"], [/^(.+)'s damage over time can stack ([\d.]+) more times?.*$/, "$1: η σταδιακή ζημιά στοιβάζεται $2 φορές ακόμα στον ίδιο εχθρό"],
+      [/^Using (.+) restores 25% health and all your (.+)\.$/, "Η χρήση του $1 επαναφέρει 25% ζωή και όλη σου την $2."],
+    ];
+    const talText = (s) => { if (typeof s !== "string") return s; if (TALTX[s]) return TALTX[s]; for (const [re, r] of TALP) if (re.test(s)) return s.replace(re, r); return s; };
+    const talName = (s) => { if (typeof s !== "string") return s; if (TAL[s]) return TAL[s]; const i = s.lastIndexOf(": "); return i > 0 && TAL[s.slice(i + 2)] ? s.slice(0, i + 2) + TAL[s.slice(i + 2)] : s; };
+    try {
+      for (const role in X.KEYSTONES || {}) for (const k of X.KEYSTONES[role]) { k[1] = TAL[k[1]] || k[1]; k[4] = TALTX[k[4]] || k[4]; }
+    } catch (e) {}
+    try {
+      if (typeof Hg === "function") {
+        const Hg1 = Hg;
+        Hg = function (B) {
+          const trees = Hg1(B);
+          if (trees && !trees._el) {
+            trees._el = 1;
+            for (const tr of trees) {
+              tr.name && (tr.name = TAL[tr.name] || tr.name);
+              for (const n of tr.nodes || []) {
+                n.name = talName(n.name);
+                if (typeof n.text === "function") { const f = n.text; n.text = (...a) => talText(f(...a)); }
+              }
+            }
+          }
+          return trees;
+        };
+      }
+    } catch (e) {}
+    try {
+      X.CHANGELOG && X.CHANGELOG["1.19.0"] && (X.CHANGELOG["1.19.0"] = [
+        "Επιδρομές και νέο μπουντρούμι: οι αρχηγοί των Πνιγμένων Βαθών, του Θρόνου των Θυελλών και της Κρίσης έχουν πλέον όλους τους μηχανισμούς επιδρομής (αλλαγή αμυντικού, διακοπές, κύκλοι απορρόφησης και διασποράς, φάσεις ασπίδας). Νέο μπουντρούμι: το Οψιδιανό Χυτήριο (επίπεδο 18, νοτιοανατολικά του Μαύρου Κάστρου) με τον Κράαλ, και αποστολή από τον Μπράνοκ.",
+        "Βάθος στην κατασκευή: αναχύτευση χαρακτηριστικού σε κάθε αντικείμενο, βαφή (+2 επίπεδο αντικειμένου, τρεις φορές) με Οψιδιανούς Σβώλους, συνταγές Αρχιμάστορα για θρυλικά επιπέδου 60 από Αβυσσαλέους Πυρήνες, και τρία αποθηκευμένα σύνολα ανά ήρωα στην Ντουλάπα.",
+        "Εγκατάσταση ως εφαρμογή: από τον ιστότοπο το Vigilfall εγκαθίσταται (Chrome, Edge, Android· σε iPhone: Κοινοποίηση → Προσθήκη στην οθόνη Αφετηρίας). Ανοίγει σε πλήρη οθόνη, παίζει χωρίς σύνδεση μετά την πρώτη φόρτωση και ενημερώνεται μόνο του.",
+        "Ελληνικά: Ρυθμίσεις → Γλώσσα. Αποστολές, ήρωες, δεξιότητες, ταλέντα, πρόσωπα, τόποι, εχθροί, επιτεύγματα, βοήθεια, οδηγός και διεπαφή είναι στα ελληνικά· τα ονόματα αντικειμένων και διακοσμητικών μένουν στα αγγλικά.",
+        "Ταλέντα και παθητικά: τα ταλέντα Επιμονής μακραίνουν πλέον και τις ενισχύσεις (Εξαφάνιση, Συμβόλαιο Αίματος, Αθάνατος…)· το Στατικό Φορτίο φτάνει σε 5 εχθρούς για 35· το Φανάρι της Αγίας δίνει πραγματικά 10% λιγότερη ζημιά κοντά στην ιέρεια· Προμαχώνας +35% θωράκιση· ο Δεμένος με τον Τάφο αποδυναμώνει και τους κοντινούς εχθρούς.",
+        "Διορθώσεις από μεγάλη δοκιμή αντοχής: τα μπουντρούμια που επισκέφτηκες δεν μένουν φορτωμένα όταν φεύγεις (χιλιάδες αντικείμενα), οι σύντροφοι που κυνηγούν εχθρούς μακριά επιστρέφουν, και σε προλαβαίνουν αμέσως μετά από τηλεμεταφορά.",
+      ]);
+    } catch (e) {}
+    // ---- tutorial cards ----
+    const tu0 = U.tutorial;
+    U.tutorial = function (B, A, i) {
+      const touch = X.isTouch;
+      if (B) { const t = (touch ? EL.tutTouch : EL.tut)?.[A]; t && (B = t); X.isTouch = !1; }
+      try { return tu0.call(this, B, A, i); }
+      finally {
+        X.isTouch = touch;
+        const sp = document.querySelector("#tut .tut-h > span:not(.ico)");
+        sp && (sp.textContent = touch ? "Πάτα για παράλειψη" : "Backspace για παράλειψη");
+      }
+    };
+    // ---- interface translator ----
+    const DICT = new Map();
+    const add = (o) => { for (const k in o || {}) DICT.set(k, o[k]); };
+    add(EL.ui); add(EL.msg);
+    add({
+      Dawnmere: "Ντόνμιρ", "Hamlet of Last Light": "Χωριό του Τελευταίου Φωτός", "Wayfarer's Crossroads": "Σταυροδρόμι του Ταξιδευτή", "Citadel Approach": "Πρόσβαση στο Κάστρο",
+      Discovered: "Ανακαλύφθηκε", Titles: "Τίτλοι", "Blood Moon": "Ματωμένο Φεγγάρι", "no mic": "χωρίς μικρόφωνο", "hold V": "κράτα V", enemies: "εχθρούς", "elite enemies": "επίλεκτους εχθρούς",
+      "Say something to your allies…": "Πες κάτι στους συμμάχους σου…", "Friend code (e.g. 7KX2QPAB)": "Κωδικός φίλου (π.χ. 7KX2QPAB)", "Zoom in": "Μεγέθυνση", "Zoom out": "Σμίκρυνση",
+      "nothing equipped — transmog needs an item in the slot": "τίποτα φορεμένο — η μεταμφίεση θέλει αντικείμενο στη θέση", "Invite aimed player to group · travel at a lit shrine": "Πρόσκληση του παίκτη που σημαδεύεις · ταξίδι σε αναμμένο ιερό",
+      "Lantern casts shadows (expensive, applies on next start)": "Το φανάρι ρίχνει σκιές (ακριβό, ισχύει στην επόμενη εκκίνηση)", "Soft shading in corners. Costs some performance.": "Απαλή σκίαση στις γωνίες. Κοστίζει λίγη απόδοση.",
+      "Soft shadows (VSM, experimental, applies on next start)": "Απαλές σκιές (VSM, πειραματικό, ισχύει στην επόμενη εκκίνηση)", "row 8 of each tree — 14 points in the tree": "σειρά 8 κάθε δέντρου — 14 πόντοι στο δέντρο",
+      "Crack the Elites": "Σπάσε τους Επίλεκτους", "Cull the Hollow": "Αραίωσε τους Σκελετούς", "Rogue Cull": "Κυνήγι Κλεφτών", "Grave Robbing": "Τυμβωρυχία", "Treasure Hunt": "Κυνήγι Θησαυρού", Exorcism: "Εξορκισμός",
+      "Tap to skip": "Πάτα για παράλειψη", "☠ Malgareth endures": "☠ Ο Μαλγκάρεθ αντέχει", Healing: "Θεραπεία",
+      "— Blinks behind you.": "— Εμφανίζεται ξαφνικά πίσω σου.", "— Circles to your back; strikes from behind hurt half again as much.": "— Κάνει κύκλο ως την πλάτη σου· τα χτυπήματα από πίσω πονάνε μιάμιση φορά περισσότερο.",
+      "— Ground slam and acid pools.": "— Χτυπά το έδαφος και αφήνει λίμνες οξέος.", "— Keeps its distance and heals the pack — kill it first.": "— Κρατά απόσταση και θεραπεύει την αγέλη — σκότωσέ το πρώτο.",
+      "— Leaps onto its prey.": "— Πηδά πάνω στο θήραμά του.", "— Lobs poison that leaves a pool.": "— Πετά δηλητήριο που αφήνει λίμνη.", "— Lunges when close.": "— Εφορμά όταν είναι κοντά.",
+      "— Pounces from range. Hunts in packs.": "— Ορμά από απόσταση. Κυνηγά σε αγέλες.", "— Shadow bolts and burning runes under your feet.": "— Σκιώδη βέλη και φλεγόμενοι ρούνοι κάτω από τα πόδια σου.",
+      "— Shield halves damage from the front; charges.": "— Η ασπίδα του μειώνει στο μισό τη ζημιά από μπροστά· εφορμά.", "— Shoots from range and backs away when you close in.": "— Ρίχνει από απόσταση και υποχωρεί όταν πλησιάζεις.",
+      "— Winds up a wide cleave and charges from afar.": "— Ετοιμάζει φαρδύ χτύπημα και εφορμά από μακριά.",
+    });
+    for (const k in instEn) DICT.set(k, instEn[k]);
+    // English hero titles and class roles that some screens still build from their own tables
+    for (const id in heroTitleEn) EL.heroes?.[id] && DICT.set(heroTitleEn[id], EL.heroes[id].title);
+    for (const k in EL.res || {}) DICT.has(k) || DICT.set(k, EL.res[k]);
+    const R = (s) => EL.res?.[s] || s;
+    const tr = (s) => { if (!s) return s; const d = DICT.get(s); if (d !== undefined) return d; const p = pat(s); return p === null ? s : p; };
+    const lvl = (n) => `Επίπεδο ${n}`;
+    const shards = (s) => s.replace(/(\d[\d,.]*) shards at the stable/, "$1 θραύσματα στον στάβλο").replace(/(\d[\d,.]*) shards/g, "$1 θραύσματα").replace(/^Drop: (.+)$/, (m, a) => "Λάφυρο: " + tr(a))
+      .replace(/^Stable \(free\)$/, "Στάβλος (δωρεάν)").replace(/^Kennel \(free\)$/, "Κυνοτροφείο (δωρεάν)").replace(/^Achievement: (.+)$/, (m, a) => "Επίτευγμα: " + tr(a))
+      .replace(/(\d+) × arena wins/, "$1 × νίκες αρένας").replace(/(\d+) × dungeons/, "$1 × μπουντρούμια").replace(/(\d+) × invasions won/, "$1 × εισβολές").replace(/(\d+) × mplus (runs|timed)/, "$1 × Μυθικό+")
+      .replace(/(\d+) × arena (\d+)/, "$1 × αρένα $2").replace(/(\d+) × dun (\w+)/, "$1 × μπουντρούμι $2");
+    const PATS = [
+      [/^(\d+) \/ (\d+) completed$/, (m, a, b) => `${a} / ${b} ολοκληρώθηκαν`],
+      [/^(\d+) appearances unlocked$/, (m, a) => `${a} εμφανίσεις ξεκλειδωμένες`],
+      [/^(\d+) \/ (\d+) · shown under your name$/, (m, a, b) => `${a} / ${b} · φαίνεται κάτω από το όνομά σου`],
+      [/^(\d+) points to spend · (\d+) spent · (\d+) talents$/, (m, a, b, c) => `${a} πόντοι για ξόδεμα · ${b} ξοδεμένοι · ${c} ταλέντα`],
+      [/^Raising the dead… (\d+)%$/, (m, a) => `Οι νεκροί σηκώνονται… ${a}%`],
+      [/^Microphone unavailable: (.+)$/, (m, a) => `Το μικρόφωνο δεν είναι διαθέσιμο: ${a}`],
+      [/^(.*) \((\d+) nodes\)$/, (m, a, n) => `${a} (${n} σημεία)`],
+      [/^(.+) from wolves and beasts$/, (m, a) => `${a} από λύκους και θηρία`],
+      [/^Level (\d+)$/, (m, n) => lvl(n)],
+      [/^LEVEL (\d+)$/, (m, n) => `ΕΠΙΠΕΔΟ ${n}`],
+      [/^Lv (\d+)$/, (m, n) => `Επ. ${n}`],
+      [/^(.+?) · Level (\d+)$/, (m, a, n) => `${tr(a)} · ${lvl(n)}`],
+      [/^(.+?) · Lv (\d+)$/, (m, a, n) => `${tr(a)} · Επ. ${n}`],
+      [/^(.+?) Lv(\d+)$/, (m, a, n) => `${tr(a)} Επ.${n}`],
+      [/^(.+?), (.+?) · Level (\d+)$/, (m, a, t, n) => `${a}, ${t} · ${lvl(n)}`],
+      [/^(.+?) · (Tank|Healer|DPS)( · uses (\w+))?$/, (m, a, r, u, res) => `${tr(a)} · ${tr(r)}${u ? " · χρησιμοποιεί " + R(res) : ""}`],
+      [/^Cooldown ([\d.]+)s(?: · Costs (\d+) (\w+))?$/, (m, c, n, r) => `Αναμονή ${c}s${n ? ` · Κοστίζει ${n} ${R(r)}` : ""}`],
+      [/^([\d.]+)s · (\d+) (\w+)$/, (m, c, n, r) => `${c}s · ${n} ${R(r)}`],
+      [/^(\d+) (Rage|Mana|Energy|Focus)$/, (m, n, r) => `${n} ${R(r)}`],
+      [/^HP (\d+) · Armor (\d+) · (\w+)$/, (m, h, a, r) => `Ζωή ${h} · Θωράκιση ${a} · ${R(r)}`],
+      [/^Passive — (.+)$/, (m, a) => `Παθητικό — ${tr(a)}`],
+      [/^(Talents|Transmog|Class Regalia) — (.+)$/, (m, k, a) => `${{ Talents: "Ταλέντα", Transmog: "Μεταμφίεση", "Class Regalia": "Διάσημα Κλάσης" }[k]} — ${tr(a)}`],
+      [/^Glyph slots \((.+)\)$/, (m, a) => `Θέσεις γλυφών (${a})`],
+      [/^saved transmog sets for (.+)$/, (m, a) => `αποθηκευμένα σύνολα για ${a}`],
+      [/^Reset (\d+) talent points · (.+)$/, (m, n, c) => `Επαναφορά ${n} πόντων ταλέντων · ${c}`],
+      [/^(\d+) points?$/, (m, n) => `${n} πόντοι`],
+      [/^Reward: (.+)$/, (m, a) => "Ανταμοιβή: " + a.replace(/, a mount/, ", ένα άλογο").replace(/, a companion/, ", ένας σύντροφος").replace(/, a house discount/, ", έκπτωση σπιτιού").replace(/\+1 draught capacity/, "+1 θέση φίλτρου")],
+      [/^req (\d+)$/, (m, n) => `απαιτ. ${n}`],
+      [/^Buy · (.+)$/, (m, a) => `Αγορά · ${a}`],
+      [/^Build · (.+)$/, (m, a) => `Χτίσε · ${a}`],
+      [/^Speed ×([\d.]+) · (.+)$/, (m, s, a) => `Ταχύτητα ×${s} · ${shards(a)}`],
+      [/^(melee|ranged|heal|tank) · (.+)$/, (m, r, a) => `${tr(r)} · ${shards(a)}`],
+      [/^— (.+?) \((.+)\)(?: · suggested level (\d+))?$/, (m, n, p, l) => `— ${n} (${tr(p)})${l ? ` · προτεινόμενο επίπεδο ${l}` : ""}`],
+      [/^(.+) has work for you · (\d+) m$/, (m, n, d) => `Δουλειά από: ${n} · ${d} m`],
+      [/^Tutorial (\d+) \/ (\d+)$/, (m, a, b) => `Οδηγός ${a} / ${b}`],
+      [/^Stash (\d+)\/(\d+)$/, (m, a, b) => `Αποθήκη ${a}/${b}`],
+      [/^Sigils:? (\d+)\/3$/, (m, a) => `Σφραγίδες ${a}/3`],
+      [/^Shrines lit: (\d+)\/(\d+)$/, (m, a, b) => `Αναμμένα ιερά: ${a}/${b}`],
+      [/^Lore pages: (\d+)\/(\d+)$/, (m, a, b) => `Σελίδες ιστορίας: ${a}/${b}`],
+      [/^Dreadlords slain: (\d+)\/(\d+)$/, (m, a, b) => `Φοβεράρχες νεκροί: ${a}/${b}`],
+      [/^· Sigils reclaimed: (\d+) \/ (\d+)$/, (m, a, b) => `· Σφραγίδες: ${a} / ${b}`],
+      [/^Friends (\d+)$/, (m, a) => `Φίλοι ${a}`],
+      [/^FRIEND CODE: (.+)$/, (m, a) => `ΚΩΔΙΚΟΣ ΦΙΛΟΥ: ${a}`],
+      [/^ROOM CODE: (.+)$/, (m, a) => `ΚΩΔΙΚΟΣ ΔΩΜΑΤΙΟΥ: ${a}`],
+      [/^Room code: (.+)$/, (m, a) => `Κωδικός δωματίου: ${a}`],
+      [/^· (\d+) player\(s\) · you host$/, (m, n) => `· ${n} παίκτες · φιλοξενείς`],
+      [/^Slot (\d+)$/, (m, n) => `Θέση ${n}`],
+      [/^Outfit (\d+)$/, (m, n) => `Σύνολο ${n}`],
+      [/^Saves — slot (\d+) \(load · export · import\)$/, (m, n) => `Αποθηκεύσεις — θέση ${n} (φόρτωση · εξαγωγή · εισαγωγή)`],
+      [/^(Apprentice|Journeyman|Expert|Artisan|Master|Grandmaster) \((\d+)\+\)$/, (m, r, n) => `${RANK[r]} (${n}+)`],
+      [/^(Apprentice|Journeyman|Expert|Artisan|Master|Grandmaster) · (\d+) \/ (\d+)$/, (m, r, a, b) => `${RANK[r]} · ${a} / ${b}`],
+      [/^☼ (\d\d:\d\d) · (\w+)$/, (m, t, p) => `☼ ${t} · ${tr(p)}`],
+      [/^◆ (\d+) · ✦ (\d+) · (\d+) min played$/, (m, a, b, c) => `◆ ${a} · ✦ ${b} · ${c} λεπτά παιχνιδιού`],
+      [/^◆ ([\d,]+) Soul Shards ✦ ([\d,]+) Ashen Marks$/, (m, a, b) => `◆ ${a} Θραύσματα Ψυχής ✦ ${b} Στακτερά Σημάδια`],
+      [/^✦ ([\d,]+) Ashen Marks$/, (m, a) => `✦ ${a} Στακτερά Σημάδια`],
+      [/^\+(\d+) Ashen Marks$/, (m, a) => `+${a} Στακτερά Σημάδια`],
+      [/^Found \((.+)\)$/, (m, a) => `Ίδρυση (${a})`],
+      [/^(\d[\d,]*) shards$/, (m, a) => `${a} θραύσματα`],
+      [/^(.+?) CLEARED$/, (m, a) => `${tr(a)} ΚΑΘΑΡΙΣΤΗΚΕ`],
+      [/^ABYSS TIER (\d+) CLEARED$/, (m, a) => `ΑΒΥΣΣΟΣ ΒΑΘΜΙΔΑ ${a} ΚΑΘΑΡΙΣΤΗΚΕ`],
+      [/^THE ABYSSAL RIFT — TIER (\d+)$/, (m, a) => `Η ΡΩΓΜΗ ΤΗΣ ΑΒΥΣΣΟΥ — ΒΑΘΜΙΔΑ ${a}`],
+      [/^WAVE (\d+) \/ (\d+)$/, (m, a, b) => `ΚΥΜΑ ${a} / ${b}`],
+      [/^ROUND (\d+)$/, (m, a) => `ΓΥΡΟΣ ${a}`],
+      [/^MYTHIC \+(\d+)$/, (m, a) => `ΜΥΘΙΚΟ +${a}`],
+      [/^Quest accepted: (.+)$/, (m, a) => `Αποστολή αποδεκτή: ${a}`],
+      [/^Quest ready: (.+?) — return to (.+)$/, (m, a, b) => `Αποστολή έτοιμη: ${a} — γύρνα στον/στην ${b}`],
+      [/^(.+?): objective reached$/, (m, a) => `${a}: ο στόχος επιτεύχθηκε`],
+      [/^(.+?): done — return to (.+)$/, (m, a, b) => `${a}: έγινε — γύρνα στον/στην ${b}`],
+      [/^Title earned: (.+?) — choose it in Achievements \(K\)$/, (m, a) => `Νέος τίτλος: ${a} — διάλεξέ τον στα Επιτεύγματα (K)`],
+      [/^Appearance unlocked: (.+)$/, (m, a) => `Νέα εμφάνιση: ${a}`],
+      [/^Cosmetic unlocked: (.+)$/, (m, a) => `Νέο διακοσμητικό: ${a}`],
+      [/^(.+) added to your bag$/, (m, a) => `${a}: στην τσάντα σου`],
+      [/^Route learned: (.+)$/, (m, a) => `Νέα διαδρομή: ${a}`],
+      [/^Not enough (\w+)$/, (m, a) => `Δεν έχεις αρκετή ${R(a)}`],
+      [/^Veteran's Boon: \+50% experience until level (\d+)$/, (m, a) => `Δώρο του Βετεράνου: +50% εμπειρία ως το επίπεδο ${a}`],
+      [/^Salvaged (\d+) items for (\d+) ✦$/, (m, a, b) => `Διαλύθηκαν ${a} αντικείμενα για ${b} ✦`],
+      [/^You mount (.+)$/, (m, a) => `Ανεβαίνεις: ${a}`],
+      [/^(.+) joined the group$/, (m, a) => `${a}: μπήκε στην ομάδα`],
+      [/^(.+) left the group$/, (m, a) => `${a}: έφυγε από την ομάδα`],
+      [/^(.+) is down!$/, (m, a) => `${a}: έπεσε!`],
+      [/^(.+) is back up$/, (m, a) => `${a}: σηκώθηκε ξανά`],
+      [/^(.+) interrupted!$/, (m, a) => `${a}: διακόπηκε!`],
+      [/^Requires (\w+) (\d+)$/, (m, a, n) => `Απαιτεί ${tr(a)} ${n}`],
+      [/^You need (\w+) (\d+)( here)?$/, (m, a, n) => `Χρειάζεσαι ${tr(a)} ${n}`],
+      [/^World event: (.+?) \((.+?)\)\. A gold marker shows the way\.$/, (m, a, z) => `Παγκόσμιο γεγονός: ${a} (${tr(z)}). Ένας χρυσός δείκτης δείχνει τον δρόμο.`],
+      [/^(.+) tempered: item level (\d+) \((\d)\/3\)$/, (m, a, l, n) => `${a}: βάφτηκε, επίπεδο αντικειμένου ${l} (${n}/3)`],
+      [/^What's new — Vigilfall (.+)$/, (m, a) => `Τι νέο υπάρχει — Vigilfall ${a}`],
+      [/^What's new in (.+)$/, (m, a) => `Τι νέο στην ${a}`],
+      [/^Kill (\d+) (.+)$/, (m, n, a) => `Σκότωσε ${n} ${tr(a)}`],
+      [/^Open (\d+) treasure chests$/, (m, n) => `Άνοιξε ${n} σεντούκια θησαυρού`],
+      [/^Break (\d+) crates\/barrels\/coffins$/, (m, n) => `Σπάσε ${n} κιβώτια/βαρέλια/φέρετρα`],
+      [/^Banish (\d+) Wraiths$/, (m, n) => `Εξόρισε ${n} Φαντάσματα`],
+      [/^Time a Mythic \+(\d+) or higher$/, (m, n) => `Ολοκλήρωσε εγκαίρως Μυθικό +${n} ή πάνω`],
+      [/^Defeat a raid boss$/, () => "Νίκησε έναν αρχηγό επιδρομής"],
+      [/^Worn (\w+) · level (\d+)$/, (m, s, n) => `Φθαρμένο ${tr(s)} · επίπεδο ${n}`],
+      [/^(Blessed|Hallowed|Relic) (\w+) · level (\d+)$/, (m, q, s, n) => `${{ Blessed: "Ευλογημένο", Hallowed: "Αγιασμένο", Relic: "Κειμήλιο" }[q]} ${tr(s)} · επίπεδο ${n}`],
+      [/^(.+) · level (\d+)$/, (m, a, n) => `${a} · επίπεδο ${n}`],
+      [/^(\d+)\s*\/\s*(\d+) · press Z to ride your favourite$/, (m, a, b) => `${a}/${b} · πάτα Z για να ιππεύσεις το αγαπημένο σου`],
+      [/^Placing (.+?): LMB \/ F place · Q E rotate · R put away$/, (m, a) => `Τοποθέτηση ${a}: Αριστερό κλικ / F τοποθέτηση · Q E περιστροφή · R μάζεμα`],
+      [/^\[(LMB|RMB|Q|E|R)\] (.+)$/, (m, k, a) => `[${k}] ${tr(a)}`],
+      // a leading symbol, then something known: "🏆 Kingslayer", "◈ Slay Dire Wolves", "“…”"
+      [/^([^\p{L}\p{N}\s]{1,3}) (.+)$/u, (m, s, a) => { const t = tr(a); return t === a ? null : `${s} ${t}`; }],
+      [/^“(.+)”$/, (m, a) => { const t = tr(a); return t === a ? null : `“${t}”`; }],
+    ];
+    const RANK = { Apprentice: "Μαθητευόμενος", Journeyman: "Τεχνίτης", Expert: "Ειδικός", Artisan: "Καλλιτέχνης", Master: "Δάσκαλος", Grandmaster: "Αρχιμάστορας" };
+    let depth = 0;
+    function pat(s) {
+      if (depth > 3 || s.length > 600) return null;
+      depth++;
+      try {
+        for (const [re, f] of PATS) { const m = re.exec(s); if (m) { const r = f(...m); if (r != null) return r; } }
+        return null;
+      } finally { depth--; }
+    }
+    const CACHE = new Map();
+    const T = (raw) => {
+      if (!raw || !/[A-Za-z]{2}/.test(raw)) return raw;
+      let c = CACHE.get(raw);
+      if (c !== undefined) return c;
+      const s = raw.replace(/\s+/g, " ").trim();
+      let t = tr(s);
+      c = t === s ? raw : raw.match(/^\s*/)[0] + t + raw.match(/\s*$/)[0];
+      if (CACHE.size > 8000) CACHE.clear();
+      CACHE.set(raw, c);
+      return c;
+    };
+    X.EL.T = T;
+    const SKIP = new Set(["SCRIPT", "STYLE", "TEXTAREA", "INPUT", "CODE", "PRE"]);
+    const skipEl = (el) => !el || SKIP.has(el.tagName) || el.closest?.("#chatlog,.no-tr");
+    const skipAttr = (el) => !el || el.closest?.("#chatlog,.no-tr");
+    // guard against a tug-of-war with code that writes its English text back whenever we translate it
+    const FIGHT = new WeakMap();
+    const doText = (n) => {
+      const v = n.nodeValue;
+      if (!v || v.length > 1200) return;
+      const t = T(v);
+      if (t === v) return;
+      const el = n.parentElement, now = performance.now();
+      let f = el && FIGHT.get(el);
+      if (el) {
+        if (!f) FIGHT.set(el, (f = { src: v, t: now, n: 0 }));
+        else { f.n = f.src === v && now - f.t < 1500 ? f.n + 1 : 0; f.src = v; f.t = now; }
+        if (f.n > 8) return;
+      }
+      n.nodeValue = t;
+    };
+    const ATTR = ["placeholder", "title", "data-tip"];
+    const doAttrs = (el) => {
+      for (const a of ATTR) {
+        const v = el.getAttribute && el.getAttribute(a);
+        if (v) {
+          // tooltips are "Name: description"
+          let t = T(v);
+          if (t === v) { const m = /^([^:]{2,60}): (.+)$/.exec(v); if (m) { const a1 = T(m[1]), b1 = T(m[2]); (a1 !== m[1] || b1 !== m[2]) && (t = `${a1}: ${b1}`); } }
+          t !== v && el.setAttribute(a, t);
+        }
+      }
+    };
+    const walk = (root) => {
+      if (root.nodeType === 3) { skipEl(root.parentElement) || doText(root); return; }
+      if (root.nodeType !== 1 || skipAttr(root)) return;
+      doAttrs(root);
+      const it = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = it.nextNode())) {
+        if (n.nodeType === 3) { skipEl(n.parentElement) || doText(n); }
+        else if (!skipAttr(n)) doAttrs(n);
+      }
+    };
+    X.EL.walk = walk;
+    const mo = new MutationObserver((list) => {
+      for (const m of list) {
+        if (m.type === "characterData") { skipEl(m.target.parentElement) || doText(m.target); }
+        else if (m.type === "attributes") { skipAttr(m.target) || doAttrs(m.target); }
+        else for (const n of m.addedNodes) walk(n);
+      }
+    });
+    const start = () => {
+      walk(document.body);
+      mo.observe(document.body, { childList: !0, subtree: !0, characterData: !0, attributes: !0, attributeFilter: ATTR });
+    };
+    document.body ? start() : addEventListener("DOMContentLoaded", start);
+    X.EL.DICT = DICT;
+  }
 }
 
   window.__app = new bE();
