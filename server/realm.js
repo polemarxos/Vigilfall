@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.8.4";
+const SERVER_VERSION = "1.8.5";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -365,6 +365,7 @@ async function onClientMsg(c, m) {
     });
     if (why) return sendJ(c.ws, { t: "denied", why });
     let r = await readRec(pid);
+    const now = Date.now();
     // one session per character
     const old = clientOfPid(pid);
     old && old !== c && kick(old.id, "You logged in somewhere else.");
