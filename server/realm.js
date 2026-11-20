@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.9.0";
+const SERVER_VERSION = "1.10.0";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -16,7 +16,7 @@ const DATA = process.env.VF_DATA || path.join(ROOT, "data");
 
 // ---------------- complete backup (.vfpack): everything incl. passwords and tokens, encrypted with a password ----------------
 // file: "VFPACK1\n" + salt(16) + iv(12) + tag(16) + AES-256-GCM(tar.gz of the data folder's important parts)
-const PACK_ITEMS = ["players", "backups", "config.json", "sessions.json", "github.json", "source.json", "mail.json", "accounts.on", "system.json"];
+const PACK_ITEMS = ["players", "backups", "config.json", "sessions.json", "github.json", "source.json", "mail.json", "fcm.json", "accounts.on", "system.json"];
 const PACK_MAGIC = Buffer.from("VFPACK1\n");
 function packKey(pass, salt) { return crypto.scryptSync(String(pass), salt, 32, { N: 32768, r: 8, p: 1, maxmem: 96 * 1024 * 1024 }); }
 // unpack into a data folder (used by "restore" in the admin app and by setup.sh when moving to a new server)
@@ -130,6 +130,7 @@ const alertOn = (cat, text) => {
   if (cat === "email" && isErr(text)) return "email";
   if (cat === "backup" && isErr(text)) return "backup";
   if (cat === "world" && /restarting world host|world failed|exited|crash/i.test(text)) return "world";
+  if (/was off for/.test(text)) return "down";
   if (/listening on/.test(text)) return "server";
   if (/server program updated/.test(text)) return "server";
   if (/account created/.test(text)) return "newplayer";
@@ -144,8 +145,10 @@ const log = (...a) => {
   LOG.length > 3000 && LOG.splice(0, LOG.length - 3000);
   const k = alertOn(cat, text);
   if (k) {
-    ALERTS.push({ id: ++alertSeq, at, kind: k, text: text.slice(0, 300) });
+    const item = { id: ++alertSeq, at, kind: k, text: text.slice(0, 300) };
+    ALERTS.push(item);
     ALERTS.length > 300 && ALERTS.splice(0, ALERTS.length - 300);
+    setImmediate(() => typeof pushAlert === "function" && pushAlert(item));
   }
 };
 
@@ -792,6 +795,74 @@ const codeOk = (r, kind, code) => {
 };
 const needConfirm = (r) => mailOn() && !!r.needEmail && !r.emailOk;
 
+// ---------------- phone alerts by Firebase Cloud Messaging (HTTP v1) ----------------
+// data/fcm.json: { sa: service account (private key), app: the Android app's Firebase settings, devices: [...] } (0600)
+const FCM_FILE = path.join(DATA, "fcm.json");
+let fcm = { sa: null, app: null, devices: [] };
+try { Object.assign(fcm, JSON.parse(fs.readFileSync(FCM_FILE, "utf8"))); } catch (e) {}
+const saveFcm = () => fs.writeFileSync(FCM_FILE, JSON.stringify(fcm, null, 1), { mode: 0o600 });
+const FCM_DEFAULT_KINDS = { down: 1, cheat: 1, email: 1, backup: 1, world: 1, server: 0, newplayer: 0 };
+const ALERT_TITLES = { down: "Server was off", cheat: "Anti-cheat", email: "Email", backup: "Backup", world: "World", server: "Server", newplayer: "New player", test: "Test" };
+let fcmTok = null, fcmLastErr = null;
+const b64u = (x) => Buffer.from(x).toString("base64url");
+async function fcmAccess() {
+  if (!fcm.sa?.private_key) throw new Error("Firebase is not set up (no service account key).");
+  if (fcmTok && fcmTok.exp > Date.now() + 60e3) return fcmTok.token;
+  const now = Math.floor(Date.now() / 1000), aud = fcm.sa.token_uri || "https://oauth2.googleapis.com/token";
+  const head = b64u(JSON.stringify({ alg: "RS256", typ: "JWT" })), claim = b64u(JSON.stringify({ iss: fcm.sa.client_email, scope: "https://www.googleapis.com/auth/firebase.messaging", aud, iat: now, exp: now + 3600 }));
+  const sig = crypto.createSign("RSA-SHA256").update(head + "." + claim).sign(fcm.sa.private_key).toString("base64url");
+  const r = await fetch(process.env.VF_FCM_TOKEN_URL || aud, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: "grant_type=" + encodeURIComponent("urn:ietf:params:oauth:grant-type:jwt-bearer") + "&assertion=" + head + "." + claim + "." + sig, signal: AbortSignal.timeout(20000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.access_token) throw new Error("Google refused the service account key: " + (j.error_description || j.error || "HTTP " + r.status));
+  fcmTok = { token: j.access_token, exp: Date.now() + (+j.expires_in || 3600) * 1000 };
+  return fcmTok.token;
+}
+async function fcmSend(dev, title, body, kind) {
+  const tok = await fcmAccess();
+  const r = await fetch((process.env.VF_FCM_API || "https://fcm.googleapis.com") + "/v1/projects/" + encodeURIComponent(fcm.sa.project_id) + "/messages:send", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + tok, "Content-Type": "application/json" },
+    body: JSON.stringify({ message: { token: dev.token, data: { title: String(title).slice(0, 120), body: String(body).slice(0, 900), kind: String(kind || "") }, android: { priority: "high", ttl: "86400s" } } }),
+    signal: AbortSignal.timeout(20000),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const code = j.error?.details?.find?.((d) => d.errorCode)?.errorCode || j.error?.status || "HTTP " + r.status;
+    const e = new Error("Firebase: " + code + (j.error?.message ? " — " + j.error.message : ""));
+    e.gone = r.status === 404 || code === "UNREGISTERED";
+    throw e;
+  }
+  return true;
+}
+async function pushAlert(item) {
+  if (!fcm.sa || !fcm.devices.length) return;
+  const title = "Vigilfall · " + (ALERT_TITLES[item.kind] || "Realm");
+  const text = item.kind === "newplayer" ? item.text.replace(/^account created (\S+).*/, "New account: $1") : item.text.replace(/^anti-cheat refused a save (\S+) \S+ /, "Refused a save of $1: ");
+  for (const d of [...fcm.devices]) {
+    const kinds = { ...FCM_DEFAULT_KINDS, ...(d.kinds || {}) };
+    if (item.kind !== "test" && !kinds[item.kind]) continue;
+    try { await fcmSend(d, title, text, item.kind); d.lastOk = Date.now(); delete d.lastErr; }
+    catch (e) {
+      fcmLastErr = { at: Date.now(), msg: e.message };
+      if (e.gone) fcm.devices = fcm.devices.filter((x) => x !== d);
+      else d.lastErr = e.message;
+      console.log("push failed:", e.message); // console only: a failed push must not make a new alert
+    }
+  }
+  saveFcm();
+}
+// the server was off: a heartbeat file every minute tells how long when it starts again
+const BEAT_FILE = path.join(DATA, "heartbeat");
+{
+  let last = 0;
+  try { last = +fs.readFileSync(BEAT_FILE, "utf8") || 0; } catch (e) {}
+  const gap = last ? Date.now() - last : 0;
+  if (gap > 3 * 60e3) setTimeout(() => log(`The Realm server was off for ${gap >= 7200e3 ? Math.round(gap / 3600e3) + " hours" : Math.round(gap / 60e3) + " minutes"} and is running again.`), 3000);
+  const beat = () => fs.writeFile(BEAT_FILE, String(Date.now()), () => {});
+  beat();
+  setInterval(beat, 60e3);
+}
+
 // ---------------- accounts: name + password, the save follows the player to every device ----------------
 const SESS_FILE = path.join(DATA, "sessions.json");
 let sessions = {};
@@ -1421,6 +1492,67 @@ async function api(req, res, url) {
     return json(res, 200, { version: SERVER_VERSION, latest });
   }
   if (p[0] === "server" && p[1] === "update" && M === "POST") return json(res, 200, await selfUpdate());
+  // Firebase (phone alerts)
+  if (p[0] === "fcm") {
+    const view = () => ({ saSet: !!fcm.sa, saEmail: fcm.sa?.client_email || "", projectId: fcm.sa?.project_id || fcm.app?.projectId || "", app: fcm.app, devices: fcm.devices.map((d, i) => ({ i, name: d.name, at: d.at, tail: String(d.token).slice(-8), kinds: { ...FCM_DEFAULT_KINDS, ...(d.kinds || {}) }, lastOk: d.lastOk, lastErr: d.lastErr })), lastError: fcmLastErr });
+    if (!p[1] && M === "GET") return json(res, 200, view());
+    if (!p[1] && M === "POST") {
+      const b = await body(req);
+      const parse = (v) => (typeof v === "string" ? JSON.parse(v) : v);
+      try {
+        if (b.serviceAccount) {
+          const sa = parse(b.serviceAccount);
+          if (sa.type !== "service_account" || !sa.private_key || !sa.client_email || !sa.project_id) throw new Error("That is not a Firebase service account key (Project settings → Service accounts → Generate new private key).");
+          fcm.sa = { project_id: sa.project_id, client_email: sa.client_email, private_key: sa.private_key, token_uri: sa.token_uri || "https://oauth2.googleapis.com/token" };
+          fcmTok = null;
+        }
+        if (b.googleServices) {
+          const g = parse(b.googleServices);
+          const cl = (g.client || []).find((c) => c.client_info?.android_client_info?.package_name === "com.polemarxos.vigilfall.admin") || (g.client || [])[0];
+          if (!g.project_info || !cl) throw new Error("That is not a google-services.json file.");
+          if (cl.client_info?.android_client_info?.package_name !== "com.polemarxos.vigilfall.admin") throw new Error("This google-services.json is for another app. In Firebase, add an Android app with the package name com.polemarxos.vigilfall.admin and download its file.");
+          fcm.app = { appId: cl.client_info.mobilesdk_app_id, apiKey: cl.api_key?.[0]?.current_key, projectId: g.project_info.project_id, senderId: g.project_info.project_number };
+        }
+        if (fcm.sa && fcm.app && fcm.sa.project_id !== fcm.app.projectId) throw new Error(`The two files are from different Firebase projects (${fcm.sa.project_id} and ${fcm.app.projectId}).`);
+        if (b.serviceAccount) await fcmAccess();
+      } catch (e) { return json(res, 400, { error: e.message, ...view() }); }
+      saveFcm();
+      fcmLastErr = null;
+      log("Firebase alerts set up for project", fcm.sa?.project_id || fcm.app?.projectId);
+      return json(res, 200, { ok: true, ...view() });
+    }
+    if (p[1] === "devices" && M === "POST") {
+      const b = await body(req);
+      const token = String(b.token || "");
+      if (token.length < 20) return json(res, 400, { error: "bad token" });
+      let d = fcm.devices.find((x) => x.token === token);
+      if (!d) { d = { token, at: Date.now() }; fcm.devices.push(d); log("phone added for alerts:", String(b.name || "").slice(0, 40)); }
+      if (b.name) d.name = String(b.name).slice(0, 60);
+      if (b.kinds && typeof b.kinds === "object") d.kinds = Object.fromEntries(Object.keys(FCM_DEFAULT_KINDS).map((k) => [k, b.kinds[k] ? 1 : 0]));
+      fcm.devices = fcm.devices.slice(-20);
+      saveFcm();
+      return json(res, 200, { ok: true, ...view() });
+    }
+    if (p[1] === "devices" && p[2] !== undefined && M === "DELETE") {
+      fcm.devices.splice(+p[2], 1);
+      saveFcm();
+      return json(res, 200, { ok: true, ...view() });
+    }
+    if (p[1] === "test" && M === "POST") {
+      const b = await body(req);
+      const list = b.token ? fcm.devices.filter((d) => d.token === b.token) : fcm.devices;
+      if (!list.length) return json(res, 404, { error: "This phone is not registered for alerts yet." });
+      const out = [];
+      for (const d of list) {
+        try { await fcmSend(d, "Vigilfall · Test", "Alerts from your Realm server work. You'll see one like this when something happens.", "test"); d.lastOk = Date.now(); delete d.lastErr; out.push({ name: d.name, ok: true }); }
+        catch (e) { d.lastErr = e.message; out.push({ name: d.name, ok: false, error: e.message }); if (e.gone) fcm.devices = fcm.devices.filter((x) => x !== d); }
+      }
+      saveFcm();
+      const bad = out.find((x) => !x.ok);
+      return bad ? json(res, 502, { error: bad.error, results: out }) : json(res, 200, { ok: true, results: out });
+    }
+    if (!p[1] && M === "DELETE") { fcm = { sa: null, app: null, devices: [] }; fcmTok = null; fcmLastErr = null; saveFcm(); log("Firebase alerts switched off"); return json(res, 200, { ok: true, ...view() }); }
+  }
   // live: who is where, the chat, mutes
   if (p[0] === "live" && M === "GET") {
     const now = Date.now();

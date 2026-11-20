@@ -94,8 +94,8 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.19";
-const APP_LATEST = "1.9";
+const PAGE_VERSION = "1.20";
+const APP_LATEST = "1.10";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
 const older = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
@@ -597,24 +597,71 @@ function msg() {
 
 // ---------------- server ----------------
 let logCatSel = "all", logSearch = "";
-const ALERT_KINDS = [["down", "Server stops answering / comes back"], ["cheat", "Anti-cheat refuses a save"], ["email", "An email can't be sent"], ["backup", "A backup or GitHub copy fails"], ["world", "The world crashes or restarts"], ["server", "The server program restarts or updates"], ["newplayer", "A new player creates an account"]];
-function alertsCard() {
-  let a = {};
-  try { a = JSON.parse(VFAApp.getAlerts() || "{}"); } catch (e) {}
-  const kinds = a.kinds || { down: 1, cheat: 1, email: 1, backup: 1, world: 1, server: 0, newplayer: 0 };
-  return `<div class="card"><h2>Phone alerts</h2>
-    <p class="muted">Your phone checks the server about every 15 minutes (also when the app is closed) and shows a notification for what you tick.</p>
-    <label style="display:flex;gap:8px;align-items:center"><input id="alon" type="checkbox" style="width:auto" ${a.on ? "checked" : ""}> <b>Alerts on</b></label>
-    ${ALERT_KINDS.map(([k, n]) => `<label style="display:flex;gap:8px;align-items:center;margin:6px 0 0 4px"><input type="checkbox" data-ak="${k}" style="width:auto" ${kinds[k] ? "checked" : ""}> ${n}</label>`).join("")}
-    <p class="muted" id="alstat">${a.on ? (a.lastCheck ? "Last check " + ago(a.lastCheck) + (a.lastError ? " — ⚠ " + esc(a.lastError) : " ✓") : "Waiting for the first check…") : "Off."}</p>
-    <div class="row"><button class="b p" id="alsave">Save</button><button class="b" id="altest">Send a test alert</button><button class="b" id="alnow">Check now</button></div></div>`;
+const ALERT_KINDS = [["down", "The server was off (told when it is back, with how long)"], ["cheat", "Anti-cheat refuses a save"], ["email", "An email can't be sent"], ["backup", "A backup or GitHub copy fails"], ["world", "The world crashes or restarts"], ["server", "The server program starts or updates"], ["newplayer", "A new player creates an account"]];
+const HAS_PUSH = () => !!window.VFAApp?.hasPush;
+function pushCard() {
+  return `<div class="card" id="pushcard"><h2>Phone alerts (Firebase)</h2><div id="pushbody"><div class="muted">Loading…</div></div></div>`;
 }
-function alertsWire() {
-  if (!$("#alsave")) return;
-  const val = () => { const kinds = {}; M().querySelectorAll("[data-ak]").forEach((c) => (kinds[c.dataset.ak] = c.checked ? 1 : 0)); return { on: $("#alon").checked, base: S.base, pw: S.pw, kinds }; };
-  $("#alsave").onclick = () => { const r = VFAApp.setAlerts(JSON.stringify(val())); toast(/^ERR/.test(r) ? r : $("#alon").checked ? "Alerts on" : "Alerts off"); };
-  $("#altest").onclick = () => { VFAApp.setAlerts(JSON.stringify(val())); VFAApp.testAlert(); toast("Test alert sent — check your notifications"); };
-  $("#alnow").onclick = () => { VFAApp.setAlerts(JSON.stringify(val())); VFAApp.checkAlertsNow(); toast("Checking…"); setTimeout(() => tab === "server" && !stack.length && server(), 6000); };
+let pushTokenCb = null;
+window.VFA_pushToken = (t, e) => { const cb = pushTokenCb; pushTokenCb = null; cb && cb(t, e); };
+const getPushToken = () => new Promise((ok, bad) => { pushTokenCb = (t, e) => (t ? ok(t) : bad(new Error(e || "Firebase gave no token"))); VFAApp.pushToken(); setTimeout(() => pushTokenCb && ((pushTokenCb = null), bad(new Error("Firebase did not answer. Check the internet connection and try again."))), 30000); });
+async function pushWire() {
+  const B = $("#pushbody"); if (!B) return;
+  let f;
+  try { f = await call("fcm"); } catch (e) { B.innerHTML = `<p class="muted">${/404|not found|unknown/i.test(e.message) ? "Update the server program first (below)." : esc(e.message)}</p>`; return; }
+  let info = {};
+  try { info = HAS_PUSH() ? JSON.parse(VFAApp.pushInfo() || "{}") : {}; } catch (e) {}
+  const mine = info.token ? f.devices.find((d) => info.token.endsWith(d.tail)) : null;
+  const kinds = mine?.kinds || { down: 1, cheat: 1, email: 1, backup: 1, world: 1, server: 0, newplayer: 0 };
+  const ready = f.saSet && f.app;
+  B.innerHTML = `<p class="muted">Your server sends a notification to your phone the moment something happens, through Google's Firebase Cloud Messaging (free).</p>
+    ${ready ? `<p class="muted">✓ Firebase project <b>${esc(f.projectId)}</b> is set up on the server.</p>` : `<details ${f.saSet || f.app ? "" : "open"}><summary class="muted" style="cursor:pointer"><b>Set up Firebase (one time, about 5 minutes)</b></summary><ol class="muted" style="padding-left:18px;margin:6px 0">
+      <li>Open <b>console.firebase.google.com</b> → <b>Create a project</b> → name it e.g. <b>Vigilfall</b>. Google Analytics is not needed: turn it off.</li>
+      <li>In the project: <b>Add app → Android</b>. Package name: <b>com.polemarxos.vigilfall.admin</b> → Register app → <b>Download google-services.json</b>. Skip the other steps.</li>
+      <li>⚙ <b>Project settings → Service accounts → Generate new private key</b> → Generate key. A second .json file downloads. Keep it private: it lets the server send notifications.</li>
+      <li>Choose both files here and tap <b>Save</b>.</li></ol></details>
+      <label>google-services.json ${f.app ? "✓" : ""}</label><input id="fgs" type="file" accept=".json,application/json,*/*">
+      <label>Service account key (.json) ${f.saSet ? "✓" : ""}</label><input id="fsa" type="file" accept=".json,application/json,*/*">
+      <div class="row" style="margin-top:8px"><button class="b p" id="fsave">Save</button></div>`}
+    ${ready ? (HAS_PUSH() ? `<h2 style="margin-top:14px">This phone</h2>
+      <p class="muted">${mine ? "✓ This phone gets alerts" + (mine.lastErr ? ` — ⚠ last one failed: ${esc(mine.lastErr)}` : mine.lastOk ? " (last sent " + ago(mine.lastOk) + ")" : "") : "This phone doesn't get alerts yet."}${info.allowed === false ? " <b style='color:var(--bad)'>Notifications are blocked for Vigilfall Admin — allow them in Android settings.</b>" : ""}</p>
+      ${ALERT_KINDS.map(([k, n]) => `<label style="display:flex;gap:8px;align-items:center;margin:6px 0 0 4px"><input type="checkbox" data-ak="${k}" style="width:auto" ${kinds[k] ? "checked" : ""}> ${n}</label>`).join("")}
+      <div class="row" style="margin-top:10px"><button class="b p" id="pon">${mine ? "Save" : "Turn on alerts on this phone"}</button>${mine ? '<button class="b" id="ptest">Send a test alert</button>' : ""}</div>`
+      : IN_APP ? '<p class="muted">Update Vigilfall Admin to 1.10 to get alerts on this phone (Server → check for app update).</p>' : '<p class="muted">Open this page in the Vigilfall Admin app on your phone to turn alerts on for it.</p>') : ""}
+    ${f.devices.length ? `<h2 style="margin-top:14px">Phones getting alerts</h2><div class="list" id="pdev"></div>` : ""}
+    ${f.lastError ? `<p class="muted">⚠ Last problem ${ago(f.lastError.at)}: ${esc(f.lastError.msg)}</p>` : ""}
+    ${f.saSet || f.app ? '<div class="row" style="margin-top:8px"><button class="b s d" id="foff">Remove Firebase from the server</button></div>' : ""}`;
+  const L = $("#pdev");
+  if (L) for (const d of f.devices) {
+    const e = document.createElement("div"); e.className = "it";
+    e.innerHTML = `<div class="nm"><b>${esc(d.name || "Phone")}${mine && d.i === mine.i ? " (this phone)" : ""}</b><span>added ${ago(d.at)}${d.lastErr ? " · ⚠ " + esc(d.lastErr) : d.lastOk ? " · last alert " + ago(d.lastOk) : ""}</span></div><button class="b s d">✕</button>`;
+    e.querySelector("button").onclick = async () => { if (!confirm("Stop alerts on this phone?")) return; try { await call("fcm/devices/" + d.i, "DELETE"); pushWire(); } catch (x) { fail(x); } };
+    L.appendChild(e);
+  }
+  $("#fsave") && ($("#fsave").onclick = async () => {
+    const gs = $("#fgs").files[0], sa = $("#fsa").files[0];
+    if (!gs && !sa) return toast("Choose the files first");
+    try { await call("fcm", "POST", { googleServices: gs ? await gs.text() : undefined, serviceAccount: sa ? await sa.text() : undefined }); toast("Saved"); pushWire(); } catch (e) { fail(e); pushWire(); }
+  });
+  $("#foff") && ($("#foff").onclick = async () => { if (!confirm("Remove the Firebase settings from the server? No phone gets alerts after this.")) return; try { await call("fcm", "DELETE"); pushWire(); } catch (e) { fail(e); } });
+  const kindsNow = () => { const k = {}; M().querySelectorAll("[data-ak]").forEach((c) => (k[c.dataset.ak] = c.checked ? 1 : 0)); return k; };
+  $("#pon") && ($("#pon").onclick = async () => {
+    $("#pon").disabled = true;
+    try {
+      const r = VFAApp.setFirebase(JSON.stringify(f.app));
+      if (/^ERR/.test(r)) throw new Error(r.replace(/^ERR:?\s*/, ""));
+      if (r === "RESTART") { alert("The app restarts once to switch to the new Firebase project. Then tap the button again."); return VFAApp.restartApp(); }
+      VFAApp.requestNotify();
+      VFAApp.setPushServer(S.base, S.pw, JSON.stringify(kindsNow()));
+      toast("Asking Firebase for this phone's address…");
+      const token = await getPushToken();
+      await call("fcm/devices", "POST", { token, name: navigator.userAgent.match(/Android[^;)]*;\s*([^;)]+)/)?.[1]?.replace(/ Build.*/, "") || "Phone", kinds: kindsNow() });
+      toast(mine ? "Saved" : "Alerts are on for this phone");
+      pushWire();
+    } catch (e) { fail(e); }
+    $("#pon") && ($("#pon").disabled = false);
+  });
+  $("#ptest") && ($("#ptest").onclick = async () => { try { await call("fcm/test", "POST", { token: info.token }); toast("Sent — it should arrive in a few seconds"); } catch (e) { fail(e); } });
 }
 async function server() {
   $("#htitle").textContent = "Server";
@@ -657,7 +704,7 @@ async function server() {
     <div class="card"><h2>Server program</h2><p class="muted" id="sver">Version ${esc(s.serverVersion || "1.0 (old)")} · checking GitHub…</p><div class="row"><button class="b" id="sself" disabled>Update server program</button></div></div>
     <div class="card"><h2>Admin password</h2><input id="spw" type="password" placeholder="new password (8+ characters)"><div class="row" style="margin-top:8px"><button class="b" id="spws">Change password</button></div></div>
     ${appBackupCard()}
-    ${window.VFAApp?.setAlerts ? alertsCard() : IN_APP ? '<div class="card"><h2>Phone alerts</h2><p class="muted">Update the app to get alerts on your phone (Server → check for app update).</p></div>' : ""}
+    ${pushCard()}
     <div class="card"><h2>Server log</h2>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px" id="lcats">${[["all", "All"], ["err", "⚠ Problems"], ["account", "Accounts"], ["player", "Players"], ["cheat", "Anti-cheat"], ["email", "Email"], ["backup", "Backups"], ["world", "World"], ["server", "Server"], ["other", "Other"]].map(([k, n]) => `<button class="b s${k === logCatSel ? " p" : ""}" data-lc="${k}">${n}</button>`).join("")}</div>
       <div class="row" style="gap:8px;margin-bottom:8px"><input id="lsearch" placeholder="Search the log" style="flex:1" value="${esc(logSearch)}"><button class="b s" id="slog">↻</button><button class="b s" id="sdl" title="Save the log as a file">⬇</button></div>
@@ -687,7 +734,7 @@ async function server() {
   $("#supd").onclick = async () => { toast("Checking…"); try { const r = await call("update", "POST"); toast(r.changed ? `Downloaded ${r.ver} — world restarts in 60 s` : r.ok ? `Already up to date (${r.ver})` : "Update failed: " + r.why); } catch (e) { fail(e); } };
   $("#srst").onclick = async () => { if (!confirm("Restart the world now? Everyone is disconnected for about a minute.")) return; try { await call("restart", "POST", { delay: 0 }); toast("Restarting…"); } catch (e) { fail(e); } };
   appBackupWire();
-  $("#spws").onclick = async () => { const v = $("#spw").value; if (v.length < 8) return toast("At least 8 characters"); try { await call("config", "POST", { newPassword: v }); S.pw = v; store.set("vfa_pw", v); try { if (window.VFAApp?.setAlerts) { const a = JSON.parse(VFAApp.getAlerts() || "{}"); a.on && VFAApp.setAlerts(JSON.stringify({ on: true, kinds: a.kinds, base: S.base, pw: v })); } } catch (e) {} toast("Password changed"); $("#spw").value = ""; } catch (e) { fail(e); } };
+  $("#spws").onclick = async () => { const v = $("#spw").value; if (v.length < 8) return toast("At least 8 characters"); try { await call("config", "POST", { newPassword: v }); S.pw = v; store.set("vfa_pw", v); try { window.VFAApp?.setPushServer?.(S.base, v, null); } catch (e) {} toast("Password changed"); $("#spw").value = ""; } catch (e) { fail(e); } };
   call("source").then((g) => {
     if (!$("#srcrepo")) return;
     $("#srcrepo").value = g.repo; $("#srctok").placeholder = g.hasToken ? "•••••••• (saved — leave empty to keep)" : "github_pat_… (only needed when private)";
@@ -722,7 +769,7 @@ async function server() {
   $("#lsearch").oninput = () => { logSearch = $("#lsearch").value; drawLog(); };
   $("#sdl").onclick = () => { try { const w = saveText(`vigilfall-log-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.txt`, logItems.map((x) => new Date(x.at).toISOString().slice(0, 19).replace("T", " ") + " " + x.text).join("\n")); toast("Saved to " + w); } catch (e) { fail(e); } };
   $("#slog").onclick = loadLog; loadLog();
-  alertsWire();
+  pushWire();
 }
 
 // ---------------- app self-update (Android installer) ----------------
@@ -972,7 +1019,7 @@ async function fullBackups() {
 function start() {
   try { window.VFAApp?.setServer?.(S.base); } catch (e) {}
   // keep the phone alerts pointed at this server with the current password
-  try { if (window.VFAApp?.setAlerts) { const a = JSON.parse(VFAApp.getAlerts() || "{}"); a.on && VFAApp.setAlerts(JSON.stringify({ on: true, kinds: a.kinds, base: S.base, pw: S.pw })); } } catch (e) {} $("#login").classList.add("hide"); $("#app").classList.remove("hide"); go("dash"); }
+  try { window.VFAApp?.setPushServer?.(S.base, S.pw, null); } catch (e) {} $("#login").classList.add("hide"); $("#app").classList.remove("hide"); go("dash"); }
 (async () => {
   if (!S.base || !S.pw) return showLogin();
   try { await call("status"); start(); } catch (e) { showLogin(e.code === 401 ? "Sign in again." : e.message === "Failed to fetch" ? "Could not reach " + S.base.replace(/^https?:\/\//, "") : e.message); }

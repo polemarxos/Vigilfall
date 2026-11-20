@@ -1,0 +1,1029 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#14110d">
+<title>Vigilfall Admin</title>
+<style>
+:root{--bg:#14110d;--panel:#1f1a14;--panel2:#2a231a;--line:#3d3324;--text:#eadfc8;--dim:#a99878;--gold:#e8b85a;--good:#7ccf8a;--bad:#ff6a5a;--blue:#8fc4ff}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+header{position:sticky;top:0;z-index:5;background:linear-gradient(#1c1711,#14110d);border-bottom:1px solid var(--line);padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;align-items:center;gap:10px}
+header h1{font-size:17px;margin:0;color:var(--gold);letter-spacing:.5px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--dim);flex:0 0 auto}.dot.on{background:var(--good);box-shadow:0 0 8px var(--good)}.dot.off{background:var(--bad)}
+main{padding:12px;max-width:820px;margin:0 auto}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#100d0a;border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav button{flex:1;background:none;border:0;color:var(--dim);padding:9px 0 8px;font-size:11px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:2px}
+nav button b{font-size:20px;font-weight:400;line-height:1}
+nav button.sel{color:var(--gold)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+.card h2{font-size:14px;margin:0 0 10px;color:var(--gold);text-transform:uppercase;letter-spacing:1px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.stat{background:var(--panel2);border-radius:10px;padding:10px}.stat .v{font-size:22px;font-weight:600}.stat .k{color:var(--dim);font-size:12px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.list .it{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line)}
+.list .it:last-child{border-bottom:0}
+.it .nm{flex:1;min-width:0}.it .nm b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.it .nm span{color:var(--dim);font-size:12px}
+.tap{cursor:pointer}.tap:active{background:var(--panel2)}
+input,textarea,select{width:100%;background:#0f0c09;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit}
+textarea{font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;min-height:50vh}
+label{display:block;color:var(--dim);font-size:12px;margin:8px 0 4px}
+button.b{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:10px 14px;font:inherit;cursor:pointer}
+button.b:active{transform:translateY(1px)}
+button.p{background:var(--gold);color:#1a1208;border-color:var(--gold);font-weight:600}
+button.d{border-color:#6a2a22;color:#ffb0a6}
+button.s{padding:6px 10px;font-size:13px}
+.pill{font-size:11px;padding:2px 7px;border-radius:20px;background:var(--panel2);color:var(--dim);white-space:nowrap}
+.pill.on{background:#1f3a24;color:var(--good)}.pill.ban{background:#3a1f1c;color:var(--bad)}
+.heroes{display:grid;grid-template-columns:1fr 70px 90px 60px;gap:6px;align-items:center}
+.heroes .h{font-size:13px}.heroes input{padding:7px}
+.muted{color:var(--dim);font-size:13px}
+.toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#2b2418;border:1px solid var(--gold);color:var(--text);padding:10px 16px;border-radius:10px;z-index:9;max-width:90vw;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.log{font:11px/1.35 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;max-height:60vh;overflow:auto;background:#0f0c09;padding:8px;border-radius:8px}
+.login{max-width:420px;margin:12vh auto 0;padding:0 16px}
+.login h1{text-align:center;color:var(--gold);font-size:26px;margin-bottom:4px}
+.back{background:none;border:0;color:var(--gold);font-size:22px;padding:0 6px 0 0;cursor:pointer}
+.hide{display:none!important}
+.vw table{width:100%;border-collapse:collapse;font-size:13px}.vw td,.vw th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.vw th{color:var(--dim);font-weight:500}
+.r-common{color:#c8c0b0}.r-uncommon{color:#7ccf8a}.r-rare{color:#6fb0ff}.r-epic{color:#c58cff}.r-legendary{color:#ffa94a}.r-relic{color:#ffa94a}.r-cursed{color:#ff6a5a}
+.warn{border-color:#8a2f25!important;background:#2a1612}
+.term{font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;background:#0b0907;color:#d8f0c8;padding:10px;border-radius:8px;min-height:180px;max-height:55vh;overflow:auto}
+.qgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}.qgrid .b{text-align:left;font-size:13px}
+</style>
+</head>
+<body>
+<div id="login" class="login hide">
+  <h1>⚜ Vigilfall Admin</h1>
+  <p class="muted" style="text-align:center">Manage your Realm server</p>
+  <label>Server address</label><input id="lsrv" placeholder="myrealm.duckdns.org" autocapitalize="off" autocorrect="off">
+  <label>Admin password</label><input id="lpw" type="password" placeholder="password">
+  <p id="lerr" style="color:var(--bad);min-height:1.4em"></p>
+  <button class="b p" id="lgo" style="width:100%">Connect</button>
+  <p class="muted" style="margin-top:18px">The password is in <b>data/config.json</b> on the server (the setup script also prints it).</p>
+  <p class="muted" style="text-align:center;margin-top:14px">New phone? <a href="#" id="lrestore" style="color:var(--gold)">Restore an app backup…</a></p>
+  <div id="lrbox" class="hide"></div>
+</div>
+<div id="app" class="hide">
+  <header><button class="back hide" id="hback">‹</button><span class="dot" id="hdot"></span><h1 id="htitle">Realm</h1><button class="b s" id="hout" title="Sign out">⎋</button></header>
+  <main id="main"></main>
+  <nav>
+    <button data-t="dash" class="sel"><b>◈</b>Dashboard</button>
+    <button data-t="players"><b>☺</b>Players</button>
+    <button data-t="msg"><b>✉</b>Message</button>
+    <button data-t="backup"><b>⛁</b>Backups</button>
+    <button data-t="con"><b>›_</b>Console</button>
+    <button data-t="server"><b>⚙</b>Server</button>
+  </nav>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+const HERO = { templar: "Ser Aldric", warden: "Morrow", colossus: "Gravemaw", cleric: "Sister Ysolde", druid: "Hollin Thorne", apothecary: "Doctor Vesh", witch: "Cinder Maeve", ranger: "Wren Ashby", assassin: "Nyx" };
+const heroName = (id) => HERO[id] || String(id || "").replace(/(^|_)(\w)/g, (a, b, c) => (b ? " " : "") + c.toUpperCase());
+const $ = (s, r = document) => r.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const ago = (t) => { if (!t) return "never"; const s = (Date.now() - t) / 1000; return s < 60 ? "just now" : s < 3600 ? Math.round(s / 60) + " min ago" : s < 86400 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " days ago"; };
+const dur = (s) => { s = Math.round(s); const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; };
+const mb = (b) => (b / 1048576).toFixed(0) + " MB";
+const toast = (t) => { const e = $("#toast"); e.textContent = t; e.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove("show"), 2600); };
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }, del: (k) => { try { localStorage.removeItem(k); } catch (e) {} } };
+
+const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
+const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
+// the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
+const PAGE_VERSION = "1.20";
+const APP_LATEST = "1.10";
+let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
+const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
+const older = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
+let pendingReload = false;
+// app self-update (app 1.4+): downloads the new APK and opens Android's installer by itself
+const SELF = !!(window.VFAApp && window.VFAApp.canSelfUpdate);
+let updState = "", updDetail = "";
+const needsApp = () => IN_APP && APP_VER && older(APP_VER, APP_LATEST);
+const startAppUpdate = () => { if (!SELF) return; updState = "starting"; updDetail = ""; try { window.VFAApp.selfUpdate(APP_URL); } catch (e) { updState = "failed"; updDetail = String(e); } drawUpd(); };
+window.VFA_updateState = (st, d) => { updState = st; updDetail = d || ""; drawUpd(); };
+window.VFA_resume = () => { if (updState === "permission" && needsApp()) startAppUpdate(); };
+const updText = () => ({
+  "": "A new version is available.", starting: "Starting the download…", downloading: `Downloading… ${updDetail}%`,
+  installing: `Android will ask you to tap <b>Install</b> (version ${esc(updDetail)}).`,
+  permission: "Allow <b>Install unknown apps</b> for Vigilfall Admin in the screen that opened, then come back — the update continues by itself.",
+  confirm: "Tap <b>Update</b> in Android's window to finish.",
+  failed: `The update did not work: ${esc(updDetail)}. Try again or use Download.`, current: "You already have the newest app.",
+})[updState] || "";
+function updCard() {
+  if (!needsApp()) return "";
+  return `<div class="card" id="updcard" style="border-color:var(--gold)"><b>New Vigilfall Admin app ${APP_LATEST}</b><p class="muted" id="updtxt">You have ${esc(APP_VER)}. ${SELF ? updText() : "Install the new version once (it keeps your login); from then on the app updates itself."}</p><div class="row">${SELF ? '<button class="b p" id="updgo">Update now</button>' : ""}<a class="b ${SELF ? "" : "p"}" style="display:inline-block;text-decoration:none" href="${APP_URL}">Download</a></div></div>`;
+}
+function drawUpd() { const t = document.getElementById("updtxt"); if (t) t.innerHTML = `You have ${esc(APP_VER)}. ${updText()}`; }
+let updAuto = false;
+window.VFA_updated = () => { if (!stack.length && (tab === "dash" || !$("#app") || $("#app").classList.contains("hide"))) location.reload(); else { pendingReload = true; toast("Admin update downloaded — it applies on the Dashboard"); } };
+let S = { base: store.get("vfa_srv") || (!IN_APP && location.protocol.startsWith("http") ? location.origin : ""), pw: store.get("vfa_pw") || "" };
+
+async function call(path, method = "GET", body) {
+  const r = await fetch(S.base + "/api/" + path, { method, headers: { Authorization: "Bearer " + S.pw, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
+  let j = {};
+  try { j = await r.json(); } catch (e) {}
+  if (!r.ok) { const err = new Error(j.error || "HTTP " + r.status); err.code = r.status; throw err; }
+  return j;
+}
+
+// ---------------- login ----------------
+function loginRestore() {
+  const box = $("#lrbox"); box.classList.remove("hide");
+  box.innerHTML = appBackupCard().replace(/<h2>Back up this app<\/h2>/, "<h2>Restore an app backup</h2>");
+  appBackupWire();
+  $("#abmake").classList.add("hide");
+}
+function showLogin(msg) {
+  $("#lrestore") && ($("#lrestore").onclick = (e) => (e.preventDefault(), loginRestore()));
+  $("#app").classList.add("hide"); $("#login").classList.remove("hide");
+  $("#lsrv").value = S.base.replace(/^https?:\/\//, ""); $("#lpw").value = ""; $("#lerr").textContent = msg || "";
+}
+$("#lgo").onclick = async () => {
+  S.base = norm($("#lsrv").value); S.pw = $("#lpw").value;
+  if (!S.base) return ($("#lerr").textContent = "Enter the server address.");
+  $("#lerr").textContent = "Connecting…";
+  try { await call("status"); store.set("vfa_srv", S.base); store.set("vfa_pw", S.pw); start(); }
+  catch (e) { $("#lerr").textContent = e.code === 401 ? "Wrong password." : e.message === "Failed to fetch" ? "Could not reach the server." : e.message; }
+};
+$("#lpw").onkeydown = (e) => e.key === "Enter" && $("#lgo").click();
+$("#hout").onclick = () => { if (confirm("Sign out of this server?")) { store.del("vfa_pw"); S.pw = ""; showLogin(); } };
+
+// ---------------- navigation ----------------
+let tab = "dash", timer = null, stack = [];
+function go(t) {
+  if (pendingReload && t === "dash") return location.reload();
+  tab = t; stack = [];
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("sel", b.dataset.t === t));
+  render();
+}
+document.querySelectorAll("nav button").forEach((b) => (b.onclick = () => go(b.dataset.t)));
+$("#hback").onclick = () => back();
+function push(fn) { stack.push(fn); fn(); $("#hback").classList.remove("hide"); }
+function back() { stack.pop(); stack.length ? stack[stack.length - 1]() : render(); }
+window.VFA_back = () => { if (stack.length) { back(); return true; } if (tab !== "dash") { go("dash"); return true; } return false; };
+function render() {
+  clearInterval(timer); $("#hback").classList.add("hide");
+  ({ dash, players, msg, backup: fullBackups, con: consoleTab, server })[tab]();
+}
+const M = () => $("#main");
+const fail = (e) => { if (e.code === 401) return showLogin("The password changed — sign in again."); toast("⚠ " + e.message); };
+
+// ---------------- dashboard ----------------
+let lastStatus = null;
+// ---------------- live: map of who is where, chat, message / mute / kick ----------------
+async function live() {
+  $("#htitle").textContent = "Live";
+  M().innerHTML = `<div class="card"><h2>Map</h2><canvas id="lmap" width="700" height="700" style="width:100%;max-width:520px;aspect-ratio:1;display:block;margin:0 auto;background:#0f0c09;border-radius:10px"></canvas><p class="muted" id="lmapn" style="text-align:center"></p></div>
+    <div class="card"><h2>Online</h2><div class="list" id="lon"><div class="muted">Loading…</div></div></div>
+    <div class="card"><h2>Chat</h2><div class="row" style="gap:8px;margin-bottom:8px"><input id="lq" placeholder="Search the chat" style="flex:1"></div><div class="log" id="lchat" style="max-height:45vh">…</div></div>
+    <div class="card"><h2>Muted</h2><div class="list" id="lmut"></div></div>`;
+  let data = null;
+  const fmtT = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const drawMap = () => {
+    const c = $("#lmap"); if (!c || !data) return;
+    const g = c.getContext("2d"), W = c.width, pts = [...data.places.map((q) => [q.x, q.z]), ...data.online.filter((o) => o.pos).map((o) => o.pos)];
+    const R = Math.max(300, ...pts.map(([x, z]) => Math.hypot(x, z))) * 1.08, sc = W / 2 / R, P = (x, z) => [W / 2 + x * sc, W / 2 + z * sc];
+    g.clearRect(0, 0, W, W);
+    g.strokeStyle = "#3a3226"; g.lineWidth = 2; g.beginPath(); g.arc(W / 2, W / 2, (R / 1.08) * sc, 0, 7); g.stroke();
+    g.font = "18px system-ui"; g.textAlign = "center";
+    for (const q of data.places) { const [x, y] = P(q.x, q.z); g.fillStyle = q.k === "port" ? "#c9a96a" : "#8a7a5a"; g.fillRect(x - 4, y - 4, 8, 8); g.fillStyle = "#a89a80"; g.textAlign = x > W - 90 ? "right" : x < 90 ? "left" : "center"; g.fillText(q.n, x, y - 9); g.textAlign = "center"; }
+    g.font = "bold 20px system-ui";
+    for (const o of data.online.filter((o) => o.pos)) { const [x, y] = P(o.pos[0], o.pos[1]); g.fillStyle = "#7fe07f"; g.beginPath(); g.arc(x, y, 8, 0, 7); g.fill(); g.fillStyle = "#e8ffe8"; g.fillText(o.name || o.pid, x, y + 28); }
+    $("#lmapn").textContent = data.places.length ? `${data.online.length} online · squares are towns and camps` : "Towns appear on the map after the world restarts once with game 1.26.";
+  };
+  const draw = () => {
+    if (!data || !$("#lon")) return;
+    drawMap();
+    const L = $("#lon"); L.innerHTML = data.online.length ? "" : '<div class="muted">Nobody is in the Realm.</div>';
+    for (const o of data.online) {
+      const d = document.createElement("div"); d.className = "it";
+      const mu = data.mutes[o.pid];
+      d.innerHTML = `<div class="nm"><b>${esc(o.name || o.pid)}</b><span>Lv ${o.lv || "?"} · ${esc(o.hero || "")} · ${o.since ? "online " + dur((Date.now() - o.since) / 1000) : ""}${mu ? " · 🔇 muted" : ""}</span></div><button class="b s" data-m>✉</button><button class="b s" data-u>${mu ? "🔊" : "🔇"}</button><button class="b s d" data-k>Kick</button>`;
+      d.querySelector(".nm").onclick = () => push(() => player(o.pid));
+      d.querySelector("[data-m]").onclick = async () => { const t = prompt(`Message to ${o.name} (only they see it):`, ""); if (!t) return; try { await call("dm", "POST", { pid: o.pid, text: t }); toast("Sent"); load(); } catch (e) { fail(e); } };
+      d.querySelector("[data-u]").onclick = () => muteDialog(o.pid, o.name, !!mu).then(load);
+      d.querySelector("[data-k]").onclick = async () => { const why = prompt("Reason (shown to the player):", "Removed by an admin."); if (why === null) return; try { await call(`players/${o.pid}/kick`, "POST", { why }); toast("Kicked"); load(); } catch (e) { fail(e); } };
+      L.appendChild(d);
+    }
+    const q = ($("#lq")?.value || "").toLowerCase();
+    const C = $("#lchat"), atBottom = C.scrollTop + C.clientHeight >= C.scrollHeight - 30;
+    const rows = data.chat.filter((m) => !q || (m.name + " " + m.text).toLowerCase().includes(q));
+    C.innerHTML = rows.length ? rows.map((m) => `<div><span class="muted">${fmtT(m.at)}</span> <b style="color:${m.admin ? "var(--gold)" : "#9fd0ff"};cursor:pointer" data-pid="${esc(m.pid)}" data-n="${esc(m.name)}">${esc(m.name)}</b>: ${esc(m.text)}</div>`).join("") : '<span class="muted">No chat yet (the chat is kept until the server restarts).</span>';
+    C.querySelectorAll("[data-pid]").forEach((b) => (b.onclick = () => { const mu = !!data.mutes[b.dataset.pid]; if (confirm(`${b.dataset.n}: ${mu ? "unmute" : "mute"} this player?`)) muteDialog(b.dataset.pid, b.dataset.n, mu).then(load); }));
+    if (atBottom) C.scrollTop = C.scrollHeight;
+    const MU = $("#lmut"), ms = Object.entries(data.mutes);
+    MU.innerHTML = ms.length ? "" : '<div class="muted">Nobody is muted.</div>';
+    for (const [pid, m] of ms) {
+      const d = document.createElement("div"); d.className = "it";
+      d.innerHTML = `<div class="nm"><b>${esc(m.name || pid)}</b><span>${m.until ? "until " + new Date(m.until).toLocaleString() : "until unmuted"}${m.why ? " · " + esc(m.why) : ""}</span></div><button class="b s">Unmute</button>`;
+      d.querySelector("button").onclick = async () => { try { await call("mute", "POST", { pid, off: true }); toast("Unmuted"); load(); } catch (e) { fail(e); } };
+      MU.appendChild(d);
+    }
+  };
+  const load = async () => { try { data = await call("live"); draw(); } catch (e) { fail(e); } };
+  $("#lq").oninput = draw;
+  await load();
+  clearInterval(timer);
+  timer = setInterval(() => { if (!$("#lmap")) return clearInterval(timer); load(); }, 5000);
+}
+async function muteDialog(pid, name, isMuted) {
+  try {
+    if (isMuted) { await call("mute", "POST", { pid, off: true }); return toast("Unmuted"); }
+    const h = prompt(`Mute ${name} — for how many hours? (0 = until you unmute)`, "1"); if (h === null) return;
+    const why = prompt("Reason (shown to the player, optional):", "") ?? "";
+    await call("mute", "POST", { pid, name, minutes: Math.round(+h * 60), why }); toast("Muted");
+  } catch (e) { fail(e); }
+}
+async function dash() {
+  M().innerHTML = `<div class="muted">Loading…</div>`;
+  const draw = async () => {
+    if (tab !== "dash" || stack.length) return;
+    let s;
+    try { s = await call("status"); } catch (e) { $("#hdot").className = "dot off"; return fail(e); }
+    lastStatus = s;
+    $("#htitle").textContent = s.name; $("#hdot").className = "dot " + (s.hostReady ? "on" : "off");
+    const w = s.world || {};
+    const memUsed = s.mem.total - s.mem.free;
+    M().innerHTML = `${updCard()}
+${s.maintenance ? `<div class="card warn"><b>Maintenance mode is ON</b><p class="muted">Nobody can enter the Realm. Turn it off under Message.</p></div>` : ""}
+      <div class="card"><h2>World</h2><div class="grid">
+        <div class="stat"><div class="v" style="color:${s.hostReady ? "var(--good)" : "var(--bad)"}">${s.hostReady ? "Online" : s.hostUp ? "Starting…" : "Down"}</div><div class="k">${s.hostReady ? (w.sleeping ? "resting — nobody online" : "running " + dur((Date.now() - s.hostSince) / 1000)) : "world host"}</div></div>
+        <div class="stat"><div class="v">${s.online.length}<span class="muted"> / ${s.maxPlayers}</span></div><div class="k">players online</div></div>
+        <div class="stat"><div class="v">${w.tick ?? "–"}<span class="muted"> ms</span></div><div class="k">world tick (worst ${w.worst ?? "–"} ms)</div></div>
+        <div class="stat"><div class="v">${w.enemies ?? "–"}</div><div class="k">monsters awake${w.blood ? " · 🌑 blood moon" : ""}</div></div>
+        <div class="stat"><div class="v">${(s.load[0] / s.cpus * 100).toFixed(0)}<span class="muted"> %</span></div><div class="k">CPU (${s.cpus} cores)</div></div>
+        <div class="stat"><div class="v">${(memUsed / s.mem.total * 100).toFixed(0)}<span class="muted"> %</span></div><div class="k">memory · ${mb(memUsed)} of ${mb(s.mem.total)}</div></div>
+        <div class="stat"><div class="v">${s.players}</div><div class="k">characters saved</div></div>
+        <div class="stat"><div class="v" style="font-size:16px">${esc(s.hostVersion || s.gameVersion || "?")}</div><div class="k">game version${s.restarts ? " · " + s.restarts + " restart(s)" : ""}</div></div>
+      </div></div>
+      ${(s.events || []).length ? `<div class="card" style="border-color:#ffb040"><b>🔥 ${s.events.map((e) => esc(e.title) + " — ends in " + dur((e.end - Date.now()) / 1000)).join("<br>🔥 ")}</b></div>` : s.nextEvent ? `<div class="card"><span class="muted">⏳ Next event: <b>${esc(s.nextEvent.title)}</b> in ${dur((s.nextEvent.start - Date.now()) / 1000)}</span></div>` : ""}
+      <div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Online now</h2><button class="b s" id="golive">🗺 Live map & chat</button></div><div class="list" id="onl" style="margin-top:8px">${s.online.length ? "" : '<div class="muted">Nobody is online.</div>'}</div></div>`;
+    $("#updgo") && ($("#updgo").onclick = startAppUpdate);
+    if (SELF && needsApp() && !updAuto) { updAuto = true; startAppUpdate(); }
+    $("#golive") && ($("#golive").onclick = () => push(live));
+    const L = $("#onl");
+    for (const o of s.online) {
+      const d = document.createElement("div"); d.className = "it tap";
+      d.innerHTML = `<div class="nm"><b>${esc(o.name)}</b><span>Lv ${o.lv || "?"} ${esc(heroName(o.hero))} · ${ago(o.since).replace(" ago", "")} online${o.pos ? " · at " + o.pos.join(", ") : ""}</span></div><button class="b s d">Kick</button>`;
+      d.querySelector("button").onclick = async (e) => { e.stopPropagation(); const why = prompt(`Kick ${o.name}? Reason (shown to them):`, "Removed by an admin."); if (why === null) return; try { await call(`players/${o.pid}/kick`, "POST", { why }); toast("Kicked " + o.name); setTimeout(draw, 800); } catch (er) { fail(er); } };
+      d.onclick = () => push(() => player(o.pid));
+      L.appendChild(d);
+    }
+  };
+  await draw();
+  timer = setInterval(draw, 5000);
+}
+
+// ---------------- downloads and the save viewer ----------------
+const shq = (v) => "'" + String(v).replace(/'/g, "'\\''") + "'";
+// ---- app backup: everything this app keeps (servers, admin password, SSH key, known servers, settings), locked with a password ----
+const b64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); };
+const unb64 = (t) => Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
+async function aesKey(pass, salt) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 250000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function appBackupMake(pass, withServer) {
+  let serverPack = null;
+  if (withServer) {
+    const x = await call("fullbackups/complete", "POST", { pass });
+    const r = await fetch(S.base + x.url, { cache: "no-store" });
+    if (!r.ok) throw new Error("Could not fetch the complete server backup (HTTP " + r.status + ").");
+    serverPack = { file: x.file, server: S.base, data: b64(new Uint8Array(await r.arrayBuffer())) };
+  }
+  const ls = {};
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); /^vfa_/.test(k) && (ls[k] = localStorage.getItem(k)); }
+  let native = {};
+  try { native = JSON.parse(window.VFAApp?.exportData?.() || "{}"); } catch (e) {}
+  const data = JSON.stringify({ kind: "vigilfall-admin-backup", v: 2, at: Date.now(), app: APP_VER, page: PAGE_VERSION, ls, native, serverPack });
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(pass, salt), new TextEncoder().encode(data)));
+  return JSON.stringify({ vigilfallAdminBackup: 1, salt: b64(salt), iv: b64(iv), data: b64(ct) });
+}
+async function appBackupOpen(text, pass) {
+  let o;
+  try { o = JSON.parse(text); } catch (e) { throw new Error("That is not a Vigilfall Admin backup file."); }
+  if (!o.vigilfallAdminBackup) throw new Error("That is not a Vigilfall Admin backup file.");
+  let pt;
+  try { pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(o.iv) }, await aesKey(pass, unb64(o.salt)), unb64(o.data)); }
+  catch (e) { throw new Error("Wrong password (or the file is damaged)."); }
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+function saveText(name, text) {
+  if (window.VFAApp?.saveFile) { const r = VFAApp.saveFile(name, text); if (/^ERR/.test(r)) throw new Error(r.replace(/^ERR:?\s*/, "")); return r; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "application/json" })); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => (URL.revokeObjectURL(a.href), a.remove()), 1000);
+  return "Downloads";
+}
+function appBackupCard() {
+  const logged = !!(S.base && S.pw);
+  return `<div class="card" style="border-color:var(--gold)"><h2>Back up everything</h2>
+    <p class="muted">One file, locked with a password, with everything needed to start again on a new phone or a new server:</p>
+    <ul class="muted" style="padding-left:18px;margin:4px 0"><li><b>This app:</b> your servers, the admin password, the SSH key for the Console, the servers it trusts, your settings and your notes below.</li>
+    <li><b>The server</b> (when ticked): every player and their backups, all Realm settings, the admin password, the GitHub tokens, the Brevo API key and sender, and the address with its DuckDNS token.</li></ul>
+    <label>Your private notes (kept only in this app and inside this locked file)</label>
+    <textarea id="abnotes" rows="4" style="width:100%;height:auto;min-height:0;font:13px monospace" placeholder="e.g. Brevo login: … / Oracle Cloud login: … / DuckDNS: … / sender: vigilfall.noreply@outlook.com">${esc(store.get("vfa_notes") || "")}</textarea>
+    <p class="muted" style="margin-top:2px">Logins for websites (Brevo, Oracle, DuckDNS, GitHub, the Outlook sender) can't be read by the app, so write them here if you want them in the backup.</p>
+    ${logged ? `<label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="abserver" type="checkbox" style="width:auto" checked> Include the complete server backup</label>` : ""}
+    <label>Password for the file (8+ characters)</label><input id="abpw" type="password" autocapitalize="off" autocorrect="off">
+    <div class="row" style="margin-top:8px"><button class="b p" id="abmake">Save backup file</button><button class="b" id="abload">Restore from a file…</button><a class="b" style="display:inline-block;text-decoration:none" href="https://polemarxos.github.io/Vigilfall/backup-viewer.html" title="Opens in your browser; the file never leaves your device">View a backup file…</a><input id="abfile" type="file" accept=".json,.vfadmin,application/json,*/*" class="hide"></div>
+    <p class="muted" id="abstat">${IN_APP && !window.VFAApp?.exportData ? "⚠ This app version can't include the SSH key yet: update the app first (Server → check for app update)." : ""}</p></div>`;
+}
+function appBackupWire() {
+  if (!$("#abmake")) return;
+  $("#abnotes") && ($("#abnotes").oninput = () => store.set("vfa_notes", $("#abnotes").value));
+  $("#abmake").onclick = async () => {
+    const pw = $("#abpw").value;
+    if (pw.length < 8) return toast("Password: at least 8 characters");
+    if (prompt("Type the password again:") !== pw) return toast("The passwords are not the same");
+    $("#abnotes") && store.set("vfa_notes", $("#abnotes").value);
+    const withServer = !!$("#abserver")?.checked;
+    $("#abmake").disabled = true;
+    $("#abstat").textContent = withServer ? "Making the complete server backup…" : "Saving…";
+    try {
+      const where = saveText(`vigilfall-everything-${new Date().toISOString().slice(0, 10)}.vfadmin`, await appBackupMake(pw, withServer));
+      $("#abstat").textContent = "✓ Saved to " + where + (withServer ? " (app + complete server)" : " (app only)") + ". Keep it somewhere safe (e.g. Google Drive) and remember its password.";
+      toast("Backup saved");
+    } catch (e) { $("#abstat").textContent = ""; fail(e); }
+    $("#abmake").disabled = false;
+  };
+  $("#abload").onclick = () => $("#abfile").click();
+  $("#abfile").onchange = async () => {
+    const f = $("#abfile").files[0]; if (!f) return;
+    const pw = $("#abpw").value || prompt("Password of the backup file:") || "";
+    try {
+      const o = await appBackupOpen(await f.text(), pw);
+      if (!confirm(`Restore the app backup from ${new Date(o.at).toLocaleString()}? Your servers, password, SSH key and settings in this app are replaced.`)) return;
+      for (const k of Object.keys(localStorage)) /^vfa_/.test(k) && localStorage.removeItem(k);
+      for (const [k, v] of Object.entries(o.ls || {})) localStorage.setItem(k, v);
+      let r = "";
+      if (o.native && Object.keys(o.native).length) r = window.VFAApp?.importData?.(JSON.stringify(o.native)) || (IN_APP ? "ERR: update the app to restore the SSH key" : "");
+      alert("App restored." + (/^ERR/.test(r) ? "\n\n" + r.replace(/^ERR:?\s*/, "") : "") + (o.serverPack ? `\n\nThis file also holds a complete server backup (from ${o.serverPack.server.replace(/^https?:\/\//, "")}). Your server is untouched. To put it on a server (e.g. a new one): sign in there → Backups → Upload a backup… → choose this same file.` : ""));
+      location.reload();
+    } catch (e) { fail(e); }
+  };
+}
+
+async function download(path, bodyObj) {
+  try {
+    const r = await call(path, "POST", bodyObj);
+    const a = document.createElement("a");
+    a.href = S.base + r.url; a.target = "_blank"; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 500);
+    toast(IN_APP ? "Opening the download in your browser…" : "Downloading…");
+  } catch (e) { fail(e); }
+}
+const kb = (n) => (n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB");
+const itemRow = (it) => `<tr><td class="r-${esc(it.rarity || "common")}">${esc(it.name || "?")}</td><td>${esc(it.slot || "")}</td><td>${esc(it.rarity || "")}</td><td>${it.level ?? ""}</td><td class="muted">${Object.entries(it.stats || {}).map(([k, v]) => esc(k) + " " + v).join(", ")}</td></tr>`;
+function viewSave(p, title) {
+  $("#htitle").textContent = title;
+  const heroes = Object.entries(p.heroes || {}), inv = p.inventory || [], camp = p.campaign || {}, stats = Object.entries(p.stats || {}).filter(([, v]) => typeof v !== "object");
+  const gear = heroes.flatMap(([id, h]) => Object.values(h.gear || {}).filter(Boolean).map((it) => [id, it]));
+  M().innerHTML = `<div class="vw">
+    <div class="card"><h2>${esc(p.name || "?")}</h2><div class="grid">
+      <div class="stat"><div class="v">${(p.shards || 0).toLocaleString()}</div><div class="k">◆ Soul Shards</div></div>
+      <div class="stat"><div class="v">${(p.marks || 0).toLocaleString()}</div><div class="k">✦ Ashen Marks</div></div>
+      <div class="stat"><div class="v">${heroes.length}</div><div class="k">heroes</div></div>
+      <div class="stat"><div class="v">${inv.length}</div><div class="k">items in the bag</div></div>
+      <div class="stat"><div class="v">${(camp.sigils || []).length}/3</div><div class="k">sigils${camp.victory ? " · Dark Lord slain" : ""}${camp.ng ? " · NG+" + camp.ng : ""}</div></div>
+      <div class="stat"><div class="v">${Object.keys(p.ach || {}).length}</div><div class="k">achievements</div></div>
+    </div><p class="muted">Shrines lit ${(camp.shrines || []).length} · bosses ${(camp.bosses || []).length} · places discovered ${(p.discovered || []).length} · Abyss best tier ${p.abyss?.best || 0} · saved ${p.savedAt ? new Date(p.savedAt).toLocaleString() : "?"}</p></div>
+    <div class="card"><h2>Heroes</h2><table><tr><th>Hero</th><th>Level</th><th>XP</th><th>Potions</th><th>Talents</th></tr>${heroes.map(([id, h]) => `<tr><td>${esc(heroName(id))}</td><td>${h.level || 1}</td><td>${Math.round(h.xp || 0).toLocaleString()}</td><td>${h.potions ?? ""}</td><td>${Object.keys(h.talents || {}).length}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">No heroes yet.</td></tr>'}</table></div>
+    <div class="card"><h2>Equipped gear</h2><table><tr><th>Item</th><th>Slot</th><th>Rarity</th><th>Lv</th><th>Stats</th></tr>${gear.map(([id, it]) => itemRow({ ...it, slot: heroName(id) + " · " + (it.slot || "") })).join("") || '<tr><td colspan="5" class="muted">Nothing equipped.</td></tr>'}</table></div>
+    <div class="card"><h2>Bag (${inv.length})</h2><table><tr><th>Item</th><th>Slot</th><th>Rarity</th><th>Lv</th><th>Stats</th></tr>${inv.map(itemRow).join("") || '<tr><td colspan="5" class="muted">Empty.</td></tr>'}</table></div>
+    <div class="card"><h2>Statistics</h2><table>${stats.map(([k, v]) => `<tr><td>${esc(k.replace(/_/g, " "))}</td><td>${esc(typeof v === "number" ? v.toLocaleString() : v)}</td></tr>`).join("") || '<tr><td class="muted">None yet.</td></tr>'}</table></div>
+    <div class="card"><h2>Achievements</h2><p>${Object.keys(p.ach || {}).map((k) => `<span class="pill" style="display:inline-block;margin:2px">${esc(k.replace(/_/g, " "))}</span>`).join("") || '<span class="muted">None yet.</span>'}</p></div>
+  </div>`;
+}
+async function giftDialog(pid, name) {
+  const shards = prompt(`Soul Shards to give ${name} (0 for none):`, "1000"); if (shards === null) return;
+  const marks = prompt("Ashen Marks to give (0 for none):", "0"); if (marks === null) return;
+  const note = prompt("A short note shown with the gift (optional):", "") ?? "";
+  try { const r = await call("gift", "POST", pid ? { pid, shards: +shards, marks: +marks, note } : { all: true, shards: +shards, marks: +marks, note }); toast(pid ? (r.live ? "Gift delivered now" : "Gift waits for their next login") : `Gift sent to ${r.players} player(s), ${r.live} online now`); } catch (e) { fail(e); }
+}
+
+// ---------------- players ----------------
+let q = "";
+async function players() {
+  $("#htitle").textContent = "Players";
+  M().innerHTML = `<div class="card"><div class="row" style="gap:8px"><input id="q" placeholder="Search by name, friend code or email" value="${esc(q)}" style="flex:1"><button class="b s" id="plive">🗺 Live</button></div></div><div class="card list" id="pl"><div class="muted">Loading…</div></div>`;
+  $("#plive").onclick = () => push(live);
+  let t = null;
+  const load = async () => {
+    try {
+      const r = await call("players?q=" + encodeURIComponent(q));
+      const L = $("#pl"); if (!L) return;
+      L.innerHTML = r.players.length ? "" : '<div class="muted">No players yet.</div>';
+      for (const p of r.players) {
+        const d = document.createElement("div"); d.className = "it tap";
+        d.innerHTML = `<div class="nm"><b>${esc(p.name || "?")}</b><span>${esc(p.pid)} · Lv ${p.lv} · ${p.heroes} hero(es) · ◆ ${(p.shards || 0).toLocaleString()} · ${p.online ? "online" : ago(p.lastSeen)}</span></div>${p.flags ? `<span class="pill ban" title="refused saves">⚠ ${p.flags}</span>` : ""}${p.banned ? '<span class="pill ban">banned</span>' : p.online ? '<span class="pill on">online</span>' : ""}`;
+        d.onclick = () => push(() => player(p.pid));
+        L.appendChild(d);
+      }
+    } catch (e) { fail(e); }
+  };
+  $("#q").oninput = (e) => { q = e.target.value; clearTimeout(t); t = setTimeout(load, 300); };
+  load();
+}
+
+async function player(pid) {
+  clearInterval(timer);
+  M().innerHTML = `<div class="muted">Loading…</div>`;
+  let r;
+  try { r = await call("players/" + encodeURIComponent(pid)); } catch (e) { return fail(e); }
+  const p = r.profile || null;
+  $("#htitle").textContent = r.name || pid;
+  const heroes = p ? Object.entries(p.heroes || {}) : [];
+  M().innerHTML = `
+    <div class="card"><div class="row" style="justify-content:space-between"><div><b style="font-size:18px">${esc(r.name)}</b><div class="muted">Friend code ${esc(pid)} · joined ${ago(r.created)} · last seen ${r.online ? "now" : ago(r.lastSeen)}</div><div class="muted">Game ${esc(r.ver || "?")}${r.adminRev ? " · edited " + r.adminRev + "×" : ""}${r.acct ? "" : " · old save (before accounts)"}</div></div>
+      <div>${r.banned ? `<span class="pill ban">banned</span>` : r.online ? '<span class="pill on">online</span>' : ""}</div></div>
+      ${r.banned && r.banReason ? `<p class="muted">Reason: ${esc(r.banReason)}</p>` : ""}
+      ${r.acct ? `<p class="muted">Recovery code: ${r.rc ? "set" : "not set yet"} · Email: ${r.email ? esc(r.email) + (r.emailOk ? " ✔ confirmed" : " (not confirmed)") : "none"}${r.needEmail && !r.emailOk ? " · <b style='color:#ffb060'>can't play until confirmed</b>" : ""}</p>` : ""}
+      ${(r.flags || []).length ? `<div style="margin-top:8px"><b style="color:#ff8a7a">⚠ Anti-cheat refused ${r.flags.length} save(s)</b>${r.flags.slice(-5).reverse().map((f) => `<div class="muted">${ago(f.at)} — ${esc(f.why)}</div>`).join("")}<div class="muted">Each refused save is kept in Backups ("refused"). If it was real progress, restore it from there.</div></div>` : ""}
+      <div class="row" style="margin-top:10px">
+        ${r.online ? '<button class="b s" data-x="kick">Kick</button>' : ""}
+        ${r.banned ? '<button class="b s" data-x="unban">Unban</button>' : '<button class="b s d" data-x="ban">Ban</button>'}
+        <button class="b s" data-x="newpw" title="For a player who forgot the password">Reset password</button>
+        ${r.acct ? '<button class="b s" data-x="email" title="Set or confirm the email by hand">Email…</button>' : ""}
+        ${p ? '<button class="b s" data-x="view">View save</button>' : ""}
+        <button class="b s" data-x="backups">Backups</button>
+        ${p ? '<button class="b s" data-x="backupnow">Back up now</button><button class="b s" data-x="gift">Gift</button><button class="b s" data-x="dlsave">Download save</button>' : ""}
+        <button class="b s d" data-x="delete">Delete</button>
+      </div></div>
+    ${p ? `<div class="card"><h2>Edit save</h2>
+      <label>Account name</label><input id="e_name" maxlength="16" value="${esc(r.name)}" disabled>
+      <div class="row" style="gap:10px"><div style="flex:1"><label>◆ Soul Shards</label><input id="e_sh" type="number" min="0" value="${p.shards || 0}"></div><div style="flex:1"><label>✦ Ashen Marks</label><input id="e_mk" type="number" min="0" value="${p.marks || 0}"></div></div>
+      <label>Heroes</label>
+      <div class="heroes"><span class="muted">Hero</span><span class="muted">Level</span><span class="muted">XP</span><span class="muted">Potions</span>
+        ${heroes.map(([id, h]) => `<span class="h">${esc(heroName(id))}</span><input data-h="${esc(id)}" data-f="level" type="number" min="1" max="60" value="${h.level || 1}"><input data-h="${esc(id)}" data-f="xp" type="number" min="0" value="${Math.round(h.xp || 0)}"><input data-h="${esc(id)}" data-f="potions" type="number" min="0" max="20" value="${h.potions ?? 3}">`).join("") || '<span class="muted" style="grid-column:1/-1">No heroes yet.</span>'}
+      </div>
+      <div class="row" style="margin-top:8px;gap:12px">
+        <label style="display:flex;gap:6px;align-items:center;margin:0"><input id="e_vic" type="checkbox" style="width:auto" ${p.campaign?.victory ? "checked" : ""}> Dark Lord slain</label>
+        <label style="display:flex;gap:6px;align-items:center;margin:0"><input id="e_tut" type="checkbox" style="width:auto" ${p.tutorialDone ? "checked" : ""}> Tutorial done</label>
+      </div>
+      <p class="muted">Inventory: ${(p.inventory || []).length} item(s) · Sigils ${(p.campaign?.sigils || []).length}/3 · played ${dur((p.played || 0))}</p>
+      <div class="row"><button class="b p" id="e_save">Save changes</button><button class="b" id="e_raw">Edit raw save (JSON)</button></div>
+      <p class="muted">${r.online ? "The player is online: their game restarts into the menu with the new save." : "The new save is applied the next time this player enters the Realm."}</p>
+    </div>` : `<div class="card muted">No save uploaded yet — it arrives a minute after the player enters the Realm.</div>`}`;
+  const act = async (x) => {
+    try {
+      if (x === "kick") { const why = prompt("Reason (shown to the player):", "Removed by an admin."); if (why === null) return; await call(`players/${pid}/kick`, "POST", { why }); toast("Kicked"); }
+      if (x === "ban") { const why = prompt("Ban reason (shown to the player):", ""); if (why === null) return; await call(`players/${pid}/ban`, "POST", { why }); toast("Banned"); }
+      if (x === "unban") { await call(`players/${pid}/unban`, "POST"); toast("Unbanned"); }
+      if (x === "newpw") { const pw = prompt(`New password for ${r.name} (at least 6 characters, empty = make one up):`, ""); if (pw === null) return; const x2 = await call(`players/${pid}/password`, "POST", { password: pw }); alert(`New password for ${r.name}: ${x2.password}\nGive it to the player; they can sign in with it now.`); }
+      if (x === "email") {
+        const e = prompt(`Email for ${r.name} (empty = remove):`, r.email || ""); if (e === null) return;
+        const ok = e.trim() ? confirm("Mark this email as confirmed? (OK = confirmed, so the player can play and reset the password by email; Cancel = the player must confirm it with a code)") : false;
+        await call(`players/${pid}/email`, "POST", { email: e.trim(), confirmed: ok }); toast("Email saved");
+      }
+      if (x === "resetkey") { if (!confirm("Allow this character to log in from a new device? (The old device keeps working too until someone logs in.)")) return; await call(`players/${pid}/resetkey`, "POST"); toast("Device link reset"); }
+      if (x === "backups") return push(() => backups(pid));
+      if (x === "view") return push(() => viewSave(p, r.name || pid));
+      if (x === "backupnow") { await call(`players/${encodeURIComponent(pid)}/backup`, "POST"); return toast("Save backed up"); }
+      if (x === "gift") return giftDialog(pid, r.name || pid);
+      if (x === "dlsave") return download("savelink", { pid });
+      if (x === "delete") { if (prompt(`Type DELETE to remove ${r.name} from the server (a backup is kept).`) !== "DELETE") return; await call(`players/${pid}`, "DELETE"); toast("Deleted"); return back(); }
+      player(pid);
+    } catch (e) { fail(e); }
+  };
+  M().querySelectorAll("[data-x]").forEach((b) => (b.onclick = () => act(b.dataset.x)));
+  if (!p) return;
+  $("#e_save").onclick = async () => {
+    const np = JSON.parse(JSON.stringify(p));
+    np.name = $("#e_name").value.trim() || np.name;
+    np.shards = Math.max(0, Math.round(+$("#e_sh").value || 0));
+    np.marks = Math.max(0, Math.round(+$("#e_mk").value || 0));
+    M().querySelectorAll("[data-h]").forEach((i) => {
+      const h = np.heroes[i.dataset.h]; if (!h) return;
+      let v = Math.max(0, Math.round(+i.value || 0));
+      if (i.dataset.f === "level") v = Math.min(60, Math.max(1, v));
+      h[i.dataset.f] = v;
+    });
+    np.campaign = np.campaign || {}; np.campaign.victory = $("#e_vic").checked; np.tutorialDone = $("#e_tut").checked;
+    await saveProfile(pid, np, r.name);
+  };
+  $("#e_raw").onclick = () => push(() => rawEdit(pid, p, r.name));
+  $("#e_dl") && ($("#e_dl").onclick = () => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(p, null, 1)], { type: "application/json" }));
+    a.download = `vigilfall-${(r.name || pid).replace(/[^\w-]+/g, "_")}.json`; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 500);
+  });
+}
+async function saveProfile(pid, np, name) {
+  if (!confirm(`Replace ${name}'s save? A backup of the current save is kept.`)) return;
+  try { const r = await call("players/" + encodeURIComponent(pid), "PUT", { profile: np }); toast(r.live ? "Saved — sent to the player now" : "Saved — applies on their next login"); stack.pop(); player(pid); stack.push(() => player(pid)); }
+  catch (e) { fail(e); }
+}
+function rawEdit(pid, p, name) {
+  M().innerHTML = `<div class="card"><h2>Raw save · ${esc(name)}</h2><p class="muted">Everything in the save. Change carefully; it must stay valid JSON.</p><textarea id="raw" spellcheck="false"></textarea><p id="rerr" style="color:var(--bad)"></p><div class="row"><button class="b p" id="rsave">Save</button><button class="b" id="rfmt">Check</button></div></div>`;
+  $("#raw").value = JSON.stringify(p, null, 1);
+  const parse = () => { try { const o = JSON.parse($("#raw").value); if (!o.heroes || !o.campaign) throw new Error("heroes and campaign are required"); $("#rerr").textContent = ""; return o; } catch (e) { $("#rerr").textContent = "⚠ " + e.message; return null; } };
+  $("#rfmt").onclick = () => { const o = parse(); o && (($("#raw").value = JSON.stringify(o, null, 1)), toast("Looks good")); };
+  $("#rsave").onclick = async () => { const o = parse(); if (o) { await saveProfile(pid, o, name); } };
+}
+async function backups(pid) {
+  M().innerHTML = `<div class="card"><h2>Backups</h2><div class="list" id="bl"><div class="muted">Loading…</div></div><p class="muted">Kept automatically every hour of play, before every admin change and when you press Back up now (last 20).</p></div>`;
+  try {
+    const r = await call(`players/${encodeURIComponent(pid)}/backups`);
+    const L = $("#bl"); L.innerHTML = r.backups.length ? "" : '<div class="muted">No backups yet.</div>';
+    for (const b of r.backups) {
+      const d = document.createElement("div"); d.className = "it";
+      d.innerHTML = `<div class="nm"><b>${new Date(b.at).toLocaleString()}</b><span>${esc(b.why)} · ${ago(b.at)}</span></div><button class="b s" data-v>View</button><button class="b s" data-d>⬇</button><button class="b s" data-r>Restore</button>`;
+      d.querySelector("[data-v]").onclick = async () => { try { const sv = await call(`players/${encodeURIComponent(pid)}/backups/${encodeURIComponent(b.file)}`); push(() => viewSave(sv, "Backup " + new Date(b.at).toLocaleString())); } catch (e) { fail(e); } };
+      d.querySelector("[data-d]").onclick = () => download("savelink", { pid, backup: b.file });
+      d.querySelector("[data-r]").onclick = async () => { if (!confirm("Restore this backup? The current save is backed up first.")) return; try { const x = await call(`players/${encodeURIComponent(pid)}/restore`, "POST", { file: b.file }); toast(x.live ? "Restored — sent to the player now" : "Restored"); back(); } catch (e) { fail(e); } };
+      L.appendChild(d);
+    }
+  } catch (e) { fail(e); }
+}
+
+// ---------------- messages ----------------
+function msg() {
+  $("#htitle").textContent = "Message";
+  const s = lastStatus || {};
+  M().innerHTML = `<div class="card" style="border-color:#ffb040"><h2>Events</h2>
+      <p class="muted">Double XP or double Soul Shards (from monsters) for everyone, from a start to an end time. Players see it in the main menu and get a banner when it starts. The anti-cheat allows the bigger gains.</p>
+      <div class="list" id="evl"><div class="muted">Loading…</div></div>
+      <div class="row" style="gap:10px;margin-top:10px"><div style="flex:1"><label style="margin-top:0">What</label><select id="evk"><option value="xp">Experience (XP)</option><option value="shards">Soul Shards</option></select></div>
+        <div style="flex:1"><label style="margin-top:0">How much</label><select id="evm"><option value="1.5">1.5×</option><option value="2" selected>2× (double)</option><option value="3">3× (triple)</option></select></div></div>
+      <label>Starts</label><div class="row" style="gap:8px"><select id="evs" style="flex:1"><option value="now">Now</option><option value="at">At a date and time…</option></select><input id="evsat" type="datetime-local" class="hide" style="flex:1"></div>
+      <label>Lasts</label><div class="row" style="gap:8px"><select id="evd" style="flex:1"><option value="2">2 hours</option><option value="6">6 hours</option><option value="24">1 day</option><option value="48" selected>2 days (weekend)</option><option value="72">3 days</option><option value="168">1 week</option></select></div>
+      <label>Name (optional)</label><input id="evt" maxlength="60" placeholder="e.g. Double XP weekend">
+      <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="evann" type="checkbox" style="width:auto" checked> Also send an announcement to everyone in the Realm now</label>
+      <div class="row" style="margin-top:8px"><button class="b p" id="evadd">Add event</button></div></div>
+    <div class="card"><h2>Announcement</h2><p class="muted">Shown as a banner and in chat to everyone in the Realm right now.</p><textarea id="ann" style="min-height:90px" maxlength="300" placeholder="Double XP weekend starts now!"></textarea><div class="row" style="margin-top:8px"><button class="b p" id="send">Send to everyone</button></div></div>
+    <div class="card"><h2>Message of the day</h2><p class="muted">Shown to each player when they enter the Realm.</p><input id="motd" maxlength="200" value="${esc(s.motd || "")}"><div class="row" style="margin-top:8px"><button class="b" id="smotd">Save</button></div></div>
+    <div class="card ${s.maintenance ? "warn" : ""}"><h2>Maintenance</h2><p class="muted">While it is on, nobody can enter the Realm and everyone inside is sent to their own world with this message.</p><input id="mmsg" maxlength="200" value="${esc(s.maintenanceMsg || "")}"><div class="row" style="margin-top:8px"><button class="b ${s.maintenance ? "p" : "d"}" id="mtog">${s.maintenance ? "Open the Realm again" : "Close for maintenance"}</button></div></div>
+    <div class="card"><h2>Gift to everyone</h2><p class="muted">Soul Shards and Ashen Marks for every player: added at once while they play, or the next time they enter the Realm. To gift one player, open them under Players.</p><button class="b" id="giftall">Send a gift to all players</button></div>
+    <div class="card"><h2>Scheduled restart</h2><p class="muted">Warns everyone, then restarts the world. Players reconnect by themselves.</p><div class="row"><button class="b" data-r="60">In 1 minute</button><button class="b" data-r="300">In 5 minutes</button><button class="b d" data-r="0">Now</button></div></div>`;
+  const evLoad = async () => {
+    try {
+      const r = await call("events"), L = $("#evl"); if (!L) return;
+      const ev = (r.events || []).filter((e) => e.end > Date.now()).sort((a, b) => a.start - b.start);
+      L.innerHTML = ev.length ? "" : '<div class="muted">No events planned.</div>';
+      for (const e of ev) {
+        const on = e.start <= Date.now(), d = document.createElement("div"); d.className = "it";
+        d.innerHTML = `<div class="nm"><b>${on ? "🔥 " : "⏳ "}${esc(e.title)}</b><span>${e.kind === "xp" ? "XP" : "Soul Shards"} ×${e.mult} · ${on ? "ends in " + dur((e.end - Date.now()) / 1000) : "starts " + new Date(e.start).toLocaleString()} · ends ${new Date(e.end).toLocaleString()}</span></div><button class="b s d">✕</button>`;
+        d.querySelector("button").onclick = async () => { if (!confirm(`${on ? "Stop" : "Cancel"} "${e.title}"?`)) return; try { await call("events/" + e.id, "DELETE"); toast("Removed"); evLoad(); } catch (x) { fail(x); } };
+        L.appendChild(d);
+      }
+    } catch (e) { $("#evl") && ($("#evl").innerHTML = `<div class="muted">${/404|unknown|not found/i.test(e.message) ? "Update the server program first (Server → Update server program)." : esc(e.message)}</div>`); }
+  };
+  $("#evs").onchange = () => $("#evsat").classList.toggle("hide", $("#evs").value !== "at");
+  $("#evadd").onclick = async () => {
+    const start = $("#evs").value === "at" ? new Date($("#evsat").value).getTime() : Date.now();
+    if (!start || isNaN(start)) return toast("Choose the start date and time");
+    const end = start + +$("#evd").value * 3600e3, kind = $("#evk").value, mult = +$("#evm").value;
+    const title = $("#evt").value.trim() || (mult === 2 ? "Double " : mult === 3 ? "Triple " : mult + "× ") + (kind === "xp" ? "XP" : "Soul Shards");
+    try {
+      await call("events", "POST", { kind, mult, start, end, title });
+      if ($("#evann").checked) await call("announce", "POST", { text: start <= Date.now() + 60e3 ? `🔥 ${title} has started! It lasts until ${new Date(end).toLocaleString([], { weekday: "long", hour: "2-digit", minute: "2-digit" })}.` : `⏳ ${title} starts ${new Date(start).toLocaleString([], { weekday: "long", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}!` }).catch(() => {});
+      toast("Event added"); $("#evt").value = ""; evLoad();
+    } catch (e) { fail(e); }
+  };
+  evLoad();
+  $("#send").onclick = async () => { const t = $("#ann").value.trim(); if (!t) return; try { const r = await call("announce", "POST", { text: t }); toast(`Sent to ${r.sent} player(s)`); $("#ann").value = ""; } catch (e) { fail(e); } };
+  $("#mtog").onclick = async () => { const on = !s.maintenance; if (on && !confirm("Close the Realm? Everyone inside is sent to their own world.")) return; try { await call("config", "POST", { maintenance: on, maintenanceMsg: $("#mmsg").value }); lastStatus = await call("status"); toast(on ? "The Realm is closed" : "The Realm is open"); msg(); } catch (e) { fail(e); } };
+  $("#giftall").onclick = () => giftDialog(null, "every player");
+  $("#smotd").onclick = async () => { try { await call("config", "POST", { motd: $("#motd").value }); toast("Saved"); } catch (e) { fail(e); } };
+  M().querySelectorAll("[data-r]").forEach((b) => (b.onclick = async () => { if (!confirm("Restart the world " + (b.dataset.r === "0" ? "now" : "in " + b.dataset.r / 60 + " min") + "?")) return; try { await call("restart", "POST", { delay: +b.dataset.r }); toast("Restart scheduled"); } catch (e) { fail(e); } }));
+  if (!lastStatus) call("status").then((x) => { lastStatus = x; msg(); }).catch(() => {});
+}
+
+// ---------------- server ----------------
+let logCatSel = "all", logSearch = "";
+const ALERT_KINDS = [["down", "The server was off (told when it is back, with how long)"], ["cheat", "Anti-cheat refuses a save"], ["email", "An email can't be sent"], ["backup", "A backup or GitHub copy fails"], ["world", "The world crashes or restarts"], ["server", "The server program starts or updates"], ["newplayer", "A new player creates an account"]];
+const HAS_PUSH = () => !!window.VFAApp?.hasPush;
+function pushCard() {
+  return `<div class="card" id="pushcard"><h2>Phone alerts (Firebase)</h2><div id="pushbody"><div class="muted">Loading…</div></div></div>`;
+}
+let pushTokenCb = null;
+window.VFA_pushToken = (t, e) => { const cb = pushTokenCb; pushTokenCb = null; cb && cb(t, e); };
+const getPushToken = () => new Promise((ok, bad) => { pushTokenCb = (t, e) => (t ? ok(t) : bad(new Error(e || "Firebase gave no token"))); VFAApp.pushToken(); setTimeout(() => pushTokenCb && ((pushTokenCb = null), bad(new Error("Firebase did not answer. Check the internet connection and try again."))), 30000); });
+async function pushWire() {
+  const B = $("#pushbody"); if (!B) return;
+  let f;
+  try { f = await call("fcm"); } catch (e) { B.innerHTML = `<p class="muted">${/404|not found|unknown/i.test(e.message) ? "Update the server program first (below)." : esc(e.message)}</p>`; return; }
+  let info = {};
+  try { info = HAS_PUSH() ? JSON.parse(VFAApp.pushInfo() || "{}") : {}; } catch (e) {}
+  const mine = info.token ? f.devices.find((d) => info.token.endsWith(d.tail)) : null;
+  const kinds = mine?.kinds || { down: 1, cheat: 1, email: 1, backup: 1, world: 1, server: 0, newplayer: 0 };
+  const ready = f.saSet && f.app;
+  B.innerHTML = `<p class="muted">Your server sends a notification to your phone the moment something happens, through Google's Firebase Cloud Messaging (free).</p>
+    ${ready ? `<p class="muted">✓ Firebase project <b>${esc(f.projectId)}</b> is set up on the server.</p>` : `<details ${f.saSet || f.app ? "" : "open"}><summary class="muted" style="cursor:pointer"><b>Set up Firebase (one time, about 5 minutes)</b></summary><ol class="muted" style="padding-left:18px;margin:6px 0">
+      <li>Open <b>console.firebase.google.com</b> → <b>Create a project</b> → name it e.g. <b>Vigilfall</b>. Google Analytics is not needed: turn it off.</li>
+      <li>In the project: <b>Add app → Android</b>. Package name: <b>com.polemarxos.vigilfall.admin</b> → Register app → <b>Download google-services.json</b>. Skip the other steps.</li>
+      <li>⚙ <b>Project settings → Service accounts → Generate new private key</b> → Generate key. A second .json file downloads. Keep it private: it lets the server send notifications.</li>
+      <li>Choose both files here and tap <b>Save</b>.</li></ol></details>
+      <label>google-services.json ${f.app ? "✓" : ""}</label><input id="fgs" type="file" accept=".json,application/json,*/*">
+      <label>Service account key (.json) ${f.saSet ? "✓" : ""}</label><input id="fsa" type="file" accept=".json,application/json,*/*">
+      <div class="row" style="margin-top:8px"><button class="b p" id="fsave">Save</button></div>`}
+    ${ready ? (HAS_PUSH() ? `<h2 style="margin-top:14px">This phone</h2>
+      <p class="muted">${mine ? "✓ This phone gets alerts" + (mine.lastErr ? ` — ⚠ last one failed: ${esc(mine.lastErr)}` : mine.lastOk ? " (last sent " + ago(mine.lastOk) + ")" : "") : "This phone doesn't get alerts yet."}${info.allowed === false ? " <b style='color:var(--bad)'>Notifications are blocked for Vigilfall Admin — allow them in Android settings.</b>" : ""}</p>
+      ${ALERT_KINDS.map(([k, n]) => `<label style="display:flex;gap:8px;align-items:center;margin:6px 0 0 4px"><input type="checkbox" data-ak="${k}" style="width:auto" ${kinds[k] ? "checked" : ""}> ${n}</label>`).join("")}
+      <div class="row" style="margin-top:10px"><button class="b p" id="pon">${mine ? "Save" : "Turn on alerts on this phone"}</button>${mine ? '<button class="b" id="ptest">Send a test alert</button>' : ""}</div>`
+      : IN_APP ? '<p class="muted">Update Vigilfall Admin to 1.10 to get alerts on this phone (Server → check for app update).</p>' : '<p class="muted">Open this page in the Vigilfall Admin app on your phone to turn alerts on for it.</p>') : ""}
+    ${f.devices.length ? `<h2 style="margin-top:14px">Phones getting alerts</h2><div class="list" id="pdev"></div>` : ""}
+    ${f.lastError ? `<p class="muted">⚠ Last problem ${ago(f.lastError.at)}: ${esc(f.lastError.msg)}</p>` : ""}
+    ${f.saSet || f.app ? '<div class="row" style="margin-top:8px"><button class="b s d" id="foff">Remove Firebase from the server</button></div>' : ""}`;
+  const L = $("#pdev");
+  if (L) for (const d of f.devices) {
+    const e = document.createElement("div"); e.className = "it";
+    e.innerHTML = `<div class="nm"><b>${esc(d.name || "Phone")}${mine && d.i === mine.i ? " (this phone)" : ""}</b><span>added ${ago(d.at)}${d.lastErr ? " · ⚠ " + esc(d.lastErr) : d.lastOk ? " · last alert " + ago(d.lastOk) : ""}</span></div><button class="b s d">✕</button>`;
+    e.querySelector("button").onclick = async () => { if (!confirm("Stop alerts on this phone?")) return; try { await call("fcm/devices/" + d.i, "DELETE"); pushWire(); } catch (x) { fail(x); } };
+    L.appendChild(e);
+  }
+  $("#fsave") && ($("#fsave").onclick = async () => {
+    const gs = $("#fgs").files[0], sa = $("#fsa").files[0];
+    if (!gs && !sa) return toast("Choose the files first");
+    try { await call("fcm", "POST", { googleServices: gs ? await gs.text() : undefined, serviceAccount: sa ? await sa.text() : undefined }); toast("Saved"); pushWire(); } catch (e) { fail(e); pushWire(); }
+  });
+  $("#foff") && ($("#foff").onclick = async () => { if (!confirm("Remove the Firebase settings from the server? No phone gets alerts after this.")) return; try { await call("fcm", "DELETE"); pushWire(); } catch (e) { fail(e); } });
+  const kindsNow = () => { const k = {}; M().querySelectorAll("[data-ak]").forEach((c) => (k[c.dataset.ak] = c.checked ? 1 : 0)); return k; };
+  $("#pon") && ($("#pon").onclick = async () => {
+    $("#pon").disabled = true;
+    try {
+      const r = VFAApp.setFirebase(JSON.stringify(f.app));
+      if (/^ERR/.test(r)) throw new Error(r.replace(/^ERR:?\s*/, ""));
+      if (r === "RESTART") { alert("The app restarts once to switch to the new Firebase project. Then tap the button again."); return VFAApp.restartApp(); }
+      VFAApp.requestNotify();
+      VFAApp.setPushServer(S.base, S.pw, JSON.stringify(kindsNow()));
+      toast("Asking Firebase for this phone's address…");
+      const token = await getPushToken();
+      await call("fcm/devices", "POST", { token, name: navigator.userAgent.match(/Android[^;)]*;\s*([^;)]+)/)?.[1]?.replace(/ Build.*/, "") || "Phone", kinds: kindsNow() });
+      toast(mine ? "Saved" : "Alerts are on for this phone");
+      pushWire();
+    } catch (e) { fail(e); }
+    $("#pon") && ($("#pon").disabled = false);
+  });
+  $("#ptest") && ($("#ptest").onclick = async () => { try { await call("fcm/test", "POST", { token: info.token }); toast("Sent — it should arrive in a few seconds"); } catch (e) { fail(e); } });
+}
+async function server() {
+  $("#htitle").textContent = "Server";
+  let s;
+  try { s = await call("status"); lastStatus = s; } catch (e) { return fail(e); }
+  M().innerHTML = `
+    <div class="card"><h2>Realm</h2>
+      <label>Realm name</label><input id="sname" maxlength="40" value="${esc(s.name)}">
+      <label>Most players at once</label><input id="smax" type="number" min="1" max="300" value="${s.maxPlayers}">
+      <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input id="sauto" type="checkbox" style="width:auto" ${s.autoUpdate ? "checked" : ""}> Install new game versions automatically</label>
+      <label>Check for new versions every (minutes)</label>
+      <div class="row"><input id="smin" type="number" min="1" max="1440" value="${s.updateMinutes || 10}" style="flex:1"><button class="b s" data-m="5">5</button><button class="b s" data-m="10">10</button><button class="b s" data-m="60">60</button><button class="b s" data-m="1440">1 day</button></div>
+      <p class="muted">${s.autoUpdate ? `Last check ${s.lastCheck ? ago(s.lastCheck) : "not yet"} · next ${s.nextCheck ? "in " + Math.max(1, Math.round((s.nextCheck - Date.now()) / 60000)) + " min" : "—"}` : "Automatic updates are off."}</p>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input id="sac" type="checkbox" style="width:auto" ${s.antiCheat !== false ? "checked" : ""}> Anti-cheat: refuse saves with impossible jumps</label>
+      <label>Anti-cheat tolerance (1 = normal, higher = allows bigger jumps)</label><input id="stol" type="number" min="1" max="20" value="${s.cheatTolerance || 1}">
+      <div class="row" style="margin-top:10px"><button class="b p" id="ssave">Save</button></div></div>
+    <div class="card"><h2>Email (Brevo)</h2>
+      <p class="muted" id="mstat">…</p>
+      <details id="mhelp"><summary class="muted" style="cursor:pointer">How to set it up</summary><ol class="muted" style="padding-left:18px;margin:6px 0">
+        <li>Sign up free at <b>brevo.com</b> with any email address you have (300 emails a day free).</li>
+        <li>In Brevo: <b>Senders, Domains &amp; Dedicated IPs → Senders → Add a sender</b> with the address emails should come from, and click the link Brevo emails to it.</li>
+        <li>In Brevo: your name (top right) → <b>SMTP &amp; API → API keys → Generate a new API key</b>, copy it.</li>
+        <li>Paste the key and the sender address here, type your own address under Test, and tap <b>Save and send test</b>.</li>
+        <li>If the test says the IP is not authorised: Brevo → <b>Security → Authorised IPs</b> → add your server's IP address (for wsgame: <b>152.70.43.48</b>), or tap the link in Brevo's "Validate your IP" email.</li></ol>
+        <p class="muted">Emails come from a free address, so some may land in spam: tell players to check their spam folder.</p></details>
+      <label>Brevo API key</label><input id="mkey" type="password" autocapitalize="off" autocorrect="off" placeholder="xkeysib-…">
+      <label>Sender address (verified in Brevo)</label><input id="mfrom" type="email" autocapitalize="off" autocorrect="off">
+      <label>Sender name</label><input id="mname" maxlength="60" placeholder="Vigilfall">
+      <label>Test: send to</label><input id="mtest" type="email" autocapitalize="off" autocorrect="off" placeholder="your own address">
+      <div class="row" style="margin-top:8px"><button class="b p" id="msave">Save and send test</button><button class="b s d hide" id="moff">Switch email off</button></div>
+      <p class="muted">When email is on, new players must confirm their email before playing, and anyone with a confirmed email can reset a forgotten password by email. Existing players can add an email from Account in the game.</p></div>
+    <div class="card"><h2>Game version</h2><p class="muted">Server has <b>${esc(s.gameVersion || "?")}</b>, the world runs <b>${esc(s.hostVersion || "?")}</b>.</p>
+      <div class="row"><button class="b" id="supd">Check for update now</button><button class="b d" id="srst">Restart world now</button></div></div>
+    <div class="card"><h2>Game source</h2><p class="muted">Where this server gets the game, both Android apps and its own program. The token is only needed if the repository is ever made private.</p>
+      <label>Repository</label><input id="srcrepo" autocapitalize="off" autocorrect="off">
+      <label id="srctoklbl">Read token</label><input id="srctok" type="password" autocapitalize="off" autocorrect="off">
+      <p class="muted" id="srcstat">…</p>
+      <div class="row"><button class="b" id="srcsave">Save and test</button><button class="b s d hide" id="srcdel">Remove token</button></div>
+</div>
+    <div class="card"><h2>Server program</h2><p class="muted" id="sver">Version ${esc(s.serverVersion || "1.0 (old)")} · checking GitHub…</p><div class="row"><button class="b" id="sself" disabled>Update server program</button></div></div>
+    <div class="card"><h2>Admin password</h2><input id="spw" type="password" placeholder="new password (8+ characters)"><div class="row" style="margin-top:8px"><button class="b" id="spws">Change password</button></div></div>
+    ${appBackupCard()}
+    ${pushCard()}
+    <div class="card"><h2>Server log</h2>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px" id="lcats">${[["all", "All"], ["err", "⚠ Problems"], ["account", "Accounts"], ["player", "Players"], ["cheat", "Anti-cheat"], ["email", "Email"], ["backup", "Backups"], ["world", "World"], ["server", "Server"], ["other", "Other"]].map(([k, n]) => `<button class="b s${k === logCatSel ? " p" : ""}" data-lc="${k}">${n}</button>`).join("")}</div>
+      <div class="row" style="gap:8px;margin-bottom:8px"><input id="lsearch" placeholder="Search the log" style="flex:1" value="${esc(logSearch)}"><button class="b s" id="slog">↻</button><button class="b s" id="sdl" title="Save the log as a file">⬇</button></div>
+      <p class="muted" id="lcount" style="margin:0 0 6px"></p><div class="log" id="log">…</div></div>
+    <p class="muted" style="text-align:center">Server up ${dur(s.uptime)} · ${esc(S.base.replace(/^https?:\/\//, ""))}<br>Admin ${IN_APP ? "app " + esc(APP_VER) + " · " : ""}page ${PAGE_VERSION} · updates itself${window.VFAApp?.updateApp ? ' · <a href="#" id="appchk" style="color:var(--gold)">check for app update</a>' : ""}</p>`;
+  $("#appchk") && ($("#appchk").onclick = (e) => { e.preventDefault(); toast("Checking…"); VFAApp.updateApp(); });
+  const mshow = (m) => {
+    $("#mstat").innerHTML = (m.on ? `<b style="color:#8fd18f">On</b> · from ${esc(m.fromName || "Vigilfall")} &lt;${esc(m.from)}&gt;` : `<b>Off</b>${m.keySet ? " · key saved, sender missing" : " · players sign up without email"}`)
+      + (m.lastOk ? `<br>Last email sent ${ago(m.lastOk)}.` : "")
+      + (m.lastError && (!m.lastOk || m.lastError.at > m.lastOk) ? `<br><b style="color:var(--bad)">⚠ Last email failed ${ago(m.lastError.at)}:</b> ${esc(m.lastError.msg)}${/IP|unauthori[sz]ed|unrecogni[sz]ed/i.test(m.lastError.msg) ? " — add your server's IP in Brevo → Security → Authorised IPs." : ""}` : "");
+    $("#mfrom").value = m.from || ""; $("#mname").value = m.fromName || "";
+    $("#mkey").placeholder = m.keySet ? "key saved (leave empty to keep it)" : "xkeysib-…";
+    $("#moff").classList.toggle("hide", !m.on && !m.keySet);
+    $("#mhelp").open = !m.on;
+  };
+  call("mail").then(mshow).catch(() => ($("#mstat").textContent = "This server program is too old for email: update the server program below."));
+  $("#msave").onclick = async () => {
+    const b = { apiKey: $("#mkey").value.trim(), from: $("#mfrom").value.trim(), fromName: $("#mname").value.trim(), test: $("#mtest").value.trim() || undefined };
+    $("#msave").disabled = true;
+    try { const m = await call("mail", "POST", b); $("#mkey").value = ""; mshow(m); toast(m.tested ? "Saved — test email sent. Check the inbox (and spam)." : "Saved"); }
+    catch (e) { fail(e); call("mail").then(mshow).catch(() => {}); }
+    $("#msave").disabled = false;
+  };
+  $("#moff").onclick = async () => { if (!confirm("Switch email off? New players then sign up without email, and email password reset stops.")) return; try { mshow(await call("mail", "DELETE")); toast("Email off"); } catch (e) { fail(e); } };
+  $("#ssave").onclick = async () => { try { await call("config", "POST", { name: $("#sname").value, maxPlayers: +$("#smax").value, autoUpdate: $("#sauto").checked, updateMinutes: +$("#smin").value, antiCheat: $("#sac").checked, cheatTolerance: +$("#stol").value || 1 }); toast("Saved"); server(); } catch (e) { fail(e); } };
+  M().querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => ($("#smin").value = b.dataset.m)));
+  $("#supd").onclick = async () => { toast("Checking…"); try { const r = await call("update", "POST"); toast(r.changed ? `Downloaded ${r.ver} — world restarts in 60 s` : r.ok ? `Already up to date (${r.ver})` : "Update failed: " + r.why); } catch (e) { fail(e); } };
+  $("#srst").onclick = async () => { if (!confirm("Restart the world now? Everyone is disconnected for about a minute.")) return; try { await call("restart", "POST", { delay: 0 }); toast("Restarting…"); } catch (e) { fail(e); } };
+  appBackupWire();
+  $("#spws").onclick = async () => { const v = $("#spw").value; if (v.length < 8) return toast("At least 8 characters"); try { await call("config", "POST", { newPassword: v }); S.pw = v; store.set("vfa_pw", v); try { window.VFAApp?.setPushServer?.(S.base, v, null); } catch (e) {} toast("Password changed"); $("#spw").value = ""; } catch (e) { fail(e); } };
+  call("source").then((g) => {
+    if (!$("#srcrepo")) return;
+    $("#srcrepo").value = g.repo; $("#srctok").placeholder = g.hasToken ? "•••••••• (saved — leave empty to keep)" : "github_pat_… (only needed when private)";
+    g.hasToken && $("#srcdel").classList.remove("hide");
+    $("#srcstat").innerHTML = g.last ? (g.last.ok ? `✓ Reached ${g.last.ver ? "game " + esc(g.last.ver) + " " : ""}${ago(g.last.at)}` : `⚠ ${esc(g.last.error)} (${ago(g.last.at)})`) : "Not checked yet.";
+  }).catch(() => { $("#srcstat") && ($("#srcstat").textContent = "This server program is older: update it first (below)."); });
+  $("#srcsave").onclick = async () => { try { const x = await call("source", "POST", { repo: $("#srcrepo").value, token: $("#srctok").value }); $("#srcstat").innerHTML = x.test.ok ? `✓ Works — game ${esc(x.test.ver)} found` : "⚠ " + esc(x.test.error); toast(x.test.ok ? "Game source works" : "Saved, but it does not work yet"); } catch (e) { fail(e); } };
+  $("#srcdel").onclick = async () => { if (!confirm("Remove the token? Only do this while the repository is public.")) return; try { await call("source", "POST", { removeToken: true }); toast("Token removed"); server(); } catch (e) { fail(e); } };
+  if (s.serverVersion) call("server").then((v) => {
+    const el = $("#sver"); if (!el) return;
+    const newer = v.latest && older(v.version, v.latest);
+    el.innerHTML = `Version <b>${esc(v.version)}</b> · newest on GitHub <b>${esc(v.latest || "?")}</b>${newer ? "" : " · up to date"}`;
+    $("#sself").disabled = !newer;
+  }).catch(() => {}); else $("#sver").textContent = "This server is too old to update itself: run the setup line once in Termux (see the manual).";
+  $("#sself").onclick = async () => { if (!confirm("Update the server program now? Everyone is disconnected for about a minute.")) return; try { const r = await call("server/update", "POST"); toast(`Updating ${r.from} → ${r.to}; back in about a minute`); } catch (e) { fail(e); } };
+  let logItems = [];
+  const drawLog = () => {
+    const L = $("#log"); if (!L) return;
+    const q = logSearch.toLowerCase();
+    const rows = logItems.filter((x) => (logCatSel === "all" || (logCatSel === "err" ? x.err : x.cat === logCatSel)) && (!q || x.text.toLowerCase().includes(q))).reverse();
+    $("#lcount").textContent = `${rows.length} of ${logItems.length} lines · newest first`;
+    L.innerHTML = rows.map((x) => `<div style="${x.err ? "color:var(--bad)" : ""}"><span class="muted">${new Date(x.at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span> ${esc(x.text)}</div>`).join("") || '<span class="muted">Nothing matches.</span>';
+  };
+  const loadLog = async () => {
+    try {
+      const r = await call("log?n=3000");
+      logItems = r.items || r.lines.map((l) => ({ at: Date.parse(l.slice(0, 19).replace(" ", "T") + "Z"), cat: "other", err: /fail|error/i.test(l), text: l.slice(20) }));
+      drawLog();
+    } catch (e) { fail(e); }
+  };
+  M().querySelectorAll("[data-lc]").forEach((b) => (b.onclick = () => { logCatSel = b.dataset.lc; M().querySelectorAll("[data-lc]").forEach((x) => x.classList.toggle("p", x === b)); drawLog(); }));
+  $("#lsearch").oninput = () => { logSearch = $("#lsearch").value; drawLog(); };
+  $("#sdl").onclick = () => { try { const w = saveText(`vigilfall-log-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.txt`, logItems.map((x) => new Date(x.at).toISOString().slice(0, 19).replace("T", " ") + " " + x.text).join("\n")); toast("Saved to " + w); } catch (e) { fail(e); } };
+  $("#slog").onclick = loadLog; loadLog();
+  pushWire();
+}
+
+// ---------------- app self-update (Android installer) ----------------
+window.VFA_appState = (st, info) => {
+  const t = { confirm: "Tap Update in Android's window to finish the app update", current: "The app is up to date", failed: "App update failed: " + info }[st];
+  t && toast(t);
+};
+
+// ---------------- SSH console (inside the app; uses your own SSH key) ----------------
+const QUICK = [
+  ["Realm status", "sudo systemctl status vigilfall-realm --no-pager | head -25"],
+  ["Realm log", "sudo journalctl -u vigilfall-realm -n 80 --no-pager"],
+  ["Restart Realm", "sudo systemctl restart vigilfall-realm && echo 'Realm restarted'", "Restart the Realm? Everyone is disconnected for about a minute."],
+  ["Memory, disk, load", "free -m; echo; df -h /; echo; uptime"],
+  ["Ports in use", "sudo ss -ltnp | grep LISTEN"],
+  ["Web settings (Caddy)", "sudo cat /etc/caddy/Caddyfile; echo '---'; sudo cat /etc/caddy/vigilfall.caddy 2>/dev/null"],
+  ["Warhammer broker", "sudo systemctl status mosquitto --no-pager | head -15"],
+  ["Copy data to home folder", "sudo tar czf ~/vigilfall-data-$(date +%Y%m%d-%H%M).tgz -C /opt/vigilfall-realm data && ls -lh ~/vigilfall-data-*.tgz | tail -5"],
+  ["Run the Realm setup", "@setup", "Run the Realm setup again (updates the server setup, keeps players and settings)? It takes a few minutes."],
+  ["Ubuntu updates", "sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade", "Install Ubuntu updates now? This can take several minutes."],
+  ["Reboot server", "sudo reboot", "Reboot the whole server? Both games are offline for 2–3 minutes."],
+];
+let conRun = null;
+const conHost = () => store.get("vfa_sshhost") || S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, "");
+const conUser = () => store.get("vfa_sshuser") || "ubuntu";
+window.VFA_sshOut = (id, chunk) => {
+  if (!conRun || conRun.id !== id) return;
+  conRun.text = (conRun.text + chunk).slice(-200000);
+  const o = $("#cout");
+  if (o) { o.textContent = conRun.text; o.scrollTop = o.scrollHeight; }
+};
+window.VFA_sshDone = (id, code) => {
+  if (!conRun || conRun.id !== id) return;
+  VFA_sshOut(id, `\n— finished${code >= 0 ? " (exit " + code + ")" : ""} —\n`);
+  conRun.busy = false;
+  const b = $("#crun"), x = $("#cstop"); b && (b.disabled = false); x && x.classList.add("hide");
+};
+function conExec(cmd, ask) {
+  if (!window.VFAApp) return;
+  if (ask && !confirm(ask)) return;
+  if (conRun?.busy) return toast("A command is still running — Stop it first");
+  if (!VFAApp.hasKey()) return toast("Choose your SSH key first");
+  // the server's own copy of the setup (works with a private repository: it reuses the saved read token)
+  // always the newest setup from GitHub (an old copy on the server could be outdated)
+  if (cmd === "@setup") cmd = `curl -fsSL 'https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/setup.sh?t=${Date.now()}' | sudo VF_NONINTERACTIVE=1 VF_DOMAIN=${S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, "")} bash`;
+  const id = "c" + Date.now();
+  conRun = { id, busy: true, text: `$ ${cmd}\n` };
+  if (!/VF_RESTORE_PASS|VF_.*TOKEN/.test(cmd)) {
+    const hist = JSON.parse(store.get("vfa_hist") || "[]").filter((h) => h !== cmd);
+    hist.unshift(cmd); store.set("vfa_hist", JSON.stringify(hist.slice(0, 20)));
+  } else conRun.text = "$ (setup with your restore link — not kept in the history)\n";
+  const o = $("#cout"); o && (o.textContent = conRun.text);
+  const b = $("#crun"), x = $("#cstop"); b && (b.disabled = true); x && x.classList.remove("hide");
+  VFAApp.exec(id, conHost(), conUser(), cmd);
+}
+function consoleTab() {
+  $("#htitle").textContent = "Console";
+  if (!window.VFAApp?.exec) {
+    M().innerHTML = `<div class="card"><h2>Console</h2><p class="muted">The console runs server commands with your SSH key. It works inside the Vigilfall Admin app on your phone (version 1.4 or later), not in a web browser.</p></div>`;
+    return;
+  }
+  const has = VFAApp.hasKey();
+  const hist = JSON.parse(store.get("vfa_hist") || "[]");
+  M().innerHTML = `
+    <div class="card"><h2>Connection</h2>
+      <div class="row" style="gap:10px"><div style="flex:2"><label>Server</label><input id="chost" value="${esc(conHost())}" autocapitalize="off" autocorrect="off"></div><div style="flex:1"><label>User</label><input id="cuser" value="${esc(conUser())}" autocapitalize="off" autocorrect="off"></div></div>
+      <p class="muted">${has ? "✓ SSH key saved in this app (only on this phone)." : "No SSH key yet: choose the private key file you downloaded from Oracle (the same one Termux uses)."}</p>
+      <div class="row"><button class="b ${has ? "" : "p"}" id="ckey">${has ? "Replace key…" : "Choose key file…"}</button>${has ? '<button class="b d s" id="cdel">Remove key</button>' : ""}<button class="b s" id="cforget" title="After moving to a new server">Forget server</button><input id="ckeyf" type="file" class="hide"></div></div>
+    <div class="card"><h2>Quick commands</h2><div class="qgrid">${QUICK.map((q, i) => `<button class="b" data-q="${i}">${esc(q[0])}</button>`).join("")}</div></div>
+    <div class="card"><h2>Command</h2>
+      <input id="ccmd" placeholder="e.g. df -h" autocapitalize="off" autocorrect="off" spellcheck="false">
+      ${hist.length ? `<select id="chist" style="margin-top:8px"><option value="">Recent commands…</option>${hist.map((h) => `<option>${esc(h)}</option>`).join("")}</select>` : ""}
+      <div class="row" style="margin-top:8px"><button class="b p" id="crun">Run</button><button class="b d hide" id="cstop">Stop</button><button class="b s" id="cclr">Clear</button></div>
+      <p class="muted">Runs as one command on the server (sudo works). Programs that need a full screen or ask questions (nano, top, y/n prompts) do not work here — add -y or use Termux for those.</p>
+      <div class="term" id="cout">${esc(conRun?.text || "")}</div></div>`;
+  const save = () => { store.set("vfa_sshhost", $("#chost").value.trim()); store.set("vfa_sshuser", $("#cuser").value.trim() || "ubuntu"); };
+  $("#chost").onchange = save; $("#cuser").onchange = save;
+  $("#ckey").onclick = () => $("#ckeyf").click();
+  $("#ckeyf").onchange = () => {
+    const f = $("#ckeyf").files[0]; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => { const err = VFAApp.setKey(String(r.result || "")); err ? toast("⚠ " + err) : (toast("SSH key saved"), consoleTab()); };
+    r.readAsText(f);
+  };
+  $("#cdel") && ($("#cdel").onclick = () => { if (confirm("Remove the SSH key from this app?")) { VFAApp.removeKey(); consoleTab(); } });
+  $("#cforget").onclick = () => { if (confirm("Forget the servers this app has connected to? Use this after moving to a new server.")) { VFAApp.forgetServers(); toast("Done"); } };
+  M().querySelectorAll("[data-q]").forEach((b) => (b.onclick = () => { save(); const q = QUICK[+b.dataset.q]; conExec(q[1], q[2]); }));
+  $("#crun").onclick = () => { save(); const c = $("#ccmd").value.trim(); c && conExec(c); };
+  $("#ccmd").onkeydown = (e) => e.key === "Enter" && $("#crun").click();
+  $("#chist") && ($("#chist").onchange = (e) => { $("#ccmd").value = e.target.value; });
+  $("#cstop").onclick = () => { conRun && VFAApp.cancel(conRun.id); };
+  $("#cclr").onclick = () => { if (conRun) conRun.text = ""; $("#cout").textContent = ""; };
+  if (conRun?.busy) { $("#crun").disabled = true; $("#cstop").classList.remove("hide"); }
+  const o = $("#cout"); o.scrollTop = o.scrollHeight;
+}
+
+// ---------------- backups kept on GitHub ----------------
+async function ghBackups() {
+  $("#htitle").textContent = "GitHub backups";
+  M().innerHTML = `<div class="card"><h2>Backups on GitHub</h2><div class="list" id="ghl"><div class="muted">Loading…</div></div><p class="muted">Bring back copies a backup from GitHub to this server; it then appears in the Backups list, where you can restore it.</p></div>`;
+  try {
+    const r = await call("github/list");
+    const L = $("#ghl"); L.innerHTML = r.files.length ? "" : '<div class="muted">No backups on GitHub yet.</div>';
+    for (const f of r.files) {
+      const at = +f.name.split("-")[0];
+      const d = document.createElement("div"); d.className = "it";
+      d.innerHTML = `<div class="nm"><b>${at ? new Date(at).toLocaleString() : esc(f.name)}</b><span>${esc(f.name.replace(/^\d+-|\.tgz$/g, ""))} · ${kb(f.size)}${at ? " · " + ago(at) : ""}</span></div><button class="b s">Bring back</button>`;
+      d.querySelector("button").onclick = async () => { toast("Copying from GitHub…"); try { await call("github/fetch", "POST", { name: f.name }); toast("Copied — it is now in the Backups list"); back(); } catch (e) { fail(e); } };
+      L.appendChild(d);
+    }
+  } catch (e) { fail(e); }
+}
+
+// ---------------- whole-server backups ----------------
+async function fullBackups() {
+  $("#htitle").textContent = "Backups";
+  M().innerHTML = `<div class="muted">Loading…</div>`;
+  let r, g = null;
+  try { r = await call("fullbackups"); } catch (e) { return fail(e); }
+  try { g = await call("github"); } catch (e) { g = null; }
+  const tag = (k) => ({ auto: "automatic", manual: "manual", uploaded: "uploaded", github: "from GitHub", "before-restore": "before a restore", complete: "🔒 COMPLETE (everything)" })[k] || k;
+  M().innerHTML = `${appBackupCard()}
+    <div class="card"><h2>Complete server backup only</h2>
+      <p class="muted">Everything on the server in one file: players, their backups, all settings, the admin password, the GitHub and email keys, and the address with its DuckDNS token. It is locked with a password you choose — without the password nobody can open it, not even you.</p>
+      <label>Backup password (8+ characters)</label><input id="cpw" type="password" autocapitalize="off" autocorrect="off">
+      <label>Password again</label><input id="cpw2" type="password" autocapitalize="off" autocorrect="off">
+      <div class="row" style="margin-top:8px"><button class="b p" id="cdl">Make and download</button><button class="b" id="cmove">Move to a new server…</button></div>
+      <div id="cmoveout"></div></div>
+    <div class="card"><h2>Server backups</h2><p class="muted">A server backup holds every player's save and save backups plus the Realm settings (admin password included). Use it to undo mistakes or to move to a new server: download it, then upload and restore it there.</p>
+      <div class="row"><button class="b p" id="fbnow">Back up now</button><button class="b" id="fbup">Upload a backup…</button><input id="fbfile" type="file" accept=".tgz,.gz,.vfpack,.vfadmin,application/gzip,application/octet-stream,*/*" class="hide"></div></div>
+    <div class="card"><h2>Automatic backups</h2>
+      <p class="muted">${r.autoBackupHours > 0 ? `<b>Next automatic backup ${r.nextAutoBackup ? "in " + dur((r.nextAutoBackup - Date.now()) / 1000) : "in about " + r.autoBackupHours + " h"}</b>${g?.repo && g?.hasToken && g?.auto ? " — it is also copied to GitHub right after." : "."}` : "<b>Automatic backups are off.</b>"} Change how often here; the GitHub copy follows the same schedule.</p>
+      <div class="row" style="gap:10px"><div style="flex:1"><label>Back up every (hours, 0 = off)</label><input id="fbh" type="number" min="0" max="168" value="${r.autoBackupHours}"></div><div style="flex:1"><label>Keep the last</label><input id="fbk" type="number" min="1" max="100" value="${r.autoBackupKeep}"></div></div>
+      <p class="muted">Automatic backups only replace older automatic ones. Manual and uploaded backups stay until you delete them.${r.lastAutoBackup ? " Last automatic backup " + ago(r.lastAutoBackup) + "." : ""}</p>
+      <button class="b" id="fbsave">Save</button></div>
+    ${g ? `<div class="card"><h2>Copies on GitHub</h2>
+      <p class="muted">Keeps a copy of your server backups in a <b>private</b> GitHub repository, away from this server. Never use the public Vigilfall repository: backups hold every player's save and the admin password.</p>
+      <label>Private repository (owner/name)</label><input id="ghrepo" placeholder="polemarxos/Vigilfall-backups" value="${esc(g.repo || "")}" autocapitalize="off" autocorrect="off">
+      <label>Token${g.hasToken ? " (saved — leave empty to keep it)" : ""}</label><input id="ghtok" type="password" placeholder="${g.hasToken ? "••••••••" : "github_pat_…"}" autocapitalize="off" autocorrect="off">
+      <div class="row" style="gap:10px;margin-top:8px"><label style="display:flex;gap:6px;align-items:center;margin:0;flex:2"><input id="ghauto" type="checkbox" style="width:auto" ${g.auto ? "checked" : ""}> Send every automatic backup</label><div style="flex:1"><label style="margin-top:0">Keep on GitHub</label><input id="ghkeep" type="number" min="0" max="500" value="${g.keep}"></div></div>
+      <p class="muted" id="ghstat">${g.last ? (g.last.ok ? "✓ Last copy " : "⚠ Last copy failed ") + ago(g.last.at) + (g.last.ok ? "" : ": " + esc(g.last.msg)) : g.repo ? "No copy sent yet." : "Not set up yet."}</p>
+      <div class="row"><button class="b p" id="ghsave">Save and test</button>${g.repo && g.hasToken ? '<button class="b" id="ghlist">Backups on GitHub…</button>' : ""}</div>
+      <details style="margin-top:10px"><summary class="muted">How to set it up (2 minutes)</summary><ol class="muted" style="padding-left:18px">
+        <li>On github.com: <b>New repository</b> → name it e.g. <b>Vigilfall-backups</b> → choose <b>Private</b> → Create.</li>
+        <li>Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → Generate new token. Repository access: <b>Only select repositories</b> → that repository. Permissions → Repository → <b>Contents: Read and write</b>. Pick a long expiry → Generate → copy it.</li>
+        <li>Paste the repository name and the token here → Save and test.</li></ol></details></div>` : ""}
+    <div class="card list" id="fbl">${r.backups.length ? "" : '<div class="muted">No server backups yet.</div>'}</div>`;
+  const L = $("#fbl");
+  for (const b of r.backups) {
+    const d = document.createElement("div"); d.className = "it";
+    d.innerHTML = `<div class="nm"><b>${new Date(b.at).toLocaleString()}</b><span>${tag(b.kind)} · ${kb(b.size)} · ${ago(b.at)}</span></div><button class="b s" data-d>⬇</button>${g?.repo && g?.hasToken ? '<button class="b s" data-g title="Copy to GitHub">⬆</button>' : ""}<button class="b s" data-r>Restore</button><button class="b s d" data-x>✕</button>`;
+    d.querySelector("[data-g]") && (d.querySelector("[data-g]").onclick = async () => { toast("Sending to GitHub…"); try { await call(`fullbackups/${encodeURIComponent(b.file)}/github`, "POST"); toast("Copied to GitHub"); fullBackups(); } catch (e) { fail(e); } });
+    d.querySelector("[data-d]").onclick = () => download(`fullbackups/${encodeURIComponent(b.file)}/link`);
+    d.querySelector("[data-r]").onclick = async () => {
+      if (b.complete) {
+        const pass = prompt("Restore EVERYTHING from this complete backup (players, settings, passwords, keys)? A normal backup of the current state is made first, and the Realm restarts (about a minute).\n\nType the backup password:");
+        if (!pass) return;
+        try { await call(`fullbackups/${encodeURIComponent(b.file)}/restore`, "POST", { pass }); alert("Restored. The Realm restarts now. If the admin password was different in the backup, sign in with that one."); store.del("vfa_pw"); S.pw = ""; return showLogin("The Realm is restarting from the complete backup. Sign in again in a minute."); } catch (e) { return fail(e); }
+      }
+      if (prompt("Restore this server backup? Every player's save is replaced by the one in the backup (a backup of the current state is made first), and everyone is disconnected for a minute. Type RESTORE to go on.") !== "RESTORE") return;
+      try { const x = await call(`fullbackups/${encodeURIComponent(b.file)}/restore`, "POST"); toast(`Restored ${x.players} player(s)`); if (x.passwordChanged) { alert("The admin password is now the one from the backup. Sign in with it."); store.del("vfa_pw"); S.pw = ""; return showLogin("Sign in with the password from the backup."); } fullBackups(); } catch (e) { fail(e); }
+    };
+    d.querySelector("[data-x]").onclick = async () => { if (!confirm("Delete this server backup for good?")) return; try { await call(`fullbackups/${encodeURIComponent(b.file)}`, "DELETE"); toast("Deleted"); fullBackups(); } catch (e) { fail(e); } };
+    L.appendChild(d);
+  }
+  $("#ghsave") && ($("#ghsave").onclick = async () => {
+    try {
+      const x = await call("github", "POST", { repo: $("#ghrepo").value, token: $("#ghtok").value, auto: $("#ghauto").checked, keep: +$("#ghkeep").value });
+      if (x.test && !x.test.ok) { $("#ghstat").textContent = "⚠ " + x.test.error; return toast("Saved, but the test failed"); }
+      toast(x.test ? "Saved — GitHub repository works" : "Saved"); fullBackups();
+    } catch (e) { fail(e); }
+  });
+  $("#ghlist") && ($("#ghlist").onclick = () => push(ghBackups));
+  appBackupWire();
+  const cpass = () => { const a = $("#cpw").value, b2 = $("#cpw2").value; if (a.length < 8) { toast("Backup password: at least 8 characters"); return null; } if (a !== b2) { toast("The passwords are not the same"); return null; } return a; };
+  $("#cdl").onclick = async () => {
+    const pass = cpass(); if (!pass) return;
+    toast("Making the complete backup…");
+    try {
+      const x = await call("fullbackups/complete", "POST", { pass });
+      const a = document.createElement("a"); a.href = S.base + x.url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 500);
+      toast("Downloading — keep the file and its password safe"); setTimeout(fullBackups, 1500);
+    } catch (e) { fail(e); }
+  };
+  $("#cmove").onclick = async () => {
+    const pass = cpass(); if (!pass) return;
+    toast("Making the complete backup…");
+    try {
+      const x = await call("fullbackups/complete", "POST", { pass });
+      const cmd = `curl -fsSL 'https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/setup.sh?t=${Date.now()}' | sudo VF_NONINTERACTIVE=1 VF_RESTORE_URL=${shq(S.base + x.url)} VF_RESTORE_PASS=${shq(pass)} bash`;
+      // also take the Realm's name out of a shared DuckDNS updater (e.g. domains=wsgame,vigilfall), so only the new server updates it
+      const host = S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, ""), sub = /\.duckdns\.org$/.test(host) ? host.replace(/\.duckdns\.org$/, "") : "";
+      const off = "sudo systemctl disable --now vigilfall-realm && sudo rm -f /etc/cron.d/vigilfall-duckdns" + (sub ? ` && (sudo sed -i -e 's/,${sub}&/\\&/' -e 's/=${sub},/=/' -e 's/,${sub},/,/' /etc/cron.d/duckdns 2>/dev/null; true)` : "") + " && echo 'Old Realm switched off'";
+      $("#cmoveout").innerHTML = `<ol class="muted" style="padding-left:18px">
+        <li>Make the new server (Ubuntu 22.04 or 24.04) and open ports 80 and 443 on it.</li>
+        <li>Run this <b>one line on the new server</b> (it works once, for 2 hours). It installs everything and brings over all players, settings, passwords and keys, and the same address:
+          <textarea id="cmvcmd" readonly rows="6" style="width:100%;height:auto;min-height:0;font:12px monospace;margin-top:6px">${esc(cmd)}</textarea>
+          <div class="row"><button class="b s" id="cmvcopy">Copy</button>${window.VFAApp?.exec ? '<button class="b s" id="cmvrun">Run it from the Console…</button>' : ""}</div></li>
+        <li>When it says "Everything from the old server is here", switch off the Realm on this <b>old</b> server, so the address moves to the new one within 5 minutes (the other game on this server is not touched):
+          <textarea readonly rows="4" style="width:100%;height:auto;min-height:0;font:12px monospace;margin-top:6px">${esc(off)}</textarea>
+          <div class="row"><button class="b s" id="cmvcopy2">Copy</button>${window.VFAApp?.exec ? '<button class="b s d" id="cmvoff">Switch off the old Realm now…</button>' : ""}</div></li>
+        <li>This app keeps working with the same address and admin password.</li></ol>`;
+      const copy = (t) => (navigator.clipboard?.writeText(t).then(() => toast("Copied"), () => toast("Select and copy the text")) ?? toast("Select and copy the text"));
+      $("#cmvcopy").onclick = () => copy(cmd);
+      $("#cmvcopy2").onclick = () => copy(off);
+      $("#cmvrun") && ($("#cmvrun").onclick = () => {
+        const h = prompt("Address (IP) of the NEW server:", ""); if (!h) return;
+        const u = prompt("User name on the new server:", conUser()) || "ubuntu";
+        store.set("vfa_sshhost", h.trim()); store.set("vfa_sshuser", u.trim());
+        go("con"); setTimeout(() => conExec(cmd), 300);
+      });
+      $("#cmvoff") && ($("#cmvoff").onclick = () => {
+        const h = prompt("Address (IP) of the OLD server (this one):", S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, "")); if (!h) return;
+        store.set("vfa_sshhost", h.trim());
+        go("con"); setTimeout(() => conExec(off, "Switch off the Realm on " + h + "? Only do this after the new server is ready."), 300);
+      });
+    } catch (e) { fail(e); }
+  };
+  $("#fbnow").onclick = async () => { toast("Backing up…"); try { await call("fullbackups", "POST"); toast("Server backed up"); fullBackups(); } catch (e) { fail(e); } };
+  $("#fbsave").onclick = async () => { try { await call("config", "POST", { autoBackupHours: +$("#fbh").value, autoBackupKeep: +$("#fbk").value }); toast("Saved"); fullBackups(); } catch (e) { fail(e); } };
+  $("#fbup").onclick = () => $("#fbfile").click();
+  $("#fbfile").onchange = async () => {
+    let f = $("#fbfile").files[0]; if (!f) return;
+    let packPass = "";
+    // a "back up everything" file from this app: take the complete server backup out of it
+    if (/\.vfadmin$/i.test(f.name) || (f.size < 200e6 && (await f.slice(0, 40).text()).includes("vigilfallAdminBackup"))) {
+      packPass = prompt("Password of this backup file:") || ""; if (!packPass) return;
+      try {
+        const o = await appBackupOpen(await f.text(), packPass);
+        if (!o.serverPack) return toast("This backup file has no server backup inside (it was made with the box unticked).");
+        f = new Blob([unb64(o.serverPack.data)]);
+      } catch (e) { return fail(e); }
+    }
+    toast(`Uploading ${kb(f.size)}…`);
+    try {
+      const res = await fetch(S.base + "/api/fullbackups/upload", { method: "POST", headers: { Authorization: "Bearer " + S.pw, "Content-Type": "application/gzip" }, body: f });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(j.error || "HTTP " + res.status), { code: res.status });
+      if (j.complete && packPass && confirm("Restore EVERYTHING from it now (players, settings, passwords, keys)? A normal backup of the current state is made first and the Realm restarts.")) {
+        try { await call(`fullbackups/${encodeURIComponent(j.file)}/restore`, "POST", { pass: packPass }); alert("Restored. The Realm restarts now. Sign in with the admin password from the backup."); store.del("vfa_pw"); S.pw = ""; return showLogin("The Realm is restarting from the backup. Sign in in a minute."); } catch (e) { return fail(e); }
+      }
+      toast(j.complete ? "Uploaded a complete backup — press Restore on it and type its password" : "Uploaded — press Restore on it to use it"); fullBackups();
+    } catch (e) { fail(e); }
+  };
+}
+
+function start() {
+  try { window.VFAApp?.setServer?.(S.base); } catch (e) {}
+  // keep the phone alerts pointed at this server with the current password
+  try { window.VFAApp?.setPushServer?.(S.base, S.pw, null); } catch (e) {} $("#login").classList.add("hide"); $("#app").classList.remove("hide"); go("dash"); }
+(async () => {
+  if (!S.base || !S.pw) return showLogin();
+  try { await call("status"); start(); } catch (e) { showLogin(e.code === 401 ? "Sign in again." : e.message === "Failed to fetch" ? "Could not reach " + S.base.replace(/^https?:\/\//, "") : e.message); }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.polemarxos.vigilfall.admin'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.polemarxos.vigilfall.admin'
+        minSdk 24
+        targetSdk 34
+        versionCode Integer.parseInt((project.findProperty('VC') ?: '11').toString())
+        versionName((project.findProperty('VN') ?: '1.10').toString())
+    }
+    signingConfigs {
+        release { storeFile file('/home/claude/work/android-admin/vigilfall.keystore'); storePassword 'vigilfall'; keyAlias 'vigilfall'; keyPassword 'vigilfall' }
+    }
+    buildTypes { release { minifyEnabled false; signingConfig signingConfigs.release } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_11; targetCompatibility JavaVersion.VERSION_11 }
+    packaging { resources { excludes += ['META-INF/versions/**'] } }
+}
+dependencies {
+    implementation platform('com.google.firebase:firebase-bom:35.2.0')
+    implementation 'com.google.firebase:firebase-messaging'
+    implementation files('libs/jsch-android.jar')
+}

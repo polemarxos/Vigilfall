@@ -46,7 +46,7 @@ public class MainActivity extends Activity {
     static final String REPO = "https://raw.githubusercontent.com/polemarxos/Vigilfall/main/";
     static final String LATEST = REPO + "server/admin/index.html";
     static final String APP_INFO = REPO + "VigilfallAdmin.json";
-    static final String VERSION = "1.9";
+    static final String VERSION = "1.10";
     static final String ACTION_INSTALLED = "com.polemarxos.vigilfall.admin.INSTALLED";
     static final int PICK = 42;
     WebView web;
@@ -231,44 +231,63 @@ public class MainActivity extends Activity {
             }
         }
         @JavascriptInterface public void removeKey() { keyFile().delete(); }
-        // phone alerts (AlertJob checks the server about every 15 minutes)
-        @JavascriptInterface public String getAlerts() {
-            android.content.SharedPreferences sp = AlertJob.prefs(MainActivity.this);
-            try {
-                JSONObject o = new JSONObject();
-                o.put("on", sp.getBoolean("on", false));
-                o.put("kinds", new JSONObject(sp.getString("kinds", "{\"down\":1,\"cheat\":1,\"email\":1,\"backup\":1,\"world\":1,\"server\":0,\"newplayer\":0}")));
-                o.put("lastCheck", sp.getLong("lastCheck", 0));
-                o.put("lastError", sp.getString("lastError", ""));
-                return o.toString();
-            } catch (Exception e) { return "{}"; }
-        }
-        @JavascriptInterface public String setAlerts(String json) {
+        // phone alerts by Firebase Cloud Messaging (the server pushes them the moment they happen)
+        @JavascriptInterface public boolean hasPush() { return true; }
+        // values from the admin's google-services.json (the page reads the file)
+        @JavascriptInterface public String setFirebase(String json) {
             try {
                 JSONObject o = new JSONObject(json);
-                boolean on = o.optBoolean("on", false);
-                String base = o.optString("base", "");
-                android.content.SharedPreferences sp = AlertJob.prefs(MainActivity.this);
-                android.content.SharedPreferences.Editor ed = sp.edit().putBoolean("on", on).putString("kinds", o.optJSONObject("kinds") != null ? o.optJSONObject("kinds").toString() : "{}");
-                if (base.matches("^https?://[A-Za-z0-9.:-]+$")) {
-                    if (!base.equals(sp.getString("base", ""))) ed.putLong("after", 0);
-                    ed.putString("base", base);
-                }
-                if (o.has("pw") && !o.optString("pw").isEmpty()) ed.putString("pw", o.optString("pw"));
-                ed.apply();
-                AlertJob.schedule(MainActivity.this);
-                if (on && Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED)
-                    runOnUiThread(new Runnable() { public void run() { requestPermissions(new String[] { "android.permission.POST_NOTIFICATIONS" }, 77); } });
+                String appId = o.optString("appId"), apiKey = o.optString("apiKey"), projectId = o.optString("projectId"), sender = o.optString("senderId");
+                if (appId.isEmpty() || apiKey.isEmpty() || projectId.isEmpty() || sender.isEmpty()) return "ERR: the Firebase settings are incomplete";
+                android.content.SharedPreferences.Editor ed = Push.prefs(MainActivity.this).edit();
+                boolean changed = !appId.equals(Push.prefs(MainActivity.this).getString("appId", ""));
+                ed.putString("appId", appId).putString("apiKey", apiKey).putString("projectId", projectId).putString("senderId", sender);
+                if (changed) ed.remove("token");
+                ed.commit();
+                if (changed && !com.google.firebase.FirebaseApp.getApps(MainActivity.this).isEmpty()) return "RESTART";
+                Push.init(MainActivity.this);
                 return "OK";
             } catch (Exception e) { return "ERR: " + e.getMessage(); }
         }
-        @JavascriptInterface public void testAlert() {
+        @JavascriptInterface public String pushInfo() {
+            try {
+                android.content.SharedPreferences p = Push.prefs(MainActivity.this);
+                JSONObject o = new JSONObject();
+                o.put("configured", Push.configured(MainActivity.this));
+                o.put("projectId", p.getString("projectId", ""));
+                o.put("token", p.getString("token", ""));
+                o.put("kinds", p.getString("kinds", ""));
+                o.put("allowed", Build.VERSION.SDK_INT < 33 || checkSelfPermission("android.permission.POST_NOTIFICATIONS") == android.content.pm.PackageManager.PERMISSION_GRANTED);
+                return o.toString();
+            } catch (Exception e) { return "{}"; }
+        }
+        // server + password + what to send, so the app can tell the server a new token by itself
+        @JavascriptInterface public void setPushServer(String base, String pw, String kinds) {
+            android.content.SharedPreferences.Editor ed = Push.prefs(MainActivity.this).edit();
+            if (base != null && base.matches("^https?://[A-Za-z0-9.:-]+$")) ed.putString("base", base);
+            if (pw != null && !pw.isEmpty()) ed.putString("pw", pw);
+            if (kinds != null) ed.putString("kinds", kinds);
+            ed.apply();
+        }
+        @JavascriptInterface public void requestNotify() {
             if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission("android.permission.POST_NOTIFICATIONS") != android.content.pm.PackageManager.PERMISSION_GRANTED)
                 runOnUiThread(new Runnable() { public void run() { requestPermissions(new String[] { "android.permission.POST_NOTIFICATIONS" }, 77); } });
-            AlertJob.notify(MainActivity.this, 2, "Vigilfall · Test alert", "Alerts work. You will see notifications like this one when something happens on your Realm.");
         }
-        @JavascriptInterface public void checkAlertsNow() {
-            new Thread(new Runnable() { public void run() { AlertJob.check(MainActivity.this); } }).start();
+        // asks Firebase for this phone's token; the page gets it in window.VFA_pushToken(token, error)
+        @JavascriptInterface public void pushToken() {
+            Push.token(MainActivity.this, (tok, err) -> runOnUiThread(() -> web.evaluateJavascript("window.VFA_pushToken && VFA_pushToken(" + JSONObject.quote(tok == null ? "" : tok) + "," + JSONObject.quote(err == null ? "" : err) + ")", null)));
+        }
+        @JavascriptInterface public void testAlert() {
+            requestNotify();
+            Push.notify(MainActivity.this, 2, "Vigilfall · Test (on this phone)", "Notifications are allowed on this phone.");
+        }
+        @JavascriptInterface public void restartApp() {
+            runOnUiThread(() -> {
+                Intent i = getPackageManager().getLaunchIntentForPackage(getPackageName());
+                if (i != null) { i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(i); }
+                finishAffinity();
+                System.exit(0);
+            });
         }
         // app backup: the SSH key, the servers the console trusts and the saved server address (the page encrypts it)
         @JavascriptInterface public String exportData() {
@@ -393,6 +412,8 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle b) {
+        try { ((android.app.job.JobScheduler) getSystemService(JOB_SCHEDULER_SERVICE)).cancel(4711); } catch (Exception e) {}
+        try { Push.init(this); } catch (Throwable e) {}
         super.onCreate(b);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(installResult, new IntentFilter(ACTION_INSTALLED), 4 /* RECEIVER_NOT_EXPORTED */);
         else registerReceiver(installResult, new IntentFilter(ACTION_INSTALLED));

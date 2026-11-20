@@ -158,6 +158,7 @@ function showServer(files, title) {
   const gh = json(files["github.json"] || new Uint8Array()) || {};
   const src = json(files["source.json"] || new Uint8Array()) || {};
   const sess = json(files["sessions.json"] || new Uint8Array()) || {};
+  const fcm = json(files["fcm.json"] || new Uint8Array()) || {};
   const players = Object.keys(files).filter((f) => /^players\/[^/]+\.json$/.test(f)).map((f) => json(files[f])).filter(Boolean);
   const backups = Object.keys(files).filter((f) => /^backups\//.test(f)).length;
   const lv = (p) => Math.max(1, ...Object.values(p.profile?.heroes || {}).map((h) => h?.level || 1));
@@ -167,6 +168,7 @@ function showServer(files, title) {
     <h2 style="margin-top:14px">Realm admin</h2>${table([["Realm name", plainV(cfg.name)], ["Admin password", secret(cfg.adminPassword)], ["Most players", plainV(cfg.maxPlayers)], ["Port", plainV(cfg.port)], ["Maintenance", plainV(cfg.maintenance ? "on" : "off")], ["Anti-cheat", plainV(cfg.antiCheat === false ? "off" : "on (tolerance " + (cfg.cheatTolerance || 1) + ")")], ["World host token", secret(cfg.hostToken)]])}
     <h2 style="margin-top:14px">Email (Brevo)</h2>${table([["API key", secret(mail.apiKey)], ["Sender address", plainV(mail.from)], ["Sender name", plainV(mail.fromName)]])}
     <h2 style="margin-top:14px">GitHub backup copies</h2>${table([["Repository", plainV(gh.repo)], ["Token", secret(gh.token)], ["Folder", plainV(gh.folder)]])}
+    ${fcm.sa || fcm.app ? `<h2 style="margin-top:14px">Firebase (phone alerts)</h2>${table([["Project", plainV(fcm.sa?.project_id || fcm.app?.projectId)], ["Service account", plainV(fcm.sa?.client_email)], ["Service account private key", secret(fcm.sa?.private_key)], ["App ID", plainV(fcm.app?.appId)], ["API key", secret(fcm.app?.apiKey)], ["Phones getting alerts", plainV((fcm.devices || []).map((d) => d.name || "phone").join(", "))]])}` : ""}
     ${src.repo || src.token ? `<h2 style="margin-top:14px">Game source</h2>${table([["Repository", plainV(src.repo)], ["Read token", secret(src.token)]])}` : ""}
     <h2 style="margin-top:14px">Players (${players.length})</h2>
     <p class="muted">${Object.keys(sess).length} signed-in device(s) · ${backups} player save backup(s). Passwords are stored only as scrambled hashes, so they can't be shown (the admin app can set a new one).</p>
