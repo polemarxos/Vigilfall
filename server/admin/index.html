@@ -92,7 +92,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.11";
+const PAGE_VERSION = "1.12";
 const APP_LATEST = "1.7";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
@@ -275,20 +275,20 @@ async function player(pid) {
   $("#htitle").textContent = r.name || pid;
   const heroes = p ? Object.entries(p.heroes || {}) : [];
   M().innerHTML = `
-    <div class="card"><div class="row" style="justify-content:space-between"><div><b style="font-size:18px">${esc(r.name)}</b><div class="muted">Friend code ${esc(pid)} · joined ${ago(r.created)} · last seen ${r.online ? "now" : ago(r.lastSeen)}</div><div class="muted">Game ${esc(r.ver || "?")}${r.adminRev ? " · edited " + r.adminRev + "×" : ""}${r.locked ? " · linked to a device" : ""}</div></div>
+    <div class="card"><div class="row" style="justify-content:space-between"><div><b style="font-size:18px">${esc(r.name)}</b><div class="muted">Friend code ${esc(pid)} · joined ${ago(r.created)} · last seen ${r.online ? "now" : ago(r.lastSeen)}</div><div class="muted">Game ${esc(r.ver || "?")}${r.adminRev ? " · edited " + r.adminRev + "×" : ""}${r.acct ? "" : " · old save (before accounts)"}</div></div>
       <div>${r.banned ? `<span class="pill ban">banned</span>` : r.online ? '<span class="pill on">online</span>' : ""}</div></div>
       ${r.banned && r.banReason ? `<p class="muted">Reason: ${esc(r.banReason)}</p>` : ""}
       <div class="row" style="margin-top:10px">
         ${r.online ? '<button class="b s" data-x="kick">Kick</button>' : ""}
         ${r.banned ? '<button class="b s" data-x="unban">Unban</button>' : '<button class="b s d" data-x="ban">Ban</button>'}
-        <button class="b s" data-x="resetkey" title="Lets the character log in from a new phone or PC">Reset device link</button>
+        <button class="b s" data-x="newpw" title="For a player who forgot the password">Reset password</button>
         ${p ? '<button class="b s" data-x="view">View save</button>' : ""}
         <button class="b s" data-x="backups">Backups</button>
         ${p ? '<button class="b s" data-x="backupnow">Back up now</button><button class="b s" data-x="gift">Gift</button><button class="b s" data-x="dlsave">Download save</button>' : ""}
         <button class="b s d" data-x="delete">Delete</button>
       </div></div>
     ${p ? `<div class="card"><h2>Edit save</h2>
-      <label>Name</label><input id="e_name" maxlength="16" value="${esc(p.name)}">
+      <label>Account name</label><input id="e_name" maxlength="16" value="${esc(r.name)}" disabled>
       <div class="row" style="gap:10px"><div style="flex:1"><label>◆ Soul Shards</label><input id="e_sh" type="number" min="0" value="${p.shards || 0}"></div><div style="flex:1"><label>✦ Ashen Marks</label><input id="e_mk" type="number" min="0" value="${p.marks || 0}"></div></div>
       <label>Heroes</label>
       <div class="heroes"><span class="muted">Hero</span><span class="muted">Level</span><span class="muted">XP</span><span class="muted">Potions</span>
@@ -307,6 +307,7 @@ async function player(pid) {
       if (x === "kick") { const why = prompt("Reason (shown to the player):", "Removed by an admin."); if (why === null) return; await call(`players/${pid}/kick`, "POST", { why }); toast("Kicked"); }
       if (x === "ban") { const why = prompt("Ban reason (shown to the player):", ""); if (why === null) return; await call(`players/${pid}/ban`, "POST", { why }); toast("Banned"); }
       if (x === "unban") { await call(`players/${pid}/unban`, "POST"); toast("Unbanned"); }
+      if (x === "newpw") { const pw = prompt(`New password for ${r.name} (at least 6 characters, empty = make one up):`, ""); if (pw === null) return; const x2 = await call(`players/${pid}/password`, "POST", { password: pw }); alert(`New password for ${r.name}: ${x2.password}\nGive it to the player; they can sign in with it now.`); }
       if (x === "resetkey") { if (!confirm("Allow this character to log in from a new device? (The old device keeps working too until someone logs in.)")) return; await call(`players/${pid}/resetkey`, "POST"); toast("Device link reset"); }
       if (x === "backups") return push(() => backups(pid));
       if (x === "view") return push(() => viewSave(p, r.name || pid));

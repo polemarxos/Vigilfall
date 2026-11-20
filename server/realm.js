@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.5.1";
+const SERVER_VERSION = "1.6.0";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -70,8 +70,10 @@ const summaryOf = (p) => {
     victory: !!p?.campaign?.victory,
   };
 };
+const byName = new Map(); // account name (lower case) -> pid
 const loadRecs = () => {
 recs.clear();
+byName.clear();
 for (const f of fs.readdirSync(PLAYERS)) {
   if (!f.endsWith(".json")) continue;
   try {
@@ -79,6 +81,7 @@ for (const f of fs.readdirSync(PLAYERS)) {
     const { profile, ...meta } = r;
     meta.sum = summaryOf(profile);
     recs.set(r.pid, meta);
+    r.acct && byName.set(r.acct, r.pid);
   } catch (e) {
     log("bad record", f, e.message);
   }
@@ -274,18 +277,17 @@ const fails = new Map();
 async function onClientMsg(c, m) {
   if (!c.authed) {
     if (m.t !== "auth") return;
-    const pid = String(m.pid || ""), key = String(m.key || "");
-    if (!okPid(pid) || key.length < 16) return sendJ(c.ws, { t: "denied", why: "Bad login data." });
+    const sess = sessions[String(m.token || "")];
+    if (!sess || sess.exp < Date.now()) return sendJ(c.ws, { t: "denied", why: m.token ? "Your sign-in has expired. Sign in again." : "Please update Vigilfall: the Realm now uses accounts." });
+    const pid = sess.pid;
     if (cfg.maintenance) return sendJ(c.ws, { t: "denied", why: cfg.maintenanceMsg || "The Realm is closed for maintenance." });
     if (!H.ready || !H.ws) return sendJ(c.ws, { t: "denied", why: "The Realm is starting. Try again in a minute.", retry: true });
     if ([...clients.values()].filter((x) => x.authed).length >= cfg.maxPlayers) return sendJ(c.ws, { t: "full" });
     let r = await readRec(pid);
+    if (!r) return sendJ(c.ws, { t: "denied", why: "This account no longer exists." });
     if (r?.banned) return sendJ(c.ws, { t: "denied", why: "You are banned from this Realm" + (r.banReason ? ": " + r.banReason : ".") });
-    if (r && r.keyHash && r.keyHash !== hash(key)) return sendJ(c.ws, { t: "denied", why: "This character is linked to another device. Ask the Realm admin to reset it." });
     const now = Date.now();
-    if (!r) r = { pid, created: now, adminRev: 0 };
-    r.keyHash ||= hash(key);
-    Object.assign(r, { name: String(m.name || "Wanderer").slice(0, 20), lastSeen: now, ver: String(m.ver || ""), hero: m.hero || r.hero, ip: c.ip });
+    Object.assign(r, { lastSeen: now, ver: String(m.ver || ""), hero: m.hero || r.hero, ip: c.ip });
     await writeRec(r);
     // one session per character
     const old = clientOfPid(pid);
@@ -301,13 +303,13 @@ async function onClientMsg(c, m) {
     clients.delete(c.tmpId);
     clients.set(c.id, c);
     sendJ(c.ws, { t: "_info", motd: cfg.motd, ver: H.ver || gameVer, name: cfg.name, online: clients.size });
-    if (r.profile && (r.adminRev || 0) > (+m.rev || 0)) sendJ(c.ws, { t: "cloud", p: r.profile, rev: r.adminRev });
     hsend({ o: "open", id: c.id, pid, name: c.name });
     for (const g of r.gifts || []) setTimeout(() => sendJ(c.ws, { t: "gift", ...g }), 6000);
     log("join", pid, c.name, c.ip);
     return;
   }
-  if (m.t === "_save") {
+  if (m.t === "_save") return; // saves go through /api/acct/save
+  if (m.t === "_save_old") {
     const p = m.p;
     if (!p || typeof p !== "object" || !p.heroes || !p.campaign) return;
     const r = (await readRec(c.pid)) || { pid: c.pid, created: Date.now(), adminRev: 0 };
@@ -543,6 +545,139 @@ async function selfUpdate() {
   }
 }
 
+// ---------------- accounts: name + password, the save follows the player to every device ----------------
+const SESS_FILE = path.join(DATA, "sessions.json");
+let sessions = {};
+try { sessions = JSON.parse(fs.readFileSync(SESS_FILE, "utf8")); } catch (e) {}
+let sessT = null;
+const saveSessions = () => {
+  clearTimeout(sessT);
+  sessT = setTimeout(() => {
+    const now = Date.now();
+    for (const k in sessions) sessions[k].exp < now && delete sessions[k];
+    fs.writeFile(SESS_FILE, JSON.stringify(sessions), { mode: 0o600 }, () => {});
+  }, 500);
+};
+const pwHash = (pw, salt = crypto.randomBytes(16).toString("hex")) => salt + ":" + crypto.scryptSync(String(pw), salt, 32).toString("hex");
+const pwOk = (pw, stored) => {
+  if (!stored || !stored.includes(":")) return false;
+  const [salt, h] = stored.split(":");
+  const a = Buffer.from(h, "hex"), b = crypto.scryptSync(String(pw), salt, 32);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+const newSession = (pid) => {
+  const t = rnd(32);
+  sessions[t] = { pid, exp: Date.now() + 180 * 86400e3 };
+  saveSessions();
+  return t;
+};
+const okName = (n) => typeof n === "string" && /^[A-Za-z0-9_-]{3,16}$/.test(n);
+const PIDCH = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const newPid = () => { let p; do { p = Array.from(crypto.randomBytes(8), (b) => PIDCH[b % PIDCH.length]).join(""); } while (recs.has(p)); return p; };
+const acctFails = new Map();
+const acctView = (r) => ({ name: r.name, pid: r.pid, rev: r.rev || 0, profile: r.profile || null, savedAt: r.savedAt || 0, gifts: r.gifts || [] });
+async function acctApi(req, res, url) {
+  const p = url.pathname.replace(/^\/api\/acct\/?/, "");
+  const b = req.method === "POST" ? await body(req).catch(() => ({})) : {};
+  const ip = ipOf(req);
+  if (p === "register" || p === "login") {
+    const name = String(b.name || "").trim(), pw = String(b.password || "");
+    const key = ip + "|" + name.toLowerCase(), f = acctFails.get(key);
+    if (f && f.n >= 8 && Date.now() - f.t < 10 * 60e3) return json(res, 429, { error: "Too many tries. Wait 10 minutes." });
+    if (!okName(name)) return json(res, 400, { error: "Name: 3 to 16 letters, numbers, - or _." });
+    if (pw.length < 6) return json(res, 400, { error: "Password: at least 6 characters." });
+    const low = name.toLowerCase();
+    if (p === "register") {
+      if (byName.has(low)) return json(res, 409, { error: "That name is taken." });
+      if (cfg.maintenance) return json(res, 503, { error: cfg.maintenanceMsg || "Closed for maintenance." });
+      const pid = newPid(), now = Date.now();
+      const r = { pid, acct: low, name, pwHash: pwHash(pw), created: now, lastSeen: now, rev: 0, adminRev: 0, ip };
+      byName.set(low, pid);
+      await writeRec(r);
+      log("account created", name, pid, ip);
+      return json(res, 200, { ok: true, token: newSession(pid), ...acctView(r) });
+    }
+    const pid = byName.get(low), r = pid && (await readRec(pid));
+    if (!r || !pwOk(pw, r.pwHash)) {
+      acctFails.set(key, { n: (f && Date.now() - f.t < 10 * 60e3 ? f.n : 0) + 1, t: Date.now() });
+      return json(res, 401, { error: "Wrong name or password." });
+    }
+    acctFails.delete(key);
+    if (r.banned) return json(res, 403, { error: "This account is banned" + (r.banReason ? ": " + r.banReason : ".") });
+    r.lastSeen = Date.now();
+    await writeRec(r);
+    log("sign in", r.name, ip);
+    return json(res, 200, { ok: true, token: newSession(pid), ...acctView(r) });
+  }
+  const sess = sessions[String(b.token || url.searchParams.get("token") || "")];
+  if (!sess || sess.exp < Date.now()) return json(res, 401, { error: "Signed out: please sign in again.", signedOut: true });
+  const r = await readRec(sess.pid);
+  if (!r) return json(res, 401, { error: "This account no longer exists.", signedOut: true });
+  if (r.banned) return json(res, 403, { error: "This account is banned" + (r.banReason ? ": " + r.banReason : "."), signedOut: true });
+  if (p === "me") return json(res, 200, acctView(r));
+  if (p === "logout") { delete sessions[String(b.token)]; saveSessions(); return json(res, 200, { ok: true }); }
+  if (p === "password") {
+    if (!pwOk(String(b.old || ""), r.pwHash)) return json(res, 401, { error: "The current password is wrong." });
+    if (String(b.password || "").length < 6) return json(res, 400, { error: "Password: at least 6 characters." });
+    r.pwHash = pwHash(b.password);
+    for (const k in sessions) sessions[k].pid === r.pid && k !== b.token && delete sessions[k];
+    saveSessions();
+    await writeRec(r);
+    return json(res, 200, { ok: true });
+  }
+  if (p === "save") {
+    // gifts the game has already added
+    if (Array.isArray(b.gotGifts) && r.gifts?.length) r.gifts = r.gifts.filter((g) => !b.gotGifts.includes(g.id));
+    const prof = b.profile;
+    const base = +b.baseRev || 0, rev = r.rev || 0;
+    const takeServer = () => json(res, 200, { take: true, ...acctView(r) });
+    if (!prof || typeof prof !== "object" || !prof.heroes || !prof.campaign) {
+      await writeRec(r);
+      return r.profile && base < rev ? takeServer() : json(res, 200, { ok: true, rev, gifts: r.gifts || [] });
+    }
+    if (base !== rev && r.profile) {
+      // the save changed elsewhere since this device last synced
+      if (r.adminEdit || !b.dirty || (+prof.savedAt || 0) <= (+r.savedAt || 0)) {
+        if (b.dirty) await backup({ pid: r.pid, profile: prof }, "other-device");
+        await writeRec(r);
+        return takeServer();
+      }
+      await backup(r, "other-device");
+    }
+    const hourly = !r.lastBackup || Date.now() - r.lastBackup > 3600e3;
+    if (hourly && r.profile) (await backup(r, "auto"), (r.lastBackup = Date.now()));
+    prof.name = r.name;
+    prof.pid = r.pid;
+    delete prof.ckey;
+    r.profile = prof;
+    r.rev = rev + 1;
+    r.adminEdit = false;
+    r.savedAt = +prof.savedAt || Date.now();
+    r.lastSeen = Date.now();
+    r.ver = String(b.ver || r.ver || "");
+    await writeRec(r);
+    const c = clientOfPid(r.pid);
+    c && (c.lv = summaryOf(prof).lv);
+    return json(res, 200, { ok: true, rev: r.rev, gifts: r.gifts || [] });
+  }
+  return json(res, 404, { error: "unknown call" });
+}
+// first start with accounts: the old device-linked saves are retired (a server backup keeps them)
+async function migrateToAccounts() {
+  const mark = path.join(DATA, "accounts.on");
+  if (fs.existsSync(mark)) return;
+  const old = fs.readdirSync(PLAYERS).filter((f) => f.endsWith(".json"));
+  if (old.length) {
+    try { await makeFull("before-accounts"); } catch (e) { log("backup before accounts failed", e.message); }
+    const keep = path.join(DATA, "players-before-accounts-" + Date.now());
+    await fsp.rename(PLAYERS, keep);
+    await fsp.mkdir(PLAYERS, { recursive: true });
+    log("accounts switched on: " + old.length + " old saves moved to " + path.basename(keep));
+  }
+  fs.writeFileSync(mark, String(Date.now()));
+  loadRecs();
+}
+
 // ---------------- HTTP: health, admin page, admin API ----------------
 const CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Authorization, Content-Type", "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS" };
 const json = (res, code, o) => {
@@ -609,7 +744,7 @@ async function api(req, res, url) {
     if (!r) return json(res, 404, { error: "No such player." });
     const act = p[2];
     if (!act && M === "GET") {
-      const { keyHash, ...rest } = r;
+      const { keyHash, pwHash, ...rest } = r;
       return json(res, 200, { ...rest, locked: !!keyHash, online: online.has(pid) });
     }
     if (!act && M === "PUT") {
@@ -618,14 +753,17 @@ async function api(req, res, url) {
       if (!prof || typeof prof !== "object" || !prof.heroes || !prof.campaign) return json(res, 400, { error: "That is not a Vigilfall save (heroes/campaign missing)." });
       await backup(r, "before-edit");
       r.adminRev = (r.adminRev || 0) + 1;
+      r.rev = (r.rev || 0) + 1;
+      r.adminEdit = true;
       prof.adminRev = r.adminRev;
+      prof.name = r.name;
+      prof.pid = r.pid;
       delete prof.ckey;
       r.profile = prof;
-      r.name = String(prof.name || r.name).slice(0, 20);
       r.editedAt = Date.now();
       await writeRec(r);
       const c = clientOfPid(pid);
-      c && sendJ(c.ws, { t: "cloud", p: prof, rev: r.adminRev });
+      c && sendJ(c.ws, { t: "cloud", p: prof, rev: r.rev });
       log("admin edited save", pid, c ? "(pushed live)" : "(applies on next login)");
       return json(res, 200, { ok: true, rev: r.adminRev, live: !!c });
     }
@@ -651,6 +789,19 @@ async function api(req, res, url) {
       log("unban", pid);
       return json(res, 200, { ok: true });
     }
+    if (act === "password" && M === "POST") {
+      const b = await body(req).catch(() => ({}));
+      const pw = String(b.password || "") || rnd(10);
+      if (pw.length < 6) return json(res, 400, { error: "At least 6 characters." });
+      r.pwHash = pwHash(pw);
+      for (const k in sessions) sessions[k].pid === pid && delete sessions[k];
+      saveSessions();
+      await writeRec(r);
+      const c = clientOfPid(pid);
+      c && kick(c.id, "Your password was changed. Sign in again.");
+      log("password reset by admin", pid);
+      return json(res, 200, { ok: true, password: pw });
+    }
     if (act === "resetkey" && M === "POST") {
       delete r.keyHash;
       await writeRec(r);
@@ -674,11 +825,13 @@ async function api(req, res, url) {
       try { prof = JSON.parse(await fsp.readFile(path.join(BACKUPS, pid, f), "utf8")); } catch (e) { return json(res, 404, { error: "no such backup" }); }
       await backup(r, "before-restore");
       r.adminRev = (r.adminRev || 0) + 1;
+      r.rev = (r.rev || 0) + 1;
+      r.adminEdit = true;
       prof.adminRev = r.adminRev;
       r.profile = prof;
       await writeRec(r);
       const c = clientOfPid(pid);
-      c && sendJ(c.ws, { t: "cloud", p: prof, rev: r.adminRev });
+      c && sendJ(c.ws, { t: "cloud", p: prof, rev: r.rev });
       log("restored backup", pid, f);
       return json(res, 200, { ok: true, live: !!c });
     }
@@ -851,6 +1004,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "OPTIONS") return (res.writeHead(204, CORS), res.end());
     if (url.pathname === "/health") return json(res, 200, { ok: true, name: cfg.name, online: [...clients.values()].filter((c) => c.authed).length, max: cfg.maxPlayers, ver: H.ver || gameVer, ready: H.ready, maintenance: cfg.maintenance, server: SERVER_VERSION });
+    if (url.pathname.startsWith("/api/acct/")) return await acctApi(req, res, url);
     if (url.pathname.startsWith("/api/")) return await api(req, res, url);
     if (url.pathname.startsWith("/dl/")) {
       const it = dls.get(url.pathname.slice(4));
@@ -963,6 +1117,7 @@ function onHost(ws) {
 server.listen(cfg.port, cfg.bind, () => {
   log(`Vigilfall Realm listening on ${cfg.bind}:${cfg.port}`);
   log(`Admin password is in ${CFG_FILE}`);
+  migrateToAccounts().catch((e) => log("accounts migration failed", e.message));
   if (process.env.VF_NOHOST !== "1") startHost();
   cfg.autoUpdate && setTimeout(() => ((lastCheck = Date.now()), updateAndRestart(false)), 20e3);
   scheduleUpdates();
