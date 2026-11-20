@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.8.3";
+const SERVER_VERSION = "1.8.4";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -922,6 +922,17 @@ async function acctCall(req, res, url, p, b) {
     try { await mailCode(r, "confirm", email, ip); } catch (e) { return json(res, e.code || 502, { error: e.message }); }
     log("confirmation email", r.name);
     return json(res, 200, { ok: true, to: maskEmail(email) });
+  }
+  // the email never arrives (or the address is lost): the recovery code from sign-up lets the player in without it
+  if (p === "skipemail") {
+    const k = "rc|" + r.pid;
+    if (tooMany(k)) return json(res, 429, { error: "Too many tries. Wait 10 minutes." });
+    if (!r.rcHash || !pwOk(normRc(b.code), r.rcHash)) { failed(k); return json(res, 401, { error: "Wrong recovery code." }); }
+    r.needEmail = false;
+    delete r.mailCode;
+    await writeRec(r);
+    log("email check skipped with recovery code", r.name);
+    return json(res, 200, { ok: true, ...mailView(r) });
   }
   if (p === "confirm") {
     if (!r.mailCode || r.mailCode.kind !== "confirm") return json(res, 400, { error: "Ask for a new code first." });
