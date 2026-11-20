@@ -36,13 +36,17 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import org.json.JSONObject;
+import android.content.ContentValues;
+import android.os.Environment;
+import android.provider.MediaStore;
+import java.util.Iterator;
 
 public class MainActivity extends Activity {
     static final String HOST = "vigilfall-admin.app";
     static final String REPO = "https://raw.githubusercontent.com/polemarxos/Vigilfall/main/";
     static final String LATEST = REPO + "server/admin/index.html";
     static final String APP_INFO = REPO + "VigilfallAdmin.json";
-    static final String VERSION = "1.7";
+    static final String VERSION = "1.8";
     static final String ACTION_INSTALLED = "com.polemarxos.vigilfall.admin.INSTALLED";
     static final int PICK = 42;
     WebView web;
@@ -227,6 +231,55 @@ public class MainActivity extends Activity {
             }
         }
         @JavascriptInterface public void removeKey() { keyFile().delete(); }
+        // app backup: the SSH key, the servers the console trusts and the saved server address (the page encrypts it)
+        @JavascriptInterface public String exportData() {
+            try {
+                JSONObject o = new JSONObject(), hosts = new JSONObject();
+                if (keyFile().exists()) o.put("sshKey", new String(readAll(new FileInputStream(keyFile())), "UTF-8"));
+                File[] fs = getFilesDir().listFiles();
+                if (fs != null) for (File f : fs) if (f.getName().startsWith("host_")) hosts.put(f.getName(), new String(readAll(new FileInputStream(f)), "UTF-8"));
+                o.put("hosts", hosts);
+                o.put("server", server());
+                return o.toString();
+            } catch (Exception e) { return "{}"; }
+        }
+        @JavascriptInterface public String importData(String json) {
+            try {
+                JSONObject o = new JSONObject(json);
+                String key = o.optString("sshKey", "");
+                if (key.contains("PRIVATE KEY")) { FileOutputStream w = new FileOutputStream(keyFile()); w.write(key.getBytes("UTF-8")); w.close(); }
+                JSONObject hosts = o.optJSONObject("hosts");
+                if (hosts != null) for (Iterator<String> it = hosts.keys(); it.hasNext(); ) {
+                    String n = it.next();
+                    if (!n.matches("^host_[A-Za-z0-9._-]+\\.fp$")) continue;
+                    FileOutputStream w = new FileOutputStream(new File(getFilesDir(), n)); w.write(hosts.getString(n).getBytes("UTF-8")); w.close();
+                }
+                String srv = o.optString("server", "");
+                if (srv.matches("^https?://[A-Za-z0-9.:-]+$")) getSharedPreferences("vfa", MODE_PRIVATE).edit().putString("server", srv).apply();
+                return "OK";
+            } catch (Exception e) { return "ERR: " + e.getMessage(); }
+        }
+        // save a text file to Downloads (Android 10+) or the app's own Downloads folder
+        @JavascriptInterface public String saveFile(String name, String text) {
+            try {
+                name = name.replaceAll("[^A-Za-z0-9._-]", "_");
+                byte[] b = text.getBytes("UTF-8");
+                if (Build.VERSION.SDK_INT >= 29) {
+                    ContentValues v = new ContentValues();
+                    v.put(MediaStore.Downloads.DISPLAY_NAME, name);
+                    v.put(MediaStore.Downloads.MIME_TYPE, "application/octet-stream");
+                    Uri u = getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+                    OutputStream o = getContentResolver().openOutputStream(u);
+                    o.write(b); o.close();
+                    return "Downloads/" + name;
+                }
+                File d = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                d.mkdirs();
+                File f = new File(d, name);
+                FileOutputStream o = new FileOutputStream(f); o.write(b); o.close();
+                return f.getAbsolutePath();
+            } catch (Exception e) { return "ERR: " + e.getMessage(); }
+        }
         @JavascriptInterface public void forgetServers() {
             File[] fs = getFilesDir().listFiles();
             if (fs != null) for (File f : fs) if (f.getName().startsWith("host_")) f.delete();

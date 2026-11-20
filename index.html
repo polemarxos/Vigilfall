@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.24.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.25.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,13 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.24.0";
+  X.VERSION = "1.25.0";
   X.CHANGELOG = {
+    "1.25.0": [
+      "Email: new accounts confirm their email with a 6-digit code before playing.",
+      "Forgot your password? Get a code by email and set a new one (the recovery code still works too).",
+      "Main menu → Account: add or change your email.",
+    ],
     "1.24.0": [
       "Vigilfall is now played online only: without a connection to the server the game pauses until it is back.",
       "Recovery codes: new accounts get a recovery code to set a new password without the admin. Already have an account? Main menu → Account makes one.",
@@ -49648,7 +49653,9 @@ X.EL.quests = {
    the player to any PC or phone. Old (pre-account) saves are wiped once.
    1.24.0 — online only: the game can't be played without a live connection to the Vigilfall server (a screen covers
    the game and pauses it until the connection is back). Recovery codes: a forgotten password can be reset without
-   the admin. The server refuses saves with impossible jumps (anti-cheat) and the game loads the last good save. */
+   the admin. The server refuses saves with impossible jumps (anti-cheat) and the game loads the last good save.
+   1.25.0 — email (when the Realm admin has set it up): new accounts confirm their email with a 6-digit code before
+   playing; a forgotten password can be reset with a code sent by email; existing players add an email from Account. */
 {
   if (!X.realmServer) {
     const LS = localStorage;
@@ -49667,6 +49674,8 @@ X.EL.quests = {
     const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
     const getS = () => { try { return JSON.parse(LS.getItem("vf_session") || "null"); } catch (e) { return null; } };
     const setS = (s) => (s ? LS.setItem("vf_session", JSON.stringify(s)) : LS.removeItem("vf_session"));
+    const mailOf = (r) => ("needConfirm" in r ? { email: r.email || "", emailOk: !!r.emailOk, needConfirm: !!r.needConfirm, mail: !!r.mail } : {});
+    const sessOf = (r, extra) => ({ name: r.name, pid: r.pid, token: r.token, rev: r.rev || 0, hash: "", rc: !!r.rc, ...mailOf(r), ...extra });
     const strip = (p) => JSON.stringify(p, (k, v) => (k === "savedAt" || k === "adminRev" || k === "ckey" ? void 0 : v));
     const hash = (p) => { let h = 2166136261; const s = strip(p); for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36) + ":" + s.length; };
     const base = () => X.realmHttp() || "https://vigilfall.duckdns.org";
@@ -49743,11 +49752,13 @@ X.EL.quests = {
       if (!s || beating) return;
       beating = !0;
       try {
+        const t0 = Date.now();
         const r = await post("ping", { token: s.token }, 8000);
         fails = 0;
         lostAt = 0;
         X.acct.online = !0;
-        "rc" in r && setS({ ...getS(), rc: !!r.rc });
+        // an answer that left before the email was confirmed here must not undo it
+        "rc" in r && setS({ ...getS(), rc: !!r.rc, ...((X.acct._cfAt || 0) > t0 ? {} : mailOf(r)) });
         const first = !verified;
         verified = !0;
         if (first) {
@@ -49858,7 +49869,8 @@ X.EL.quests = {
     // ---------------- screens ----------------
     const UP = XC.prototype, mm0 = UP.mainMenu;
     const head = () => `<div class="title-wrap"><div class="title">${jn}</div><div class="subtitle">${Il}</div></div>`;
-    const ipt = (id, ph, type = "text", extra = "") => `<input id="${id}" type="${type}" placeholder="${T(ph)}" maxlength="64" autocapitalize="off" autocorrect="off" spellcheck="false" style="text-transform:none" ${extra}>`;
+    // extra attributes come first: with duplicates the first one counts
+    const ipt = (id, ph, type = "text", extra = "") => `<input id="${id}" ${extra} type="${type}" placeholder="${T(ph)}" maxlength="64" autocapitalize="off" autocorrect="off" spellcheck="false" style="text-transform:none">`;
     // the recovery code is shown once; the player must keep it
     UP.showRecovery = function (code, then, intro) {
       this.show("menu");
@@ -49886,6 +49898,7 @@ X.EL.quests = {
           ${ipt("acname", "Name", "text", 'maxlength="16"')}
           ${ipt("acpw", "Password", "password")}
           ${mode === "up" ? ipt("acpw2", "Password again", "password") : ""}
+          ${mode === "up" ? `<div id="acmailbox"></div>` : ""}
           <p class="small" id="acmsg" style="color:#ff8a7a;min-height:1.3em">${esc(msg)}</p>
           <button id="acgo" class="big">${mode === "in" ? T("Sign in") : T("Create account")}</button>
           <button id="acswap" class="ghost">${mode === "in" ? T("New here? Create an account") : T("I already have an account")}</button>
@@ -49900,8 +49913,11 @@ X.EL.quests = {
         out.textContent = T("Connecting…");
         kA("#acgo").disabled = !0;
         try {
-          const r = await post(mode === "in" ? "login" : "register", { name, password: pw });
-          setS({ name: r.name, pid: r.pid, token: r.token, rev: r.rev || 0, hash: "", rc: !!r.rc });
+          const email = kA("#acmail")?.value.trim();
+          if (mode === "up" && kA("#acmail") && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email || "")) throw new Error(T("Enter a valid email address."));
+          const r = await post(mode === "in" ? "login" : "register", { name, password: pw, email });
+          setS(sessOf(r));
+          r.mailError && sessionStorage.setItem("vf_mailerr", r.mailError);
           const p = r.profile || Object.assign(td(), { name: r.name, pid: r.pid });
           p.name = r.name;
           p.pid = r.pid;
@@ -49914,6 +49930,11 @@ X.EL.quests = {
         }
       };
       kA("#acgo").onclick = () => (this.click?.(), go());
+      if (mode === "up")
+        post("info", {}, 8000).then((i) => {
+          const box = kA("#acmailbox");
+          if (i.mail && box && !kA("#acmail")) box.innerHTML = ipt("acmail", "Email (you get a code to confirm it)", "email", 'maxlength="120"');
+        }).catch(() => {});
       kA("#acpw").onkeydown = (e) => e.key === "Enter" && (mode === "in" ? go() : kA("#acpw2").focus());
       kA("#acpw2") && (kA("#acpw2").onkeydown = (e) => e.key === "Enter" && go());
       kA("#acswap").onclick = () => (this.click?.(), this.signIn(mode === "in" ? "up" : "in"));
@@ -49927,17 +49948,30 @@ X.EL.quests = {
       const M = kA("#menu");
       M.innerHTML = `${head()}<div class="dialog acct" style="max-width:420px">
         <h2>${T("Forgot your password?")}</h2>
-        <p class="small">${T("Enter your name, your recovery code and a new password.")}</p>
+        <p class="small">${T("Enter your name and tap Email me a code. Or type your recovery code.")}</p>
         ${ipt("rcname", "Name", "text", `maxlength="16" value="${esc(name)}"`)}
-        ${ipt("rccode2", "Recovery code (e.g. ABCD-EFGH-JKLM)", "text", 'style="text-transform:uppercase"')}
+        <button id="rcmail" class="ghost">✉ ${T("Email me a code")}</button>
+        ${ipt("rccode2", "Code from the email, or recovery code", "text", 'style="text-transform:uppercase"')}
         ${ipt("rcpw", "New password", "password")}
         ${ipt("rcpw2", "New password again", "password")}
         <p class="small" id="rcmsg" style="color:#ff8a7a;min-height:1.3em"></p>
         <button id="rcgo2" class="big">${T("Set the new password")}</button>
         <button id="rcback" class="ghost">${T("Back")}</button>
-        <p class="small" style="opacity:.7">${T("No recovery code? Ask the Realm admin to reset your password.")}</p>
+        <p class="small" style="opacity:.7">${T("No email and no recovery code? Ask the Realm admin to reset your password.")}</p>
       </div>`;
       kA("#rcback").onclick = () => (this.click?.(), this.signIn("in"));
+      kA("#rcmail").onclick = async () => {
+        this.click?.();
+        const out = kA("#rcmsg");
+        out.style.color = "#c9d8e8";
+        out.textContent = T("Connecting…");
+        try {
+          const r = await post("mailreset", { name: kA("#rcname").value.trim() });
+          out.style.color = "#9fe0a0";
+          out.textContent = T("A code was sent to") + " " + r.to + ". " + T("Check your spam folder too.");
+          kA("#rccode2").focus();
+        } catch (e) { out.style.color = "#ff8a7a"; out.textContent = e.message; }
+      };
       kA("#rcgo2").onclick = async () => {
         this.click?.();
         const out = kA("#rcmsg"), pw = kA("#rcpw").value;
@@ -49946,12 +49980,13 @@ X.EL.quests = {
         out.textContent = T("Connecting…");
         kA("#rcgo2").disabled = !0;
         try {
-          const r = await post("recover", { name: kA("#rcname").value.trim(), code: kA("#rccode2").value, password: pw });
-          setS({ name: r.name, pid: r.pid, token: r.token, rev: r.rev || 0, hash: "", rc: !0 });
+          const code = kA("#rccode2").value.trim(), byMail = /^\d{6}$/.test(code.replace(/\s/g, ""));
+          const r = await post(byMail ? "mailresetdone" : "recover", { name: kA("#rcname").value.trim(), code, password: pw });
+          setS(sessOf(r, byMail ? {} : { rc: !0 }));
           const p = r.profile || Object.assign(td(), { name: r.name, pid: r.pid });
           p.name = r.name;
           p.pid = r.pid;
-          this.showRecovery(r.recovery, () => install(p, r.rev || 0, "reset"), T("Your password is changed. Your old recovery code no longer works — here is the new one. Write it down and keep it safe."));
+          byMail ? install(p, r.rev || 0, "reset") : this.showRecovery(r.recovery, () => install(p, r.rev || 0, "reset"), T("Your password is changed. Your old recovery code no longer works — here is the new one. Write it down and keep it safe."));
         } catch (e) {
           out.style.color = "#ff8a7a";
           out.textContent = e.message;
@@ -49960,7 +49995,52 @@ X.EL.quests = {
       };
       setTimeout(() => kA(name ? "#rccode2" : "#rcname")?.focus(), 50);
     };
-    // account settings: new recovery code, change password
+    // confirm the email with the 6-digit code (new accounts can't play before this)
+    UP.confirmEmail = function (msg = "") {
+      const s = getS();
+      hideGate();
+      this.show("menu");
+      const M = kA("#menu");
+      M.innerHTML = `${head()}<div class="dialog acct" style="max-width:440px">
+        <h2>✉ ${T("Confirm your email")}</h2>
+        <p class="small">${T("We sent a 6-digit code to")} <b>${esc(s.email || "")}</b>. ${T("Enter it here. Check your spam folder too.")}</p>
+        ${ipt("cfcode", "6-digit code", "text", 'inputmode="numeric" maxlength="7" style="text-align:center;font:700 24px monospace;letter-spacing:6px"')}
+        <p class="small" id="cfmsg" style="color:#ff8a7a;min-height:1.3em">${esc(msg)}</p>
+        <button id="cfgo" class="big">${T("Confirm")}</button>
+        <div class="row" style="display:flex;gap:8px"><button id="cfagain" class="ghost">${T("Send the code again")}</button><button id="cfchange" class="ghost">${T("Change email")}</button></div>
+        <div id="cfnew" style="display:none">${ipt("cfmail", "New email", "email", `maxlength="120" value="${esc(s.email || "")}"`)}<button id="cfsend">${T("Send the code")}</button></div>
+        <button id="cfout" class="ghost">${T("Sign out")}</button>
+      </div>`;
+      const out = kA("#cfmsg");
+      const say = (t, ok) => ((out.style.color = ok ? "#9fe0a0" : "#ff8a7a"), (out.textContent = t));
+      const send = async (email) => {
+        say(T("Connecting…"), !0);
+        try {
+          await post("email", { token: getS().token, email });
+          setS({ ...getS(), email });
+          this.confirmEmail(T("A new code was sent."));
+        } catch (e) { say(e.message); }
+      };
+      kA("#cfgo").onclick = async () => {
+        this.click?.();
+        say(T("Connecting…"), !0);
+        kA("#cfgo").disabled = !0;
+        try {
+          const r = await post("confirm", { token: getS().token, code: kA("#cfcode").value });
+          X.acct._cfAt = Date.now();
+          setS({ ...getS(), ...mailOf(r) });
+          sessionStorage.setItem("vf_acctnote", "confirmed");
+          this.mainMenu();
+        } catch (e) { say(e.message); kA("#cfgo").disabled = !1; }
+      };
+      kA("#cfcode").onkeydown = (e) => e.key === "Enter" && kA("#cfgo").click();
+      kA("#cfagain").onclick = () => (this.click?.(), send(getS().email));
+      kA("#cfchange").onclick = () => (this.click?.(), (kA("#cfnew").style.display = "block"), kA("#cfmail").focus());
+      kA("#cfsend").onclick = () => (this.click?.(), send(kA("#cfmail").value.trim()));
+      kA("#cfout").onclick = () => { this.click?.(); if (confirm(T("Sign out? Your progress is saved to your account first."))) X.acct.signOut(); };
+      setTimeout(() => kA("#cfcode")?.focus(), 50);
+    };
+    // account settings: email, new recovery code, change password
     UP.accountDialog = function () {
       const s = getS();
       this.show("menu");
@@ -49968,6 +50048,10 @@ X.EL.quests = {
       M.innerHTML = `${head()}<div class="dialog acct" style="max-width:440px">
         <h2>${T("Account")} — ${esc(s.name)}</h2>
         <p class="small">${s.rc ? T("You have a recovery code.") : "⚠ " + T("You have no recovery code yet. Make one, so you can reset a forgotten password yourself.")}</p>
+        ${s.mail ? `<p class="small">✉ ${s.email ? `${esc(s.email)} ${s.emailOk ? "✔ " + T("confirmed") : "— " + T("not confirmed")}` : "⚠ " + T("No email yet. Add one to reset a forgotten password by email.")}</p>
+        ${ipt("admail", "Email", "email", `maxlength="120" value="${esc(s.email || "")}"`)}
+        <button id="admailgo">${s.email ? T("Change email") : T("Add email")}</button>
+        <hr style="opacity:.2;margin:14px 0">` : ""}
         ${ipt("adpw", "Current password", "password")}
         <button id="adrc" class="big">${s.rc ? T("Make a new recovery code") : T("Make a recovery code")}</button>
         <hr style="opacity:.2;margin:14px 0">
@@ -49978,9 +50062,20 @@ X.EL.quests = {
         <button id="adback" class="ghost">${T("Back")}</button>
       </div>`;
       const out = kA("#admsg");
-      const busy = (b) => { kA("#adrc").disabled = b; kA("#adchg").disabled = b; if (b) (out.style.color = "#c9d8e8"), (out.textContent = T("Connecting…")); };
+      const busy = (b) => { kA("#adrc").disabled = b; kA("#adchg").disabled = b; kA("#admailgo") && (kA("#admailgo").disabled = b); if (b) (out.style.color = "#c9d8e8"), (out.textContent = T("Connecting…")); };
       const fail = (e) => { busy(!1); out.style.color = "#ff8a7a"; out.textContent = e.message; };
       kA("#adback").onclick = () => (this.click?.(), this.mainMenu());
+      kA("#admailgo") &&
+        (kA("#admailgo").onclick = async () => {
+          this.click?.();
+          const email = kA("#admail").value.trim();
+          busy(!0);
+          try {
+            await post("email", { token: getS().token, email });
+            setS({ ...getS(), email, emailOk: !1 });
+            this.confirmEmail();
+          } catch (e) { fail(e); }
+        });
       kA("#adrc").onclick = async () => {
         this.click?.();
         busy(!0);
@@ -50008,13 +50103,18 @@ X.EL.quests = {
     UP.mainMenu = function (...a) {
       const s = getS();
       if (!s) return this.signIn("in", X._acctWiped ? T("Vigilfall now uses accounts. Old saves were reset: create an account to start.") : "");
+      if (s.needConfirm) {
+        const err = sessionStorage.getItem("vf_mailerr");
+        sessionStorage.removeItem("vf_mailerr");
+        return this.confirmEmail(err ? T("The email could not be sent:") + " " + err : "");
+      }
       const r = mm0.apply(this, a);
       try {
         const col = document.querySelector("#menu .menu-col");
         // the name is the account name; slots, import and export are gone (the save lives in the account)
         const nb = col?.querySelector(".namebox");
         if (nb)
-          nb.outerHTML = `<div class="namebox acctbox" style="display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap"><span>${T("Signed in as")} <b>${esc(s.name)}</b></span><span style="display:flex;gap:6px"><button data-a="account" class="ghost" style="flex:0 0 auto;padding:6px 12px">${s.rc ? "" : "⚠ "}${T("Account")}</button><button data-a="signout" class="ghost" style="flex:0 0 auto;padding:6px 12px">${T("Sign out")}</button></span></div>`;
+          nb.outerHTML = `<div class="namebox acctbox" style="display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap"><span>${T("Signed in as")} <b>${esc(s.name)}</b></span><span style="display:flex;gap:6px"><button data-a="account" class="ghost" style="flex:0 0 auto;padding:6px 12px">${s.rc && (!s.mail || s.emailOk) ? "" : "⚠ "}${T("Account")}</button><button data-a="signout" class="ghost" style="flex:0 0 auto;padding:6px 12px">${T("Sign out")}</button></span></div>`;
         col?.querySelector("[data-a=saves]")?.remove();
         const so = col?.querySelector("[data-a=signout]");
         so && (so.onclick = (e) => { e.stopPropagation(); this.click?.(); if (confirm(T("Sign out? Your progress is saved to your account first."))) X.acct.signOut(); });
@@ -50025,13 +50125,13 @@ X.EL.quests = {
           sessionStorage.removeItem("vf_acctnote");
           const ref = sessionStorage.getItem("vf_acctrefused");
           sessionStorage.removeItem("vf_acctrefused");
-          const t = { new: T("Account created. Welcome to Vigilfall!"), welcome: T("Welcome back — your character is here."), newer: T("Loaded the newest save of your account."), reset: T("Your password is changed. Welcome back!"), refused: T("The server refused the last save") + (ref ? " (" + ref + ")" : "") + ". " + T("Your last good save is loaded.") }[note];
+          const t = { new: T("Account created. Welcome to Vigilfall!"), welcome: T("Welcome back — your character is here."), newer: T("Loaded the newest save of your account."), reset: T("Your password is changed. Welcome back!"), confirmed: T("Email confirmed. Welcome to Vigilfall!"), refused: T("The server refused the last save") + (ref ? " (" + ref + ")" : "") + ". " + T("Your last good save is loaded.") }[note];
           t && setTimeout(() => (this.toastMenu ? this.toastMenu(t) : 0), 300);
         }
       } catch (e) {}
       return r;
     };
-    X.HELP?.systems?.push?.(["Your account", "You sign in with a name and password. Your character is kept on the Vigilfall server: sign in on any PC or phone and continue where you stopped. Progress is sent every minute and when you close the game. Vigilfall is played online only: without a connection to the server the game pauses until it is back. Keep your recovery code: with it you can set a new password if you forget yours (Main menu → Account makes a new one). The server refuses saves with impossible jumps and loads your last good save."]);
+    X.HELP?.systems?.push?.(["Your account", "You sign in with a name and password. Your character is kept on the Vigilfall server: sign in on any PC or phone and continue where you stopped. Progress is sent every minute and when you close the game. Vigilfall is played online only: without a connection to the server the game pauses until it is back. Forgot your password? Get a code by email (if your account has a confirmed email) or use your recovery code. Main menu → Account: add or change your email, make a new recovery code, change your password. The server refuses saves with impossible jumps and loads your last good save."]);
   }
 }
 
@@ -50503,7 +50603,7 @@ X.EL.tutTouch = [
 Object.assign(X.EL.help, {
   "The Realm": ["Το Βασίλειο", "Η Είσοδος στο Βασίλειο (κύριο μενού) σε βάζει στον κοινό διαδικτυακό κόσμο που τρέχει στον διακομιστή του Vigilfall: όλοι όσοι είναι συνδεδεμένοι παίζουν στον ίδιο κόσμο. Βλέπεις μόνο παίκτες και τέρατα κοντά σου. Τα μπουντρούμια, οι επιδρομές και η Αναζήτηση Μπουντρουμιών πηγαίνουν την ομάδα σου στον κόσμο του αρχηγού και σας φέρνουν πίσω στο Βασίλειο μετά. Η αποθήκευσή σου αντιγράφεται στον διακομιστή κάθε λεπτό· αν ο διαχειριστής την αλλάξει, το παιχνίδι ξεκινά ξανά στο μενού με τη νέα αποθήκευση. Το ⚙ δίπλα στο κουμπί αλλάζει τη διεύθυνση του διακομιστή."],
 });
-Object.assign(X.EL.help, { "Your account": ["Ο λογαριασμός σου", "Συνδέεσαι με όνομα και κωδικό. Ο χαρακτήρας σου φυλάγεται στον διακομιστή του Vigilfall: συνδέσου σε οποιονδήποτε υπολογιστή ή κινητό και συνέχισε από εκεί που σταμάτησες. Η πρόοδος στέλνεται κάθε λεπτό και όταν κλείνεις το παιχνίδι. Το Vigilfall παίζεται μόνο online: χωρίς σύνδεση με τον διακομιστή το παιχνίδι σταματά μέχρι να επανέλθει. Φύλαξε τον κωδικό ανάκτησης: με αυτόν βάζεις νέο κωδικό αν ξεχάσεις τον δικό σου (Κύριο μενού → Λογαριασμός φτιάχνει νέο). Ο διακομιστής απορρίπτει αποθηκεύσεις με αδύνατα άλματα και φορτώνει την τελευταία σωστή."] });
+Object.assign(X.EL.help, { "Your account": ["Ο λογαριασμός σου", "Συνδέεσαι με όνομα και κωδικό. Ο χαρακτήρας σου φυλάγεται στον διακομιστή του Vigilfall: συνδέσου σε οποιονδήποτε υπολογιστή ή κινητό και συνέχισε από εκεί που σταμάτησες. Η πρόοδος στέλνεται κάθε λεπτό και όταν κλείνεις το παιχνίδι. Το Vigilfall παίζεται μόνο online: χωρίς σύνδεση με τον διακομιστή το παιχνίδι σταματά μέχρι να επανέλθει. Ξέχασες τον κωδικό; Πάρε κωδικό με email (αν ο λογαριασμός έχει επιβεβαιωμένο email) ή χρησιμοποίησε τον κωδικό ανάκτησης. Κύριο μενού → Λογαριασμός: πρόσθεσε ή άλλαξε email, φτιάξε νέο κωδικό ανάκτησης, άλλαξε κωδικό. Ο διακομιστής απορρίπτει αποθηκεύσεις με αδύνατα άλματα και φορτώνει την τελευταία σωστή."] });
 
 /* ---- FY_el_ui.js ---- */
 /* 1.19.0 — Greek (ελληνικά): achievements, interface words, messages */
@@ -50818,6 +50918,24 @@ Object.assign(X.EL.ui, {
   "This account has no recovery code. Ask the Realm admin to reset the password.": "Αυτός ο λογαριασμός δεν έχει κωδικό ανάκτησης. Ζήτα από τον διαχειριστή να αλλάξει τον κωδικό.",
   "Signed out: please sign in again.": "Αποσυνδέθηκες: συνδέσου ξανά.",
 });
+// 1.25.0 — email
+Object.assign(X.EL.ui, {
+  "Enter a valid email address.": "Γράψε ένα σωστό email.", "Email (you get a code to confirm it)": "Email (θα πάρεις κωδικό για επιβεβαίωση)",
+  "Enter your name and tap Email me a code. Or type your recovery code.": "Γράψε το όνομά σου και πάτα Στείλε μου κωδικό. Ή γράψε τον κωδικό ανάκτησης.",
+  "Email me a code": "Στείλε μου κωδικό", "Code from the email, or recovery code": "Κωδικός από το email ή κωδικός ανάκτησης",
+  "A code was sent to": "Στάλθηκε κωδικός στο", "Check your spam folder too.": "Κοίτα και στα ανεπιθύμητα.",
+  "No email and no recovery code? Ask the Realm admin to reset your password.": "Χωρίς email και κωδικό ανάκτησης; Ζήτα από τον διαχειριστή να αλλάξει τον κωδικό σου.",
+  "Confirm your email": "Επιβεβαίωσε το email σου", "We sent a 6-digit code to": "Στείλαμε 6ψήφιο κωδικό στο", "Enter it here. Check your spam folder too.": "Γράψ' τον εδώ. Κοίτα και στα ανεπιθύμητα.",
+  "6-digit code": "6ψήφιος κωδικός", Confirm: "Επιβεβαίωση", "Send the code again": "Ξαναστείλε τον κωδικό", "Change email": "Αλλαγή email", "New email": "Νέο email", "Send the code": "Αποστολή κωδικού",
+  "A new code was sent.": "Στάλθηκε νέος κωδικός.", confirmed: "επιβεβαιωμένο", "not confirmed": "όχι επιβεβαιωμένο",
+  "No email yet. Add one to reset a forgotten password by email.": "Δεν έχεις email ακόμη. Πρόσθεσε ένα για να αλλάζεις ξεχασμένο κωδικό με email.",
+  Email: "Email", "Add email": "Προσθήκη email", "Email confirmed. Welcome to Vigilfall!": "Το email επιβεβαιώθηκε. Καλώς ήρθες στο Vigilfall!",
+  "The email could not be sent:": "Το email δεν στάλθηκε:", "Wrong or expired code.": "Λάθος ή ληγμένος κωδικός.", "Ask for a new code first.": "Ζήτα πρώτα νέο κωδικό.",
+  "There is no account with that name.": "Δεν υπάρχει λογαριασμός με αυτό το όνομα.", "Wait a minute before asking for another email.": "Περίμενε ένα λεπτό πριν ζητήσεις άλλο email.",
+  "Too many emails today. Try again tomorrow.": "Πάρα πολλά email σήμερα. Δοκίμασε αύριο.", "Too many emails. Wait an hour.": "Πάρα πολλά email. Περίμενε μία ώρα.",
+  "This account has no confirmed email. Use your recovery code or ask the Realm admin.": "Αυτός ο λογαριασμός δεν έχει επιβεβαιωμένο email. Χρησιμοποίησε τον κωδικό ανάκτησης ή ρώτα τον διαχειριστή.",
+  "Email is not set up on this server.": "Το email δεν έχει ρυθμιστεί σε αυτόν τον διακομιστή.", "Confirm your email first (main menu).": "Επιβεβαίωσε πρώτα το email σου (κύριο μενού).",
+});
 Object.assign(X.EL.msg, { "SAVE REFUSED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΠΟΡΡΙΦΘΗΚΕ" });
 Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑΞΕ", "A newer save of this account was found. Loading it…": "Βρέθηκε νεότερη αποθήκευση του λογαριασμού. Φορτώνεται…", "SIGNED OUT": "ΑΠΟΣΥΝΔΕΘΗΚΕΣ" });
 
@@ -51034,6 +51152,11 @@ Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑ
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.25.0"] && (X.CHANGELOG["1.25.0"] = [
+        "Email: οι νέοι λογαριασμοί επιβεβαιώνουν το email τους με 6ψήφιο κωδικό πριν παίξουν.",
+        "Ξέχασες τον κωδικό; Πάρε κωδικό με email και βάλε νέο (ο κωδικός ανάκτησης δουλεύει κι αυτός).",
+        "Κύριο μενού → Λογαριασμός: πρόσθεσε ή άλλαξε το email σου.",
+      ]);
       X.CHANGELOG && X.CHANGELOG["1.24.0"] && (X.CHANGELOG["1.24.0"] = [
         "Το Vigilfall παίζεται πλέον μόνο online: χωρίς σύνδεση με τον διακομιστή το παιχνίδι σταματά μέχρι να επανέλθει.",
         "Κωδικοί ανάκτησης: οι νέοι λογαριασμοί παίρνουν κωδικό ανάκτησης για να βάλεις νέο κωδικό χωρίς τον διαχειριστή. Έχεις ήδη λογαριασμό; Κύριο μενού → Λογαριασμός για να φτιάξεις έναν.",

@@ -99,6 +99,26 @@ if [ "$MEM_MB" -lt 6000 ] && ! swapon --show | grep -q .; then
   grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
+# moving from another server: bring everything over (players, backups, settings, admin password, tokens, email key)
+# VF_RESTORE_URL = the one-time link from Vigilfall Admin → Backups → Move to a new server, VF_RESTORE_PASS = its password
+if [ -n "${VF_RESTORE_URL:-}" ]; then
+  say "Restoring the complete backup from your old server"
+  curl -fsSL -m 600 -o /tmp/vf-restore.vfpack "$VF_RESTORE_URL" || { echo "Could not download the backup. The link works once and for 2 hours: make a new one in Vigilfall Admin."; exit 1; }
+  chmod 644 /tmp/vf-restore.vfpack
+  systemctl stop $SVC 2>/dev/null || true
+  if SYS=$(sudo -u vigilfall -H env VF_DATA="$APP/data" VF_PACK_PASS="${VF_RESTORE_PASS:-}" node "$APP/realm.js" --unpack /tmp/vf-restore.vfpack); then
+    rm -f /tmp/vf-restore.vfpack
+    OLD_DOMAIN=$(echo "$SYS" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).domain||"")}catch(e){}})')
+    OLD_TOKEN=$(echo "$SYS" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).duckdnsToken||"")}catch(e){}})')
+    [ -z "${VF_DOMAIN:-}" ] && [ -n "$OLD_DOMAIN" ] && VF_DOMAIN="$OLD_DOMAIN"
+    [ -z "${VF_DUCKDNS_TOKEN:-}" ] && [ -n "$OLD_TOKEN" ] && VF_DUCKDNS_TOKEN="$OLD_TOKEN"
+    echo "Everything from the old server is here (address: ${OLD_DOMAIN:-unknown})."
+  else
+    rm -f /tmp/vf-restore.vfpack
+    echo "Restore failed (wrong password?). Nothing else was changed."; exit 1
+  fi
+fi
+
 say "Address of your Realm"
 # only our own site file is read and written: other sites on this server (e.g. another game) are never touched
 CUR=""; [ -f /etc/caddy/vigilfall.caddy ] && CUR=$(grep -oE '^[a-z0-9.-]+\.[a-z]{2,}' /etc/caddy/vigilfall.caddy | head -1 || true)

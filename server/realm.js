@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.7.0";
+const SERVER_VERSION = "1.8.0";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -13,6 +13,64 @@ const { WebSocketServer } = require("ws");
 
 const ROOT = __dirname;
 const DATA = process.env.VF_DATA || path.join(ROOT, "data");
+
+// ---------------- complete backup (.vfpack): everything incl. passwords and tokens, encrypted with a password ----------------
+// file: "VFPACK1\n" + salt(16) + iv(12) + tag(16) + AES-256-GCM(tar.gz of the data folder's important parts)
+const PACK_ITEMS = ["players", "backups", "config.json", "sessions.json", "github.json", "source.json", "mail.json", "accounts.on", "system.json"];
+const PACK_MAGIC = Buffer.from("VFPACK1\n");
+function packKey(pass, salt) { return crypto.scryptSync(String(pass), salt, 32, { N: 32768, r: 8, p: 1, maxmem: 96 * 1024 * 1024 }); }
+// unpack into a data folder (used by "restore" in the admin app and by setup.sh when moving to a new server)
+function decryptPack(file, pass) {
+  const buf = fs.readFileSync(file);
+  if (!buf.subarray(0, PACK_MAGIC.length).equals(PACK_MAGIC)) throw new Error("That file is not a complete Vigilfall backup (.vfpack).");
+  let o = PACK_MAGIC.length;
+  const salt = buf.subarray(o, (o += 16)), iv = buf.subarray(o, (o += 12)), tag = buf.subarray(o, (o += 16));
+  let plain;
+  try {
+    const d = crypto.createDecipheriv("aes-256-gcm", packKey(pass, salt), iv);
+    d.setAuthTag(tag);
+    plain = Buffer.concat([d.update(buf.subarray(o)), d.final()]);
+  } catch (e) { throw new Error("Wrong backup password (or the file is damaged)."); }
+  return plain;
+}
+function unpackPack(file, pass, dataDir) {
+  const { execFileSync } = require("child_process");
+  const plain = decryptPack(file, pass);
+  const stage = path.join(dataDir, "unpack-" + Date.now());
+  fs.mkdirSync(stage, { recursive: true });
+  const tgz = path.join(stage, "pack.tgz");
+  fs.writeFileSync(tgz, plain, { mode: 0o600 });
+  execFileSync("tar", ["xzf", tgz, "-C", stage]);
+  fs.unlinkSync(tgz);
+  if (!fs.existsSync(path.join(stage, "players"))) { fs.rmSync(stage, { recursive: true, force: true }); throw new Error("The backup has no players folder."); }
+  // this server keeps its own port and address binding
+  let keep = {};
+  try { const cur = JSON.parse(fs.readFileSync(path.join(dataDir, "config.json"), "utf8")); keep = { port: cur.port, bind: cur.bind }; } catch (e) {}
+  for (const it of PACK_ITEMS) {
+    const src = path.join(stage, it);
+    if (!fs.existsSync(src)) continue;
+    fs.rmSync(path.join(dataDir, it), { recursive: true, force: true });
+    fs.renameSync(src, path.join(dataDir, it));
+  }
+  try {
+    const cf = path.join(dataDir, "config.json"), c = JSON.parse(fs.readFileSync(cf, "utf8"));
+    for (const k in keep) keep[k] !== undefined && (c[k] = keep[k]);
+    fs.writeFileSync(cf, JSON.stringify(c, null, 2), { mode: 0o600 });
+  } catch (e) {}
+  fs.rmSync(stage, { recursive: true, force: true });
+  let sys = {};
+  try { sys = JSON.parse(fs.readFileSync(path.join(dataDir, "system.json"), "utf8")); } catch (e) {}
+  return sys;
+}
+if (process.argv[2] === "--unpack") {
+  // setup.sh: VF_PACK_PASS=… node realm.js --unpack file.vfpack → prints the old server's domain and DuckDNS token as JSON
+  try {
+    fs.mkdirSync(DATA, { recursive: true });
+    const sys = unpackPack(process.argv[3], process.env.VF_PACK_PASS || "", DATA);
+    console.log(JSON.stringify(sys));
+    process.exit(0);
+  } catch (e) { console.error(e.message); process.exit(1); }
+}
 const PLAYERS = path.join(DATA, "players");
 const BACKUPS = path.join(DATA, "backups");
 const GAME = path.join(ROOT, "game");
@@ -289,6 +347,7 @@ async function onClientMsg(c, m) {
     let r = await readRec(pid);
     if (!r) return sendJ(c.ws, { t: "denied", why: "This account no longer exists." });
     if (r?.banned) return sendJ(c.ws, { t: "denied", why: "You are banned from this Realm" + (r.banReason ? ": " + r.banReason : ".") });
+    if (needConfirm(r)) return sendJ(c.ws, { t: "denied", why: "Confirm your email first (main menu)." });
     const now = Date.now();
     Object.assign(r, { lastSeen: now, ver: String(m.ver || ""), hero: m.hero || r.hero, ip: c.ip });
     await writeRec(r);
@@ -353,13 +412,57 @@ const runCmd = (cmd, args, opts = {}) =>
     ch.on("error", bad);
     ch.on("exit", (code) => (code === 0 ? ok() : bad(new Error(err.trim().slice(0, 300) || cmd + " failed (" + code + ")"))));
   });
-const okFull = (f) => /^\d{10,}-[a-z-]+\.tgz$/.test(f) && fs.existsSync(path.join(FULL, f));
+const okFull = (f) => /^\d{10,}-([a-z-]+\.tgz|complete\.vfpack)$/.test(f) && fs.existsSync(path.join(FULL, f));
+const isPack = (f) => /\.vfpack$/.test(f);
 const listFull = () =>
-  fs.readdirSync(FULL).filter((f) => /\.tgz$/.test(f)).sort().reverse().map((f) => {
+  fs.readdirSync(FULL).filter((f) => /\.(tgz|vfpack)$/.test(f)).sort().reverse().map((f) => {
     const st = fs.statSync(path.join(FULL, f));
-    const m = f.match(/^(\d+)-([a-z-]+)\.tgz$/) || [];
-    return { file: f, at: +m[1] || st.mtimeMs, kind: m[2] || "manual", size: st.size };
+    const m = f.match(/^(\d+)-([a-z-]+)\.(tgz|vfpack)$/) || [];
+    return { file: f, at: +m[1] || st.mtimeMs, kind: m[2] || "manual", size: st.size, complete: isPack(f) };
   });
+// what a new server needs to answer at the same address: the domain (Caddy) and the DuckDNS token (cron)
+function sysInfo() {
+  const o = {};
+  try { o.domain = (fs.readFileSync("/etc/caddy/vigilfall.caddy", "utf8").match(/^([a-z0-9.-]+\.[a-z]{2,})/m) || [])[1]; } catch (e) {}
+  try { const t = fs.readFileSync("/etc/cron.d/vigilfall-duckdns", "utf8"); o.duckdnsToken = (t.match(/token=([\w-]+)/) || [])[1]; } catch (e) {}
+  return o;
+}
+async function makePack(pass) {
+  if (String(pass || "").length < 8) throw Object.assign(new Error("The backup password must be at least 8 characters."), { code: 400 });
+  await Promise.all([...writing.values()]);
+  clearTimeout(sessT);
+  fs.writeFileSync(SESS_FILE, JSON.stringify(sessions), { mode: 0o600 });
+  const sysF = path.join(DATA, "system.json");
+  fs.writeFileSync(sysF, JSON.stringify({ ...sysInfo(), at: Date.now(), server: SERVER_VERSION, name: cfg.name }), { mode: 0o600 });
+  const tmp = path.join(os.tmpdir(), "vf-pack-" + rnd(8) + ".tgz");
+  try { await runCmd("tar", ["czf", tmp, "-C", DATA, ...PACK_ITEMS.filter((i) => fs.existsSync(path.join(DATA, i)))]); }
+  finally { fs.rmSync(sysF, { force: true }); }
+  const plain = await fsp.readFile(tmp);
+  await fsp.unlink(tmp).catch(() => {});
+  const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv("aes-256-gcm", packKey(pass, salt), iv);
+  const enc = Buffer.concat([c.update(plain), c.final()]);
+  const name = `${Date.now()}-complete.vfpack`;
+  await fsp.writeFile(path.join(FULL, name), Buffer.concat([PACK_MAGIC, salt, iv, c.getAuthTag(), enc]), { mode: 0o600 });
+  // keep the newest 3 complete backups on the server
+  for (const b of listFull().filter((x) => x.complete).slice(3)) await fsp.unlink(path.join(FULL, b.file)).catch(() => {});
+  log("complete backup made", name);
+  return name;
+}
+async function restorePack(file, pass) {
+  decryptPack(path.join(FULL, file), pass); // wrong password: stop before anything happens
+  await makeFull("before-restore");
+  for (const c of [...clients.values()]) c.authed && kick(c.id, "The Realm is being restored from a backup. Come back in a minute.");
+  await Promise.all([...writing.values()]);
+  clearTimeout(sessT);
+  const sys = unpackPack(path.join(FULL, file), pass, DATA);
+  log("complete backup restored", file, "— restarting");
+  // everything (settings, sessions, tokens) is read again by a fresh start
+  H.wantStop = true;
+  try { H.child?.kill("SIGTERM"); } catch (e) {}
+  setTimeout(() => process.exit(0), 1500);
+  return { ok: true, restarting: true, domain: sys.domain || "" };
+}
 let lastAutoBackup = 0;
 async function makeFull(kind) {
   await Promise.all([...writing.values()]);
@@ -499,9 +602,9 @@ async function restoreFull(file) {
 }
 // one-time download links (phones download with the system downloader, which cannot send the password)
 const dls = new Map();
-const dlToken = (item) => {
+const dlToken = (item, ms = 10 * 60e3) => {
   const t = rnd(24);
-  dls.set(t, { ...item, exp: Date.now() + 10 * 60e3 });
+  dls.set(t, { ...item, exp: Date.now() + ms });
   for (const [k, v] of dls) v.exp < Date.now() && dls.delete(k);
   return t;
 };
@@ -548,6 +651,59 @@ async function selfUpdate() {
   }
 }
 
+// ---------------- email through Brevo (account confirmation, password reset) ----------------
+// data/mail.json {apiKey, from, fromName} (0600). The key never leaves the server.
+const MAIL_FILE = path.join(DATA, "mail.json");
+let mail = {};
+try { mail = JSON.parse(fs.readFileSync(MAIL_FILE, "utf8")); } catch (e) {}
+const mailOn = () => !!(mail.apiKey && mail.from);
+const saveMail = () => fs.writeFileSync(MAIL_FILE, JSON.stringify(mail), { mode: 0o600 });
+const okEmail = (e) => typeof e === "string" && e.length <= 120 && /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]{2,}$/.test(e);
+const maskEmail = (e) => { const [u, d] = String(e || "").split("@"); return d ? u.slice(0, 2) + "***@" + d : ""; };
+const escH = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+async function sendMail(to, subject, text) {
+  if (!mailOn()) throw new Error("Email is not set up on this server.");
+  const html = `<div style="font-family:Georgia,serif;background:#14110d;color:#e8dcc0;padding:24px;border-radius:10px;max-width:520px"><h2 style="color:#e0b860;margin:0 0 12px">${escH(cfg.name || "Vigilfall")}</h2>${text.split("\n").map((l) => `<p style="margin:6px 0">${/^\d{6}$/.test(l.trim()) ? `<b style="font:700 30px monospace;letter-spacing:6px;color:#ffd070">${l.trim()}</b>` : escH(l)}</p>`).join("")}</div>`;
+  const r = await fetch((process.env.VF_MAIL_API || "https://api.brevo.com") + "/v3/smtp/email", {
+    method: "POST",
+    headers: { "api-key": mail.apiKey, "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ sender: { name: mail.fromName || cfg.name || "Vigilfall", email: mail.from }, to: [{ email: to }], subject, textContent: text, htmlContent: html }),
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!r.ok) {
+    const j = await r.json().catch(() => ({}));
+    throw new Error("Brevo: " + (j.message || "HTTP " + r.status));
+  }
+}
+const mailIp = new Map();
+// a 6-digit code by email: 30 minutes, 5 tries; one email a minute and 10 a day per account, 20 an hour per address
+async function mailCode(r, kind, to, ip) {
+  const now = Date.now();
+  const sent = (r.mailSent || []).filter((t) => now - t < 86400e3);
+  if (sent.length && now - sent[sent.length - 1] < 60e3) throw Object.assign(new Error("Wait a minute before asking for another email."), { code: 429 });
+  if (sent.length >= 10) throw Object.assign(new Error("Too many emails today. Try again tomorrow."), { code: 429 });
+  const ipl = (mailIp.get(ip) || []).filter((t) => now - t < 3600e3);
+  if (ipl.length >= 20) throw Object.assign(new Error("Too many emails. Wait an hour."), { code: 429 });
+  const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
+  const name = cfg.name || "Vigilfall";
+  const text = kind === "reset"
+    ? `Hello ${r.name},\nSomeone asked to reset the password of your Vigilfall account. Your code is:\n${code}\nEnter it in the game with your new password. It works for 30 minutes.\nIf it wasn't you, ignore this email: your password stays the same.`
+    : `Hello ${r.name},\nWelcome to Vigilfall! Your confirmation code is:\n${code}\nEnter it in the game to confirm your email. It works for 30 minutes.`;
+  await sendMail(to, kind === "reset" ? `${name}: password reset code ${code}` : `${name}: confirm your email (${code})`, text);
+  r.mailCode = { kind, hash: hash(r.pid + ":" + code), exp: now + 30 * 60e3, tries: 0, to };
+  r.mailSent = [...sent, now];
+  mailIp.set(ip, [...ipl, now]);
+  await writeRec(r);
+}
+const codeOk = (r, kind, code) => {
+  const m = r.mailCode;
+  if (!m || m.kind !== kind || m.exp < Date.now() || m.tries >= 5) return false;
+  if (hash(r.pid + ":" + String(code || "").replace(/\D/g, "")) === m.hash) return true;
+  m.tries++;
+  return false;
+};
+const needConfirm = (r) => mailOn() && !!r.needEmail && !r.emailOk;
+
 // ---------------- accounts: name + password, the save follows the player to every device ----------------
 const SESS_FILE = path.join(DATA, "sessions.json");
 let sessions = {};
@@ -578,7 +734,8 @@ const okName = (n) => typeof n === "string" && /^[A-Za-z0-9_-]{3,16}$/.test(n);
 const PIDCH = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const newPid = () => { let p; do { p = Array.from(crypto.randomBytes(8), (b) => PIDCH[b % PIDCH.length]).join(""); } while (recs.has(p)); return p; };
 const acctFails = new Map();
-const acctView = (r) => ({ name: r.name, pid: r.pid, rev: r.rev || 0, profile: r.profile || null, savedAt: r.savedAt || 0, gifts: r.gifts || [], rc: !!r.rcHash });
+const mailView = (r) => ({ email: r.email || "", emailOk: !!r.emailOk, needConfirm: needConfirm(r), mail: mailOn() });
+const acctView = (r) => ({ name: r.name, pid: r.pid, rev: r.rev || 0, profile: r.profile || null, savedAt: r.savedAt || 0, gifts: r.gifts || [], rc: !!r.rcHash, ...mailView(r) });
 // recovery code: lets a player set a new password without the admin (shown once, kept only as a hash)
 const newRecovery = () => Array.from({ length: 3 }, () => Array.from(crypto.randomBytes(4), (b) => PIDCH[b % PIDCH.length]).join("")).join("-");
 const normRc = (c) => String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -618,6 +775,32 @@ async function acctApi(req, res, url) {
   const p = url.pathname.replace(/^\/api\/acct\/?/, "");
   const b = req.method === "POST" ? await body(req).catch(() => ({})) : {};
   const ip = ipOf(req);
+  if (p === "info") return json(res, 200, { mail: mailOn() });
+  if (p === "mailreset" || p === "mailresetdone") {
+    const name = String(b.name || "").trim(), key = ip + "|" + name.toLowerCase();
+    if (tooMany(key)) return json(res, 429, { error: "Too many tries. Wait 10 minutes." });
+    const pid = byName.get(name.toLowerCase()), r = pid && (await readRec(pid));
+    if (!r) { failed(key); return json(res, 404, { error: "There is no account with that name." }); }
+    if (!mailOn() || !r.email || !r.emailOk) return json(res, 400, { error: "This account has no confirmed email. Use your recovery code or ask the Realm admin." });
+    if (r.banned) return json(res, 403, { error: "This account is banned" + (r.banReason ? ": " + r.banReason : ".") });
+    if (p === "mailreset") {
+      try { await mailCode(r, "reset", r.email, ip); } catch (e) { return json(res, e.code || 502, { error: e.message }); }
+      log("password reset email", r.name);
+      return json(res, 200, { ok: true, to: maskEmail(r.email) });
+    }
+    const pw = String(b.password || "");
+    if (pw.length < 6) return json(res, 400, { error: "Password: at least 6 characters." });
+    if (!codeOk(r, "reset", b.code)) { failed(key); await writeRec(r); return json(res, 401, { error: "Wrong or expired code." }); }
+    acctFails.delete(key);
+    r.pwHash = pwHash(pw);
+    delete r.mailCode;
+    r.lastSeen = Date.now();
+    for (const k in sessions) sessions[k].pid === r.pid && delete sessions[k];
+    saveSessions();
+    await writeRec(r);
+    log("password reset by email", r.name, ip);
+    return json(res, 200, { ok: true, token: newSession(pid), ...acctView(r) });
+  }
   if (p === "register" || p === "login" || p === "recover") {
     const name = String(b.name || "").trim(), pw = String(b.password || "");
     const key = ip + "|" + name.toLowerCase();
@@ -628,13 +811,18 @@ async function acctApi(req, res, url) {
     if (p === "register") {
       if (byName.has(low)) return json(res, 409, { error: "That name is taken." });
       if (cfg.maintenance) return json(res, 503, { error: cfg.maintenanceMsg || "Closed for maintenance." });
+      const email = String(b.email || "").trim().toLowerCase();
+      if (mailOn() && !okEmail(email)) return json(res, 400, { error: "Enter a valid email address." });
       const pid = newPid(), now = Date.now();
       const recovery = newRecovery();
       const r = { pid, acct: low, name, pwHash: pwHash(pw), rcHash: pwHash(normRc(recovery)), created: now, lastSeen: now, rev: 0, adminRev: 0, ip };
+      if (mailOn()) Object.assign(r, { email, emailOk: false, needEmail: true });
       byName.set(low, pid);
       await writeRec(r);
       log("account created", name, pid, ip);
-      return json(res, 200, { ok: true, token: newSession(pid), recovery, ...acctView(r) });
+      let mailError;
+      if (mailOn()) try { await mailCode(r, "confirm", email, ip); } catch (e) { mailError = e.message; log("confirmation email failed", name, e.message); }
+      return json(res, 200, { ok: true, token: newSession(pid), recovery, mailError, ...acctView(r) });
     }
     const pid = byName.get(low), r = pid && (await readRec(pid));
     if (p === "recover") {
@@ -672,7 +860,28 @@ async function acctApi(req, res, url) {
   if (r.banned) return json(res, 403, { error: "This account is banned" + (r.banReason ? ": " + r.banReason : "."), signedOut: true });
   if (p === "me") return json(res, 200, acctView(r));
   // light "am I online" check the game makes every few seconds
-  if (p === "ping") return json(res, 200, { ok: true, rev: r.rev || 0, rc: !!r.rcHash });
+  if (p === "ping") return json(res, 200, { ok: true, rev: r.rev || 0, rc: !!r.rcHash, ...mailView(r) });
+  // set or change the email: a code is sent to the new address
+  if (p === "email") {
+    const email = String(b.email || "").trim().toLowerCase();
+    if (!mailOn()) return json(res, 400, { error: "Email is not set up on this server." });
+    if (!okEmail(email)) return json(res, 400, { error: "Enter a valid email address." });
+    try { await mailCode(r, "confirm", email, ip); } catch (e) { return json(res, e.code || 502, { error: e.message }); }
+    log("confirmation email", r.name);
+    return json(res, 200, { ok: true, to: maskEmail(email) });
+  }
+  if (p === "confirm") {
+    if (!r.mailCode || r.mailCode.kind !== "confirm") return json(res, 400, { error: "Ask for a new code first." });
+    const k = "cf|" + r.pid;
+    if (tooMany(k)) return json(res, 429, { error: "Too many tries. Wait 10 minutes." });
+    if (!codeOk(r, "confirm", b.code)) { failed(k); await writeRec(r); return json(res, 401, { error: "Wrong or expired code." }); }
+    r.email = r.mailCode.to;
+    r.emailOk = true;
+    delete r.mailCode;
+    await writeRec(r);
+    log("email confirmed", r.name);
+    return json(res, 200, { ok: true, ...mailView(r) });
+  }
   if (p === "recovery") {
     const k = "rc|" + r.pid;
     if (tooMany(k)) return json(res, 429, { error: "Too many tries. Wait 10 minutes." });
@@ -813,7 +1022,7 @@ async function api(req, res, url) {
   if (p[0] === "players" && !p[1] && M === "GET") {
     const q = (url.searchParams.get("q") || "").toLowerCase();
     const list = [...recs.values()]
-      .filter((r) => !q || r.pid.toLowerCase().includes(q) || String(r.name || "").toLowerCase().includes(q))
+      .filter((r) => !q || r.pid.toLowerCase().includes(q) || String(r.name || "").toLowerCase().includes(q) || String(r.email || "").includes(q))
       .map((r) => ({ pid: r.pid, name: r.name, lastSeen: r.lastSeen, created: r.created, banned: !!r.banned, online: online.has(r.pid), ...r.sum, hero: r.hero, ver: r.ver, flags: (r.flags || []).length }))
       .sort((a, b) => b.online - a.online || (b.lastSeen || 0) - (a.lastSeen || 0));
     return json(res, 200, { players: list });
@@ -825,7 +1034,7 @@ async function api(req, res, url) {
     if (!r) return json(res, 404, { error: "No such player." });
     const act = p[2];
     if (!act && M === "GET") {
-      const { keyHash, pwHash, rcHash, ...rest } = r;
+      const { keyHash, pwHash, rcHash, mailCode, mailSent, ...rest } = r;
       return json(res, 200, { ...rest, rc: !!rcHash, locked: !!keyHash, online: online.has(pid) });
     }
     if (!act && M === "PUT") {
@@ -883,6 +1092,18 @@ async function api(req, res, url) {
       log("password reset by admin", pid);
       return json(res, 200, { ok: true, password: pw });
     }
+    // admin sets or confirms a player's email by hand
+    if (act === "email" && M === "POST") {
+      const b = await body(req).catch(() => ({}));
+      const email = String(b.email ?? r.email ?? "").trim().toLowerCase();
+      if (email && !okEmail(email)) return json(res, 400, { error: "Not a valid email address." });
+      r.email = email;
+      r.emailOk = !!email && !!b.confirmed;
+      delete r.mailCode;
+      await writeRec(r);
+      log("email set by admin", pid, r.emailOk ? "confirmed" : "not confirmed");
+      return json(res, 200, { ok: true, email: r.email, emailOk: r.emailOk });
+    }
     if (act === "resetkey" && M === "POST") {
       delete r.keyHash;
       await writeRec(r);
@@ -935,6 +1156,13 @@ async function api(req, res, url) {
   if (p[0] === "fullbackups") {
     if (!p[1] && M === "GET") return json(res, 200, { backups: listFull(), autoBackupHours: cfg.autoBackupHours, autoBackupKeep: cfg.autoBackupKeep, antiCheat: cfg.antiCheat, cheatTolerance: cfg.cheatTolerance, lastAutoBackup, nextAutoBackup });
     if (!p[1] && M === "POST") return json(res, 200, { ok: true, file: await makeFull("manual") });
+    // complete backup (with passwords and tokens) + a link that works once for 2 hours (download it, or let a new server fetch it)
+    if (p[1] === "complete" && M === "POST") {
+      const b = await body(req);
+      let file;
+      try { file = await makePack(b.pass); } catch (e) { return json(res, e.code || 500, { error: e.message }); }
+      return json(res, 200, { ok: true, file, url: "/dl/" + dlToken({ file: path.join(FULL, file), name: "vigilfall-complete-" + file, type: "application/octet-stream", once: true }, 2 * 3600e3) });
+    }
     if (p[1] === "upload" && M === "POST") {
       const name = `${Date.now()}-uploaded.tgz`, dst = path.join(FULL, name);
       await new Promise((ok, bad) => {
@@ -946,11 +1174,19 @@ async function api(req, res, url) {
         out.on("error", bad);
         req.on("error", bad);
       });
+      const head = Buffer.alloc(PACK_MAGIC.length);
+      try { const fd = fs.openSync(dst, "r"); fs.readSync(fd, head, 0, head.length, 0); fs.closeSync(fd); } catch (e) {}
+      if (head.equals(PACK_MAGIC)) {
+        const pn = name.replace(/-uploaded\.tgz$/, "-complete.vfpack");
+        await fsp.rename(dst, path.join(FULL, pn));
+        log("complete backup uploaded", pn);
+        return json(res, 200, { ok: true, file: pn, complete: true });
+      }
       try {
         await runCmd("tar", ["tzf", dst]);
       } catch (e) {
         await fsp.unlink(dst).catch(() => {});
-        return json(res, 400, { error: "That file is not a Realm backup (.tgz)." });
+        return json(res, 400, { error: "That file is not a Realm backup (.tgz or .vfpack)." });
       }
       log("server backup uploaded", name);
       return json(res, 200, { ok: true, file: name });
@@ -962,9 +1198,15 @@ async function api(req, res, url) {
       log("server backup deleted", f);
       return json(res, 200, { ok: true });
     }
-    if (p[2] === "restore" && M === "POST") return json(res, 200, { ok: true, ...(await restoreFull(f)) });
+    if (p[2] === "restore" && M === "POST") {
+      if (isPack(f)) {
+        const b = await body(req).catch(() => ({}));
+        try { return json(res, 200, await restorePack(f, b.pass)); } catch (e) { return json(res, 400, { error: e.message }); }
+      }
+      return json(res, 200, { ok: true, ...(await restoreFull(f)) });
+    }
     if (p[2] === "github" && M === "POST") return json(res, 200, await ghUpload(f));
-    if (p[2] === "link" && M === "POST") return json(res, 200, { url: "/dl/" + dlToken({ file: path.join(FULL, f), name: "vigilfall-realm-" + f, type: "application/gzip" }) });
+    if (p[2] === "link" && M === "POST") return json(res, 200, { url: "/dl/" + (isPack(f) ? dlToken({ file: path.join(FULL, f), name: "vigilfall-complete-" + f, type: "application/octet-stream", once: true }, 2 * 3600e3) : dlToken({ file: path.join(FULL, f), name: "vigilfall-realm-" + f, type: "application/gzip" })) });
   }
   if (p[0] === "github") {
     if (!p[1] && M === "GET") return json(res, 200, { repo: gh.repo, branch: gh.branch, folder: gh.folder, auto: gh.auto, keep: gh.keep, hasToken: !!gh.token, last: gh.last });
@@ -1010,6 +1252,26 @@ async function api(req, res, url) {
       data = JSON.stringify(r.profile, null, 1);
     }
     return json(res, 200, { url: "/dl/" + dlToken({ data, name: `vigilfall-save-${b.pid}${b.backup ? "-" + String(b.backup).replace(/\.json$/, "") : ""}.json`, type: "application/json" }) });
+  }
+  if (p[0] === "mail") {
+    const view = () => ({ on: mailOn(), from: mail.from || "", fromName: mail.fromName || "", keySet: !!mail.apiKey });
+    if (M === "GET") return json(res, 200, view());
+    if (M === "DELETE") { mail = {}; saveMail(); log("email switched off"); return json(res, 200, view()); }
+    if (M === "POST") {
+      const b = await body(req);
+      if (typeof b.apiKey === "string" && b.apiKey.trim()) mail.apiKey = b.apiKey.trim();
+      if (typeof b.from === "string") { const f = b.from.trim().toLowerCase(); if (f && !okEmail(f)) return json(res, 400, { error: "The sender address is not a valid email." }); mail.from = f; }
+      if (typeof b.fromName === "string") mail.fromName = b.fromName.trim().slice(0, 60);
+      saveMail();
+      if (b.test) {
+        if (!okEmail(String(b.test))) return json(res, 400, { error: "Enter a valid address for the test." });
+        try { await sendMail(String(b.test), (cfg.name || "Vigilfall") + ": test email", "This is a test from your Vigilfall Realm server.\nEmail works: players can confirm their accounts and reset their passwords."); }
+        catch (e) { return json(res, 502, { error: e.message, ...view() }); }
+        log("test email sent");
+        return json(res, 200, { ok: true, tested: true, ...view() });
+      }
+      return json(res, 200, { ok: true, ...view() });
+    }
   }
   if (p[0] === "gift" && M === "POST") {
     const b = await body(req);
@@ -1093,6 +1355,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith("/dl/")) {
       const it = dls.get(url.pathname.slice(4));
       if (!it || it.exp < Date.now()) return json(res, 404, { error: "This download link has expired. Make a new one in the admin app." });
+      if (it.once) dls.delete(url.pathname.slice(4));
       res.writeHead(200, { "Content-Type": it.type, "Content-Disposition": `attachment; filename="${it.name}"`, "Cache-Control": "no-store", ...CORS });
       return it.data ? res.end(it.data) : fs.createReadStream(it.file).pipe(res);
     }

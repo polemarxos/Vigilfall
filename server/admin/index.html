@@ -63,6 +63,8 @@ button.s{padding:6px 10px;font-size:13px}
   <p id="lerr" style="color:var(--bad);min-height:1.4em"></p>
   <button class="b p" id="lgo" style="width:100%">Connect</button>
   <p class="muted" style="margin-top:18px">The password is in <b>data/config.json</b> on the server (the setup script also prints it).</p>
+  <p class="muted" style="text-align:center;margin-top:14px">New phone? <a href="#" id="lrestore" style="color:var(--gold)">Restore an app backup…</a></p>
+  <div id="lrbox" class="hide"></div>
 </div>
 <div id="app" class="hide">
   <header><button class="back hide" id="hback">‹</button><span class="dot" id="hdot"></span><h1 id="htitle">Realm</h1><button class="b s" id="hout" title="Sign out">⎋</button></header>
@@ -92,8 +94,8 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.13";
-const APP_LATEST = "1.7";
+const PAGE_VERSION = "1.15";
+const APP_LATEST = "1.8";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
 const older = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
@@ -130,7 +132,14 @@ async function call(path, method = "GET", body) {
 }
 
 // ---------------- login ----------------
+function loginRestore() {
+  const box = $("#lrbox"); box.classList.remove("hide");
+  box.innerHTML = appBackupCard().replace(/<h2>Back up this app<\/h2>/, "<h2>Restore an app backup</h2>");
+  appBackupWire();
+  $("#abmake").classList.add("hide");
+}
 function showLogin(msg) {
+  $("#lrestore") && ($("#lrestore").onclick = (e) => (e.preventDefault(), loginRestore()));
   $("#app").classList.add("hide"); $("#login").classList.remove("hide");
   $("#lsrv").value = S.base.replace(/^https?:\/\//, ""); $("#lpw").value = ""; $("#lerr").textContent = msg || "";
 }
@@ -205,6 +214,75 @@ ${s.maintenance ? `<div class="card warn"><b>Maintenance mode is ON</b><p class=
 }
 
 // ---------------- downloads and the save viewer ----------------
+const shq = (v) => "'" + String(v).replace(/'/g, "'\\''") + "'";
+// ---- app backup: everything this app keeps (servers, admin password, SSH key, known servers, settings), locked with a password ----
+const b64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); };
+const unb64 = (t) => Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
+async function aesKey(pass, salt) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 250000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function appBackupMake(pass) {
+  const ls = {};
+  for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); /^vfa_/.test(k) && (ls[k] = localStorage.getItem(k)); }
+  let native = {};
+  try { native = JSON.parse(window.VFAApp?.exportData?.() || "{}"); } catch (e) {}
+  const data = JSON.stringify({ kind: "vigilfall-admin-backup", v: 1, at: Date.now(), app: APP_VER, page: PAGE_VERSION, ls, native });
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(pass, salt), new TextEncoder().encode(data)));
+  return JSON.stringify({ vigilfallAdminBackup: 1, salt: b64(salt), iv: b64(iv), data: b64(ct) });
+}
+async function appBackupOpen(text, pass) {
+  let o;
+  try { o = JSON.parse(text); } catch (e) { throw new Error("That is not a Vigilfall Admin backup file."); }
+  if (!o.vigilfallAdminBackup) throw new Error("That is not a Vigilfall Admin backup file.");
+  let pt;
+  try { pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(o.iv) }, await aesKey(pass, unb64(o.salt)), unb64(o.data)); }
+  catch (e) { throw new Error("Wrong password (or the file is damaged)."); }
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+function saveText(name, text) {
+  if (window.VFAApp?.saveFile) { const r = VFAApp.saveFile(name, text); if (/^ERR/.test(r)) throw new Error(r.replace(/^ERR:?\s*/, "")); return r; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "application/json" })); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => (URL.revokeObjectURL(a.href), a.remove()), 1000);
+  return "Downloads";
+}
+function appBackupCard() {
+  return `<div class="card"><h2>Back up this app</h2>
+    <p class="muted">One file with everything this app remembers: your servers, the admin password, the SSH key for the Console, the servers it trusts and your settings. Locked with a password. Restore it on a new phone and nothing has to be set up again.</p>
+    <label>Password for the file (8+ characters)</label><input id="abpw" type="password" autocapitalize="off" autocorrect="off">
+    <div class="row" style="margin-top:8px"><button class="b p" id="abmake">Save app backup</button><button class="b" id="abload">Restore from a file…</button><input id="abfile" type="file" accept=".json,.vfadmin,application/json,*/*" class="hide"></div>
+    <p class="muted" id="abstat">${IN_APP && !window.VFAApp?.exportData ? "⚠ This app version can't include the SSH key yet: update the app first (Server → check for app update)." : ""}</p></div>`;
+}
+function appBackupWire() {
+  if (!$("#abmake")) return;
+  $("#abmake").onclick = async () => {
+    const pw = $("#abpw").value;
+    if (pw.length < 8) return toast("Password: at least 8 characters");
+    if (prompt("Type the password again:") !== pw) return toast("The passwords are not the same");
+    try {
+      const where = saveText(`vigilfall-admin-backup-${new Date().toISOString().slice(0, 10)}.vfadmin`, await appBackupMake(pw));
+      $("#abstat").textContent = "✓ Saved to " + where + ". Keep it somewhere safe (e.g. Google Drive) together with its password.";
+      toast("App backup saved");
+    } catch (e) { fail(e); }
+  };
+  $("#abload").onclick = () => $("#abfile").click();
+  $("#abfile").onchange = async () => {
+    const f = $("#abfile").files[0]; if (!f) return;
+    const pw = $("#abpw").value || prompt("Password of the backup file:") || "";
+    try {
+      const o = await appBackupOpen(await f.text(), pw);
+      if (!confirm(`Restore the app backup from ${new Date(o.at).toLocaleString()}? Your servers, password, SSH key and settings in this app are replaced.`)) return;
+      for (const k of Object.keys(localStorage)) /^vfa_/.test(k) && localStorage.removeItem(k);
+      for (const [k, v] of Object.entries(o.ls || {})) localStorage.setItem(k, v);
+      let r = "";
+      if (o.native && Object.keys(o.native).length) r = window.VFAApp?.importData?.(JSON.stringify(o.native)) || (IN_APP ? "ERR: update the app to restore the SSH key" : "");
+      alert("App restored." + (/^ERR/.test(r) ? "\n\n" + r.replace(/^ERR:?\s*/, "") : ""));
+      location.reload();
+    } catch (e) { fail(e); }
+  };
+}
+
 async function download(path, bodyObj) {
   try {
     const r = await call(path, "POST", bodyObj);
@@ -278,12 +356,13 @@ async function player(pid) {
     <div class="card"><div class="row" style="justify-content:space-between"><div><b style="font-size:18px">${esc(r.name)}</b><div class="muted">Friend code ${esc(pid)} · joined ${ago(r.created)} · last seen ${r.online ? "now" : ago(r.lastSeen)}</div><div class="muted">Game ${esc(r.ver || "?")}${r.adminRev ? " · edited " + r.adminRev + "×" : ""}${r.acct ? "" : " · old save (before accounts)"}</div></div>
       <div>${r.banned ? `<span class="pill ban">banned</span>` : r.online ? '<span class="pill on">online</span>' : ""}</div></div>
       ${r.banned && r.banReason ? `<p class="muted">Reason: ${esc(r.banReason)}</p>` : ""}
-      ${r.acct ? `<p class="muted">Recovery code: ${r.rc ? "set" : "not set yet"}</p>` : ""}
+      ${r.acct ? `<p class="muted">Recovery code: ${r.rc ? "set" : "not set yet"} · Email: ${r.email ? esc(r.email) + (r.emailOk ? " ✔ confirmed" : " (not confirmed)") : "none"}${r.needEmail && !r.emailOk ? " · <b style='color:#ffb060'>can't play until confirmed</b>" : ""}</p>` : ""}
       ${(r.flags || []).length ? `<div style="margin-top:8px"><b style="color:#ff8a7a">⚠ Anti-cheat refused ${r.flags.length} save(s)</b>${r.flags.slice(-5).reverse().map((f) => `<div class="muted">${ago(f.at)} — ${esc(f.why)}</div>`).join("")}<div class="muted">Each refused save is kept in Backups ("refused"). If it was real progress, restore it from there.</div></div>` : ""}
       <div class="row" style="margin-top:10px">
         ${r.online ? '<button class="b s" data-x="kick">Kick</button>' : ""}
         ${r.banned ? '<button class="b s" data-x="unban">Unban</button>' : '<button class="b s d" data-x="ban">Ban</button>'}
         <button class="b s" data-x="newpw" title="For a player who forgot the password">Reset password</button>
+        ${r.acct ? '<button class="b s" data-x="email" title="Set or confirm the email by hand">Email…</button>' : ""}
         ${p ? '<button class="b s" data-x="view">View save</button>' : ""}
         <button class="b s" data-x="backups">Backups</button>
         ${p ? '<button class="b s" data-x="backupnow">Back up now</button><button class="b s" data-x="gift">Gift</button><button class="b s" data-x="dlsave">Download save</button>' : ""}
@@ -310,6 +389,11 @@ async function player(pid) {
       if (x === "ban") { const why = prompt("Ban reason (shown to the player):", ""); if (why === null) return; await call(`players/${pid}/ban`, "POST", { why }); toast("Banned"); }
       if (x === "unban") { await call(`players/${pid}/unban`, "POST"); toast("Unbanned"); }
       if (x === "newpw") { const pw = prompt(`New password for ${r.name} (at least 6 characters, empty = make one up):`, ""); if (pw === null) return; const x2 = await call(`players/${pid}/password`, "POST", { password: pw }); alert(`New password for ${r.name}: ${x2.password}\nGive it to the player; they can sign in with it now.`); }
+      if (x === "email") {
+        const e = prompt(`Email for ${r.name} (empty = remove):`, r.email || ""); if (e === null) return;
+        const ok = e.trim() ? confirm("Mark this email as confirmed? (OK = confirmed, so the player can play and reset the password by email; Cancel = the player must confirm it with a code)") : false;
+        await call(`players/${pid}/email`, "POST", { email: e.trim(), confirmed: ok }); toast("Email saved");
+      }
       if (x === "resetkey") { if (!confirm("Allow this character to log in from a new device? (The old device keeps working too until someone logs in.)")) return; await call(`players/${pid}/resetkey`, "POST"); toast("Device link reset"); }
       if (x === "backups") return push(() => backups(pid));
       if (x === "view") return push(() => viewSave(p, r.name || pid));
@@ -404,6 +488,21 @@ async function server() {
       <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input id="sac" type="checkbox" style="width:auto" ${s.antiCheat !== false ? "checked" : ""}> Anti-cheat: refuse saves with impossible jumps</label>
       <label>Anti-cheat tolerance (1 = normal, higher = allows bigger jumps)</label><input id="stol" type="number" min="1" max="20" value="${s.cheatTolerance || 1}">
       <div class="row" style="margin-top:10px"><button class="b p" id="ssave">Save</button></div></div>
+    <div class="card"><h2>Email (Brevo)</h2>
+      <p class="muted" id="mstat">…</p>
+      <details id="mhelp"><summary class="muted" style="cursor:pointer">How to set it up</summary><ol class="muted" style="padding-left:18px;margin:6px 0">
+        <li>Sign up free at <b>brevo.com</b> with any email address you have (300 emails a day free).</li>
+        <li>In Brevo: <b>Senders, Domains &amp; Dedicated IPs → Senders → Add a sender</b> with the address emails should come from, and click the link Brevo emails to it.</li>
+        <li>In Brevo: your name (top right) → <b>SMTP &amp; API → API keys → Generate a new API key</b>, copy it.</li>
+        <li>Paste the key and the sender address here, type your own address under Test, and tap <b>Save and send test</b>.</li>
+        <li>If the test says the IP is not authorised: Brevo → <b>Security → Authorised IPs</b> → add your server's IP address (for wsgame: <b>152.70.43.48</b>), or tap the link in Brevo's "Validate your IP" email.</li></ol>
+        <p class="muted">Emails come from a free address, so some may land in spam: tell players to check their spam folder.</p></details>
+      <label>Brevo API key</label><input id="mkey" type="password" autocapitalize="off" autocorrect="off" placeholder="xkeysib-…">
+      <label>Sender address (verified in Brevo)</label><input id="mfrom" type="email" autocapitalize="off" autocorrect="off">
+      <label>Sender name</label><input id="mname" maxlength="60" placeholder="Vigilfall">
+      <label>Test: send to</label><input id="mtest" type="email" autocapitalize="off" autocorrect="off" placeholder="your own address">
+      <div class="row" style="margin-top:8px"><button class="b p" id="msave">Save and send test</button><button class="b s d hide" id="moff">Switch email off</button></div>
+      <p class="muted">When email is on, new players must confirm their email before playing, and anyone with a confirmed email can reset a forgotten password by email. Existing players can add an email from Account in the game.</p></div>
     <div class="card"><h2>Game version</h2><p class="muted">Server has <b>${esc(s.gameVersion || "?")}</b>, the world runs <b>${esc(s.hostVersion || "?")}</b>.</p>
       <div class="row"><button class="b" id="supd">Check for update now</button><button class="b d" id="srst">Restart world now</button></div></div>
     <div class="card"><h2>Game source</h2><p class="muted">Where this server gets the game, both Android apps and its own program. The token is only needed if the repository is ever made private.</p>
@@ -414,13 +513,31 @@ async function server() {
 </div>
     <div class="card"><h2>Server program</h2><p class="muted" id="sver">Version ${esc(s.serverVersion || "1.0 (old)")} · checking GitHub…</p><div class="row"><button class="b" id="sself" disabled>Update server program</button></div></div>
     <div class="card"><h2>Admin password</h2><input id="spw" type="password" placeholder="new password (8+ characters)"><div class="row" style="margin-top:8px"><button class="b" id="spws">Change password</button></div></div>
+    ${appBackupCard()}
     <div class="card"><h2>Server log</h2><div class="row" style="margin-bottom:8px"><button class="b s" id="slog">Refresh</button></div><div class="log" id="log">…</div></div>
     <p class="muted" style="text-align:center">Server up ${dur(s.uptime)} · ${esc(S.base.replace(/^https?:\/\//, ""))}<br>Admin ${IN_APP ? "app " + esc(APP_VER) + " · " : ""}page ${PAGE_VERSION} · updates itself${window.VFAApp?.updateApp ? ' · <a href="#" id="appchk" style="color:var(--gold)">check for app update</a>' : ""}</p>`;
   $("#appchk") && ($("#appchk").onclick = (e) => { e.preventDefault(); toast("Checking…"); VFAApp.updateApp(); });
+  const mshow = (m) => {
+    $("#mstat").innerHTML = m.on ? `<b style="color:#8fd18f">On</b> · from ${esc(m.fromName || "Vigilfall")} &lt;${esc(m.from)}&gt;` : `<b>Off</b>${m.keySet ? " · key saved, sender missing" : " · players sign up without email"}`;
+    $("#mfrom").value = m.from || ""; $("#mname").value = m.fromName || "";
+    $("#mkey").placeholder = m.keySet ? "key saved (leave empty to keep it)" : "xkeysib-…";
+    $("#moff").classList.toggle("hide", !m.on && !m.keySet);
+    $("#mhelp").open = !m.on;
+  };
+  call("mail").then(mshow).catch(() => ($("#mstat").textContent = "This server program is too old for email: update the server program below."));
+  $("#msave").onclick = async () => {
+    const b = { apiKey: $("#mkey").value.trim(), from: $("#mfrom").value.trim(), fromName: $("#mname").value.trim(), test: $("#mtest").value.trim() || undefined };
+    $("#msave").disabled = true;
+    try { const m = await call("mail", "POST", b); $("#mkey").value = ""; mshow(m); toast(m.tested ? "Saved — test email sent. Check the inbox (and spam)." : "Saved"); }
+    catch (e) { fail(e); call("mail").then(mshow).catch(() => {}); }
+    $("#msave").disabled = false;
+  };
+  $("#moff").onclick = async () => { if (!confirm("Switch email off? New players then sign up without email, and email password reset stops.")) return; try { mshow(await call("mail", "DELETE")); toast("Email off"); } catch (e) { fail(e); } };
   $("#ssave").onclick = async () => { try { await call("config", "POST", { name: $("#sname").value, maxPlayers: +$("#smax").value, autoUpdate: $("#sauto").checked, updateMinutes: +$("#smin").value, antiCheat: $("#sac").checked, cheatTolerance: +$("#stol").value || 1 }); toast("Saved"); server(); } catch (e) { fail(e); } };
   M().querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => ($("#smin").value = b.dataset.m)));
   $("#supd").onclick = async () => { toast("Checking…"); try { const r = await call("update", "POST"); toast(r.changed ? `Downloaded ${r.ver} — world restarts in 60 s` : r.ok ? `Already up to date (${r.ver})` : "Update failed: " + r.why); } catch (e) { fail(e); } };
   $("#srst").onclick = async () => { if (!confirm("Restart the world now? Everyone is disconnected for about a minute.")) return; try { await call("restart", "POST", { delay: 0 }); toast("Restarting…"); } catch (e) { fail(e); } };
+  appBackupWire();
   $("#spws").onclick = async () => { const v = $("#spw").value; if (v.length < 8) return toast("At least 8 characters"); try { await call("config", "POST", { newPassword: v }); S.pw = v; store.set("vfa_pw", v); toast("Password changed"); $("#spw").value = ""; } catch (e) { fail(e); } };
   call("source").then((g) => {
     if (!$("#srcrepo")) return;
@@ -486,8 +603,10 @@ function conExec(cmd, ask) {
   if (cmd === "@setup") cmd = `curl -fsSL 'https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/setup.sh?t=${Date.now()}' | sudo VF_NONINTERACTIVE=1 VF_DOMAIN=${S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, "")} bash`;
   const id = "c" + Date.now();
   conRun = { id, busy: true, text: `$ ${cmd}\n` };
-  const hist = JSON.parse(store.get("vfa_hist") || "[]").filter((h) => h !== cmd);
-  hist.unshift(cmd); store.set("vfa_hist", JSON.stringify(hist.slice(0, 20)));
+  if (!/VF_RESTORE_PASS|VF_.*TOKEN/.test(cmd)) {
+    const hist = JSON.parse(store.get("vfa_hist") || "[]").filter((h) => h !== cmd);
+    hist.unshift(cmd); store.set("vfa_hist", JSON.stringify(hist.slice(0, 20)));
+  } else conRun.text = "$ (setup with your restore link — not kept in the history)\n";
   const o = $("#cout"); o && (o.textContent = conRun.text);
   const b = $("#crun"), x = $("#cstop"); b && (b.disabled = true); x && x.classList.remove("hide");
   VFAApp.exec(id, conHost(), conUser(), cmd);
@@ -557,10 +676,16 @@ async function fullBackups() {
   let r, g = null;
   try { r = await call("fullbackups"); } catch (e) { return fail(e); }
   try { g = await call("github"); } catch (e) { g = null; }
-  const tag = (k) => ({ auto: "automatic", manual: "manual", uploaded: "uploaded", github: "from GitHub", "before-restore": "before a restore" })[k] || k;
+  const tag = (k) => ({ auto: "automatic", manual: "manual", uploaded: "uploaded", github: "from GitHub", "before-restore": "before a restore", complete: "🔒 COMPLETE (everything)" })[k] || k;
   M().innerHTML = `
+    <div class="card" style="border-color:var(--gold)"><h2>Complete backup — everything</h2>
+      <p class="muted">Everything on the server in one file: players, their backups, all settings, the admin password, the GitHub and email keys, and the address with its DuckDNS token. It is locked with a password you choose — without the password nobody can open it, not even you.</p>
+      <label>Backup password (8+ characters)</label><input id="cpw" type="password" autocapitalize="off" autocorrect="off">
+      <label>Password again</label><input id="cpw2" type="password" autocapitalize="off" autocorrect="off">
+      <div class="row" style="margin-top:8px"><button class="b p" id="cdl">Make and download</button><button class="b" id="cmove">Move to a new server…</button></div>
+      <div id="cmoveout"></div></div>
     <div class="card"><h2>Server backups</h2><p class="muted">A server backup holds every player's save and save backups plus the Realm settings (admin password included). Use it to undo mistakes or to move to a new server: download it, then upload and restore it there.</p>
-      <div class="row"><button class="b p" id="fbnow">Back up now</button><button class="b" id="fbup">Upload a backup…</button><input id="fbfile" type="file" accept=".tgz,.gz,application/gzip" class="hide"></div></div>
+      <div class="row"><button class="b p" id="fbnow">Back up now</button><button class="b" id="fbup">Upload a backup…</button><input id="fbfile" type="file" accept=".tgz,.gz,.vfpack,application/gzip,application/octet-stream" class="hide"></div></div>
     <div class="card"><h2>Automatic backups</h2>
       <p class="muted">${r.autoBackupHours > 0 ? `<b>Next automatic backup ${r.nextAutoBackup ? "in " + dur((r.nextAutoBackup - Date.now()) / 1000) : "in about " + r.autoBackupHours + " h"}</b>${g?.repo && g?.hasToken && g?.auto ? " — it is also copied to GitHub right after." : "."}` : "<b>Automatic backups are off.</b>"} Change how often here; the GitHub copy follows the same schedule.</p>
       <div class="row" style="gap:10px"><div style="flex:1"><label>Back up every (hours, 0 = off)</label><input id="fbh" type="number" min="0" max="168" value="${r.autoBackupHours}"></div><div style="flex:1"><label>Keep the last</label><input id="fbk" type="number" min="1" max="100" value="${r.autoBackupKeep}"></div></div>
@@ -585,6 +710,11 @@ async function fullBackups() {
     d.querySelector("[data-g]") && (d.querySelector("[data-g]").onclick = async () => { toast("Sending to GitHub…"); try { await call(`fullbackups/${encodeURIComponent(b.file)}/github`, "POST"); toast("Copied to GitHub"); fullBackups(); } catch (e) { fail(e); } });
     d.querySelector("[data-d]").onclick = () => download(`fullbackups/${encodeURIComponent(b.file)}/link`);
     d.querySelector("[data-r]").onclick = async () => {
+      if (b.complete) {
+        const pass = prompt("Restore EVERYTHING from this complete backup (players, settings, passwords, keys)? A normal backup of the current state is made first, and the Realm restarts (about a minute).\n\nType the backup password:");
+        if (!pass) return;
+        try { await call(`fullbackups/${encodeURIComponent(b.file)}/restore`, "POST", { pass }); alert("Restored. The Realm restarts now. If the admin password was different in the backup, sign in with that one."); store.del("vfa_pw"); S.pw = ""; return showLogin("The Realm is restarting from the complete backup. Sign in again in a minute."); } catch (e) { return fail(e); }
+      }
       if (prompt("Restore this server backup? Every player's save is replaced by the one in the backup (a backup of the current state is made first), and everyone is disconnected for a minute. Type RESTORE to go on.") !== "RESTORE") return;
       try { const x = await call(`fullbackups/${encodeURIComponent(b.file)}/restore`, "POST"); toast(`Restored ${x.players} player(s)`); if (x.passwordChanged) { alert("The admin password is now the one from the backup. Sign in with it."); store.del("vfa_pw"); S.pw = ""; return showLogin("Sign in with the password from the backup."); } fullBackups(); } catch (e) { fail(e); }
     };
@@ -599,6 +729,50 @@ async function fullBackups() {
     } catch (e) { fail(e); }
   });
   $("#ghlist") && ($("#ghlist").onclick = () => push(ghBackups));
+  const cpass = () => { const a = $("#cpw").value, b2 = $("#cpw2").value; if (a.length < 8) { toast("Backup password: at least 8 characters"); return null; } if (a !== b2) { toast("The passwords are not the same"); return null; } return a; };
+  $("#cdl").onclick = async () => {
+    const pass = cpass(); if (!pass) return;
+    toast("Making the complete backup…");
+    try {
+      const x = await call("fullbackups/complete", "POST", { pass });
+      const a = document.createElement("a"); a.href = S.base + x.url; a.target = "_blank"; a.rel = "noopener"; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 500);
+      toast("Downloading — keep the file and its password safe"); setTimeout(fullBackups, 1500);
+    } catch (e) { fail(e); }
+  };
+  $("#cmove").onclick = async () => {
+    const pass = cpass(); if (!pass) return;
+    toast("Making the complete backup…");
+    try {
+      const x = await call("fullbackups/complete", "POST", { pass });
+      const cmd = `curl -fsSL 'https://raw.githubusercontent.com/polemarxos/Vigilfall/main/server/setup.sh?t=${Date.now()}' | sudo VF_NONINTERACTIVE=1 VF_RESTORE_URL=${shq(S.base + x.url)} VF_RESTORE_PASS=${shq(pass)} bash`;
+      // also take the Realm's name out of a shared DuckDNS updater (e.g. domains=wsgame,vigilfall), so only the new server updates it
+      const host = S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, ""), sub = /\.duckdns\.org$/.test(host) ? host.replace(/\.duckdns\.org$/, "") : "";
+      const off = "sudo systemctl disable --now vigilfall-realm && sudo rm -f /etc/cron.d/vigilfall-duckdns" + (sub ? ` && (sudo sed -i -e 's/,${sub}&/\\&/' -e 's/=${sub},/=/' -e 's/,${sub},/,/' /etc/cron.d/duckdns 2>/dev/null; true)` : "") + " && echo 'Old Realm switched off'";
+      $("#cmoveout").innerHTML = `<ol class="muted" style="padding-left:18px">
+        <li>Make the new server (Ubuntu 22.04 or 24.04) and open ports 80 and 443 on it.</li>
+        <li>Run this <b>one line on the new server</b> (it works once, for 2 hours). It installs everything and brings over all players, settings, passwords and keys, and the same address:
+          <textarea id="cmvcmd" readonly rows="6" style="width:100%;height:auto;min-height:0;font:12px monospace;margin-top:6px">${esc(cmd)}</textarea>
+          <div class="row"><button class="b s" id="cmvcopy">Copy</button>${window.VFAApp?.exec ? '<button class="b s" id="cmvrun">Run it from the Console…</button>' : ""}</div></li>
+        <li>When it says "Everything from the old server is here", switch off the Realm on this <b>old</b> server, so the address moves to the new one within 5 minutes (the other game on this server is not touched):
+          <textarea readonly rows="4" style="width:100%;height:auto;min-height:0;font:12px monospace;margin-top:6px">${esc(off)}</textarea>
+          <div class="row"><button class="b s" id="cmvcopy2">Copy</button>${window.VFAApp?.exec ? '<button class="b s d" id="cmvoff">Switch off the old Realm now…</button>' : ""}</div></li>
+        <li>This app keeps working with the same address and admin password.</li></ol>`;
+      const copy = (t) => (navigator.clipboard?.writeText(t).then(() => toast("Copied"), () => toast("Select and copy the text")) ?? toast("Select and copy the text"));
+      $("#cmvcopy").onclick = () => copy(cmd);
+      $("#cmvcopy2").onclick = () => copy(off);
+      $("#cmvrun") && ($("#cmvrun").onclick = () => {
+        const h = prompt("Address (IP) of the NEW server:", ""); if (!h) return;
+        const u = prompt("User name on the new server:", conUser()) || "ubuntu";
+        store.set("vfa_sshhost", h.trim()); store.set("vfa_sshuser", u.trim());
+        go("con"); setTimeout(() => conExec(cmd), 300);
+      });
+      $("#cmvoff") && ($("#cmvoff").onclick = () => {
+        const h = prompt("Address (IP) of the OLD server (this one):", S.base.replace(/^https?:\/\//, "").replace(/[:/].*$/, "")); if (!h) return;
+        store.set("vfa_sshhost", h.trim());
+        go("con"); setTimeout(() => conExec(off, "Switch off the Realm on " + h + "? Only do this after the new server is ready."), 300);
+      });
+    } catch (e) { fail(e); }
+  };
   $("#fbnow").onclick = async () => { toast("Backing up…"); try { await call("fullbackups", "POST"); toast("Server backed up"); fullBackups(); } catch (e) { fail(e); } };
   $("#fbsave").onclick = async () => { try { await call("config", "POST", { autoBackupHours: +$("#fbh").value, autoBackupKeep: +$("#fbk").value }); toast("Saved"); fullBackups(); } catch (e) { fail(e); } };
   $("#fbup").onclick = () => $("#fbfile").click();
@@ -609,7 +783,7 @@ async function fullBackups() {
       const res = await fetch(S.base + "/api/fullbackups/upload", { method: "POST", headers: { Authorization: "Bearer " + S.pw, "Content-Type": "application/gzip" }, body: f });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw Object.assign(new Error(j.error || "HTTP " + res.status), { code: res.status });
-      toast("Uploaded — press Restore on it to use it"); fullBackups();
+      toast(j.complete ? "Uploaded a complete backup — press Restore on it and type its password" : "Uploaded — press Restore on it to use it"); fullBackups();
     } catch (e) { fail(e); }
   };
 }
