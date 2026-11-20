@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.25.2</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.26.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,9 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.25.2";
+  X.VERSION = "1.26.0";
   X.CHANGELOG = {
+    "1.26.0": ["Realm events: the Realm can run double XP or double Soul Shards for a while. The main menu shows when an event is on and how long it lasts."],
     "1.25.2": ["Email never arrives, or you lost that address? Your recovery code gets you in (and still resets a forgotten password). Add a working email later from Account."],
     "1.25.1": ["Email fixes: clearer messages for wrong or expired codes, a Back button when changing your email, and codes pasted as 123-456 work."],
     "1.25.0": [
@@ -49563,6 +49564,13 @@ X.EL.quests = {
         serverize(ap, g);
         ready = !0;
         hsend({ o: "ready", ok: !0, ver: X.VERSION });
+        // towns and camps for the admin app's live map
+        try {
+          const list = [];
+          for (const t of X.SETTLE || []) t?.pos && list.push({ n: t.name, x: Math.round(t.pos[0]), z: Math.round(t.pos[1]), k: t.kind || "" });
+          for (const id in X.TOWNS || {}) { const t = X.TOWNS[id]; t?.pos && !list.some((q) => q.n === t.name) && list.push({ n: t.name, x: t.pos[0], z: t.pos[1], k: "port" }); }
+          hsend({ o: "places", list });
+        } catch (e) {}
         console.log("[realm] world running");
       } catch (e) {
         console.error("[realm] boot failed", e);
@@ -49656,6 +49664,7 @@ X.EL.quests = {
    1.24.0 — online only: the game can't be played without a live connection to the Vigilfall server (a screen covers
    the game and pauses it until the connection is back). Recovery codes: a forgotten password can be reset without
    the admin. The server refuses saves with impossible jumps (anti-cheat) and the game loads the last good save.
+   1.26.0 — game events from the Realm admin (double XP / Soul Shards with a start and end time).
    1.25.2 — the recovery code also gets a player past the email check when the email never arrives.
    1.25.1 — email fixes: clearer code messages, Back from changing a confirmed email, codes pasted as 123-456.
    1.25.0 — email (when the Realm admin has set it up): new accounts confirm their email with a 6-digit code before
@@ -49763,6 +49772,7 @@ X.EL.quests = {
         X.acct.online = !0;
         // an answer that left before the email was confirmed here must not undo it
         "rc" in r && setS({ ...getS(), rc: !!r.rc, ...((X.acct._cfAt || 0) > t0 ? {} : mailOf(r)) });
+        if (Array.isArray(r.events)) setEvents(r.events, r.nextEvent);
         const first = !verified;
         verified = !0;
         if (first) {
@@ -49793,6 +49803,41 @@ X.EL.quests = {
     };
     addEventListener("offline", () => getS() && verified && ((fails = 2), (lostAt ||= Date.now()), showGate("lost")));
     addEventListener("online", () => beat(!0));
+
+    // ---------------- game events from the Realm admin (double XP / Soul Shards) ----------------
+    X.EVENTS = [];
+    X.NEXT_EVENT = null;
+    const seenEv = new Set(JSON.parse(sessionStorage.getItem("vf_evseen") || "[]"));
+    const evMult = (kind) => X.EVENTS.filter((e) => e.kind === kind && e.end > Date.now()).reduce((m, e) => Math.max(m, e.mult), 1);
+    const left = (t) => { const s = Math.max(0, (t - Date.now()) / 1000), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60); return d ? d + " d " + h + " h" : h ? h + " h " + m + " min" : m + " min"; };
+    X.eventLine = () => {
+      const now = Date.now(), act = X.EVENTS.filter((e) => e.end > now);
+      if (act.length) return act.map((e) => `🔥 ${esc(T(e.title))} — ${T("ends in")} ${left(e.end)}`).join("<br>");
+      const n = X.NEXT_EVENT;
+      return n && n.start > now ? `⏳ ${esc(T(n.title))} — ${T("starts in")} ${left(n.start)}` : "";
+    };
+    function setEvents(list, next) {
+      X.EVENTS = list;
+      X.NEXT_EVENT = next || null;
+      for (const e of list) {
+        if (seenEv.has(e.id)) continue;
+        seenEv.add(e.id);
+        sessionStorage.setItem("vf_evseen", JSON.stringify([...seenEv]));
+        const g = app()?.game, txt = `${T("Until")} ${new Date(e.end).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}`;
+        if (g?.running) g.ui.banner("🔥 " + T(e.title).toUpperCase(), txt, "#ffb040");
+        else app()?.ui?.toastMenu?.("🔥 " + T(e.title) + " — " + txt);
+      }
+      const el = document.querySelector("#menu .evline");
+      el && (el.innerHTML = X.eventLine());
+    }
+    {
+      const GP = SC.prototype, gx0 = GP.gainXp, pk0 = GP.pickup;
+      GP.gainXp = function (a) { return gx0.call(this, a * evMult("xp")); };
+      GP.pickup = function (A) {
+        if (A && A.kind === "shards" && !A.taken && !A._ev && A.t >= 0.5) { A._ev = 1; A.n = Math.round(A.n * evMult("shards")); }
+        return pk0.call(this, A);
+      };
+    }
 
     let syncing = null, lastSync = 0;
     X.acct = {
@@ -50136,6 +50181,8 @@ X.EL.quests = {
         if (nb)
           nb.outerHTML = `<div class="namebox acctbox" style="display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap"><span>${T("Signed in as")} <b>${esc(s.name)}</b></span><span style="display:flex;gap:6px"><button data-a="account" class="ghost" style="flex:0 0 auto;padding:6px 12px">${s.rc && (!s.mail || s.emailOk) ? "" : "⚠ "}${T("Account")}</button><button data-a="signout" class="ghost" style="flex:0 0 auto;padding:6px 12px">${T("Sign out")}</button></span></div>`;
         col?.querySelector("[data-a=saves]")?.remove();
+        const nb2 = col?.querySelector(".acctbox");
+        nb2 && nb2.insertAdjacentHTML("afterend", `<div class="evline small" style="text-align:center;color:#ffc070;min-height:0">${X.eventLine()}</div>`);
         const so = col?.querySelector("[data-a=signout]");
         so && (so.onclick = (e) => { e.stopPropagation(); this.click?.(); if (confirm(T("Sign out? Your progress is saved to your account first."))) X.acct.signOut(); });
         const ac = col?.querySelector("[data-a=account]");
@@ -50958,6 +51005,7 @@ Object.assign(X.EL.ui, {
   "That code has expired. Ask for a new one.": "Ο κωδικός έληξε. Ζήτα νέο.", "Too many wrong codes. Ask for a new one.": "Πάρα πολλοί λάθος κωδικοί. Ζήτα νέο.",
   "Wrong code. Check the newest email and try again.": "Λάθος κωδικός. Κοίτα το πιο πρόσφατο email και δοκίμασε ξανά.",
   "Your password was changed. Sign in again.": "Ο κωδικός σου άλλαξε. Συνδέσου ξανά.",
+  "ends in": "λήγει σε", "starts in": "ξεκινά σε", Until: "Έως", "Double XP": "Διπλή εμπειρία", "Double Soul Shards": "Διπλά Θραύσματα Ψυχής",
   "Email never arrives? Use your recovery code": "Δεν έρχεται το email; Χρησιμοποίησε τον κωδικό ανάκτησης", "Play without email": "Παίξε χωρίς email",
   "You can add a working email later from Account.": "Μπορείς να προσθέσεις σωστό email αργότερα από τον Λογαριασμό.", "Wrong recovery code.": "Λάθος κωδικός ανάκτησης.",
   "Welcome to Vigilfall! Add a working email later from Account.": "Καλώς ήρθες στο Vigilfall! Πρόσθεσε σωστό email αργότερα από τον Λογαριασμό.", "Confirm your email first (main menu).": "Επιβεβαίωσε πρώτα το email σου (κύριο μενού).",
@@ -51178,6 +51226,7 @@ Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑ
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.26.0"] && (X.CHANGELOG["1.26.0"] = ["Εκδηλώσεις του Βασιλείου: το Βασίλειο μπορεί να δίνει διπλή εμπειρία ή διπλά Θραύσματα Ψυχής για λίγο καιρό. Το κύριο μενού δείχνει πότε τρέχει μια εκδήλωση και πόσο κρατά."]);
       X.CHANGELOG && X.CHANGELOG["1.25.2"] && (X.CHANGELOG["1.25.2"] = ["Το email δεν έρχεται ποτέ ή έχασες αυτή τη διεύθυνση; Ο κωδικός ανάκτησης σε βάζει μέσα (και αλλάζει ξεχασμένο κωδικό). Πρόσθεσε σωστό email αργότερα από τον Λογαριασμό."]);
       X.CHANGELOG && X.CHANGELOG["1.25.1"] && (X.CHANGELOG["1.25.1"] = ["Διορθώσεις email: πιο καθαρά μηνύματα για λάθος ή ληγμένους κωδικούς, κουμπί Πίσω όταν αλλάζεις email, και οι κωδικοί που επικολλώνται ως 123-456 δουλεύουν."]);
       X.CHANGELOG && X.CHANGELOG["1.25.0"] && (X.CHANGELOG["1.25.0"] = [

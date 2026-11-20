@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.8.5";
+const SERVER_VERSION = "1.9.0";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -93,6 +93,7 @@ cfg = Object.assign(
     maintenance: false,
     antiCheat: true,
     cheatTolerance: 1,
+    events: [],
     maintenanceMsg: "The Realm is closed for maintenance. Please come back soon.",
     adminPassword: process.env.VF_ADMIN_PASSWORD || rnd(14),
     hostToken: rnd(24),
@@ -109,11 +110,43 @@ if (process.env.VF_PORT) cfg.port = +process.env.VF_PORT;
 
 // ---------------- log ----------------
 const LOG = [];
+// what a log line is about (for the admin log filters) and whether it is worth a phone alert
+const LOG_CATS = [
+  ["cheat", /anti-cheat/],
+  ["email", /email|Brevo/i],
+  ["backup", /backup|GitHub copy|restore/i],
+  ["world", /world|host|restarting/i],
+  ["account", /account created|sign in|password|recovery code|logout/i],
+  ["player", /^(join|leave|kick|ban|unban|gift|announce)\b|kicked|banned|gift /i],
+  ["server", /listening|server program|maintenance|config|update|restart/i],
+];
+const logCat = (t) => (LOG_CATS.find(([, re]) => re.test(t)) || ["other"])[0];
+const isErr = (t) => /fail|error|fatal|crash|refused|could not|denied|died|exit/i.test(t);
+const ALERTS = [];
+let alertSeq = Date.now();
+// phone alerts (the admin app asks for them every 15 minutes)
+const alertOn = (cat, text) => {
+  if (cat === "cheat") return "cheat";
+  if (cat === "email" && isErr(text)) return "email";
+  if (cat === "backup" && isErr(text)) return "backup";
+  if (cat === "world" && /restarting world host|world failed|exited|crash/i.test(text)) return "world";
+  if (/listening on/.test(text)) return "server";
+  if (/server program updated/.test(text)) return "server";
+  if (/account created/.test(text)) return "newplayer";
+  return null;
+};
 const log = (...a) => {
-  const line = new Date().toISOString().slice(0, 19).replace("T", " ") + " " + a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ");
+  const at = Date.now(), text = a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ");
+  const line = new Date(at).toISOString().slice(0, 19).replace("T", " ") + " " + text;
   console.log(line);
-  LOG.push(line);
-  LOG.length > 600 && LOG.splice(0, LOG.length - 600);
+  const cat = logCat(text);
+  LOG.push({ at, cat, err: isErr(text), text, line });
+  LOG.length > 3000 && LOG.splice(0, LOG.length - 3000);
+  const k = alertOn(cat, text);
+  if (k) {
+    ALERTS.push({ id: ++alertSeq, at, kind: k, text: text.slice(0, 300) });
+    ALERTS.length > 300 && ALERTS.splice(0, ALERTS.length - 300);
+  }
 };
 
 // ---------------- player records (one JSON file each) ----------------
@@ -330,6 +363,14 @@ const clients = new Map(); // id (vigilfall peer id) -> client
 const PFX = "vigilfall-v1-";
 const sendJ = (ws, m) => { try { ws.readyState === 1 && ws.send(typeof m === "string" ? m : JSON.stringify(m)); } catch (e) {} };
 const hsend = (f) => H.ws && sendJ(H.ws, f);
+const CHAT = [];
+cfg.mutes = cfg.mutes || {};
+const mutedUntil = (pid) => {
+  const m = cfg.mutes[pid];
+  if (!m) return 0;
+  if (m.until && m.until < Date.now()) { delete cfg.mutes[pid]; saveCfg(); return 0; }
+  return m.until || Infinity;
+};
 function announce(text, from) {
   const s = JSON.stringify({ t: "announce", text: String(text).slice(0, 300), from: from || "Admin" });
   for (const c of clients.values()) c.authed && sendJ(c.ws, s);
@@ -415,6 +456,12 @@ async function onClientMsg(c, m) {
     return;
   }
   if (m.t === "me") (c.lv = m.lv), (c.hero = m.hero), (c.pos = m.p);
+  if (m.t === "chat") {
+    const text = String(m.m || "").slice(0, 200);
+    if (mutedUntil(c.pid)) return sendJ(c.ws, { t: "announce", from: "Realm", text: "You are muted" + (cfg.mutes[c.pid].why ? ": " + cfg.mutes[c.pid].why : "") + ". Your message was not sent." });
+    CHAT.push({ at: Date.now(), pid: c.pid, name: c.name, text });
+    CHAT.length > 500 && CHAT.splice(0, CHAT.length - 500);
+  }
   hsend({ o: "msg", id: c.id, m });
 }
 
@@ -693,7 +740,7 @@ let mailStat = { ok: 0, err: null };
 async function sendMail(to, subject, text) {
   if (!mailOn()) throw new Error("Email is not set up on this server.");
   try { await sendMail0(to, subject, text); mailStat.ok = Date.now(); }
-  catch (e) { mailStat.err = { at: Date.now(), msg: e.message }; throw e; }
+  catch (e) { mailStat.err = { at: Date.now(), msg: e.message }; log("email failed:", e.message); throw e; }
 }
 async function sendMail0(to, subject, text) {
   const html = `<div style="font-family:Georgia,serif;background:#14110d;color:#e8dcc0;padding:24px;border-radius:10px;max-width:520px"><h2 style="color:#e0b860;margin:0 0 12px">${escH(cfg.name || "Vigilfall")}</h2>${text.split("\n").map((l) => `<p style="margin:6px 0">${/^\d{6}$/.test(l.trim()) ? `<b style="font:700 30px monospace;letter-spacing:6px;color:#ffd070">${l.trim()}</b>` : escH(l)}</p>`).join("")}</div>`;
@@ -775,6 +822,10 @@ const okName = (n) => typeof n === "string" && /^[A-Za-z0-9_-]{3,16}$/.test(n);
 const PIDCH = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const newPid = () => { let p; do { p = Array.from(crypto.randomBytes(8), (b) => PIDCH[b % PIDCH.length]).join(""); } while (recs.has(p)); return p; };
 const acctFails = new Map();
+const activeEvents = () => { const now = Date.now(); return (cfg.events || []).filter((e) => e.start <= now && e.end > now).map(({ id, kind, mult, start, end, title }) => ({ id, kind, mult, start, end, title })); };
+const nextEvent = () => { const now = Date.now(); const n = (cfg.events || []).filter((e) => e.start > now).sort((a, b) => a.start - b.start)[0]; return n ? { id: n.id, kind: n.kind, mult: n.mult, start: n.start, end: n.end, title: n.title } : null; };
+// gains during (and just after) an event may be bigger: the anti-cheat limits grow with the event
+const eventBoost = () => { const now = Date.now(); return Math.max(1, ...(cfg.events || []).filter((e) => e.start <= now && e.end > now - 3600e3).map((e) => e.mult)); };
 const mailView = (r) => ({ email: r.email || "", emailOk: !!r.emailOk, needConfirm: needConfirm(r), mail: mailOn() });
 const acctView = (r) => ({ name: r.name, pid: r.pid, rev: r.rev || 0, profile: r.profile || null, savedAt: r.savedAt || 0, gifts: r.gifts || [], rc: !!r.rcHash, ...mailView(r) });
 // recovery code: lets a player set a new password without the admin (shown once, kept only as a hash)
@@ -788,7 +839,7 @@ const MAX_LEVEL = 60;
 const num = (v) => (typeof v === "number" && isFinite(v) ? v : NaN);
 function cheatCheck(r, prof) {
   if (!cfg.antiCheat) return null;
-  const tol = Math.max(1, +cfg.cheatTolerance || 1);
+  const tol = Math.max(1, +cfg.cheatTolerance || 1) * eventBoost();
   const old = r.profile || { shards: 0, marks: 0, heroes: {} };
   const sh = num(prof.shards), mk = num(prof.marks);
   if (isNaN(sh) || isNaN(mk) || sh < 0 || mk < 0) return "broken Soul Shards or Ashen Marks";
@@ -914,7 +965,7 @@ async function acctCall(req, res, url, p, b) {
   if (r.banned) return json(res, 403, { error: "This account is banned" + (r.banReason ? ": " + r.banReason : "."), signedOut: true });
   if (p === "me") return json(res, 200, acctView(r));
   // light "am I online" check the game makes every few seconds
-  if (p === "ping") return json(res, 200, { ok: true, rev: r.rev || 0, rc: !!r.rcHash, ...mailView(r) });
+  if (p === "ping") return json(res, 200, { ok: true, rev: r.rev || 0, rc: !!r.rcHash, ...mailView(r), events: activeEvents(), nextEvent: nextEvent() });
   // set or change the email: a code is sent to the new address
   if (p === "email") {
     const email = String(b.email || "").trim().toLowerCase();
@@ -1078,7 +1129,7 @@ async function api(req, res, url) {
   if (p[0] === "status" && M === "GET") {
     const mem = process.memoryUsage();
     return json(res, 200, {
-      name: cfg.name, motd: cfg.motd, maxPlayers: cfg.maxPlayers, autoUpdate: cfg.autoUpdate, updateMinutes: cfg.updateMinutes, serverVersion: SERVER_VERSION, maintenance: cfg.maintenance, maintenanceMsg: cfg.maintenanceMsg, autoBackupHours: cfg.autoBackupHours, autoBackupKeep: cfg.autoBackupKeep, antiCheat: cfg.antiCheat, cheatTolerance: cfg.cheatTolerance, lastAutoBackup, lastCheck, nextCheck, gameUrl: cfg.gameUrl,
+      name: cfg.name, motd: cfg.motd, maxPlayers: cfg.maxPlayers, autoUpdate: cfg.autoUpdate, updateMinutes: cfg.updateMinutes, serverVersion: SERVER_VERSION, maintenance: cfg.maintenance, maintenanceMsg: cfg.maintenanceMsg, autoBackupHours: cfg.autoBackupHours, autoBackupKeep: cfg.autoBackupKeep, antiCheat: cfg.antiCheat, cheatTolerance: cfg.cheatTolerance, events: activeEvents(), nextEvent: nextEvent(), lastAutoBackup, lastCheck, nextCheck, gameUrl: cfg.gameUrl,
       gameVersion: gameVer, hostVersion: H.ver, hostUp: !!H.child, hostReady: H.ready, hostSince: H.startedAt, restarts: H.restarts,
       world: H.stat, uptime: Math.round(process.uptime()), load: os.loadavg(), cpus: os.cpus().length,
       mem: { total: os.totalmem(), free: os.freemem(), server: mem.rss }, players: recs.size, online: onlineList(),
@@ -1370,6 +1421,59 @@ async function api(req, res, url) {
     return json(res, 200, { version: SERVER_VERSION, latest });
   }
   if (p[0] === "server" && p[1] === "update" && M === "POST") return json(res, 200, await selfUpdate());
+  // live: who is where, the chat, mutes
+  if (p[0] === "live" && M === "GET") {
+    const now = Date.now();
+    for (const pid in cfg.mutes) mutedUntil(pid);
+    return json(res, 200, { online: onlineList(), places: H.places || [], chat: CHAT.slice(-200), mutes: cfg.mutes, now });
+  }
+  if (p[0] === "dm" && M === "POST") {
+    const b = await body(req);
+    const c = clientOfPid(String(b.pid || ""));
+    if (!c) return json(res, 404, { error: "That player is not in the Realm right now." });
+    const text = String(b.text || "").trim().slice(0, 300);
+    if (!text) return json(res, 400, { error: "Write a message." });
+    sendJ(c.ws, { t: "announce", text, from: "Admin → " + (c.name || "you") });
+    CHAT.push({ at: Date.now(), pid: c.pid, name: "Admin → " + c.name, text, admin: true });
+    log("message to", c.name, ":", text);
+    return json(res, 200, { ok: true });
+  }
+  if (p[0] === "mute" && M === "POST") {
+    const b = await body(req);
+    const pid = String(b.pid || "");
+    if (!okPid(pid)) return json(res, 400, { error: "bad id" });
+    if (b.off) { delete cfg.mutes[pid]; saveCfg(); log("unmute", pid); return json(res, 200, { ok: true }); }
+    const mins = Math.max(0, Math.min(60 * 24 * 365, +b.minutes || 0));
+    cfg.mutes[pid] = { until: mins ? Date.now() + mins * 60e3 : 0, why: String(b.why || "").slice(0, 120), name: String(b.name || "").slice(0, 20) };
+    saveCfg();
+    const c = clientOfPid(pid);
+    c && sendJ(c.ws, { t: "announce", from: "Realm", text: "You are muted" + (mins ? " for " + (mins >= 1440 ? Math.round(mins / 1440) + " day(s)" : mins >= 60 ? Math.round(mins / 60) + " hour(s)" : mins + " minutes") : "") + (cfg.mutes[pid].why ? ": " + cfg.mutes[pid].why : "") + "." });
+    log("mute", pid, mins ? mins + " min" : "until unmuted");
+    return json(res, 200, { ok: true });
+  }
+  // game events: double XP / Soul Shards for everyone, from a start to an end time
+  if (p[0] === "events") {
+    if (M === "GET") return json(res, 200, { events: cfg.events, now: Date.now() });
+    if (M === "POST") {
+      const b = await body(req);
+      const kind = b.kind === "shards" ? "shards" : "xp";
+      const mult = Math.max(1.1, Math.min(5, +b.mult || 2));
+      const start = +b.start || Date.now(), end = +b.end;
+      if (!(end > start) || end < Date.now()) return json(res, 400, { error: "The event must end after it starts, and in the future." });
+      const ev = { id: rnd(8), kind, mult, start, end, title: String(b.title || "").trim().slice(0, 60) || (mult === 2 ? "Double " : mult + "× ") + (kind === "xp" ? "XP" : "Soul Shards") };
+      cfg.events = [...cfg.events.filter((e) => e.end > Date.now() - 86400e3), ev];
+      saveCfg();
+      log("event added:", ev.title, new Date(start).toISOString(), "→", new Date(end).toISOString());
+      return json(res, 200, { ok: true, event: ev });
+    }
+    if (M === "DELETE" && p[1]) {
+      const ev = cfg.events.find((e) => e.id === p[1]);
+      cfg.events = cfg.events.filter((e) => e.id !== p[1]);
+      saveCfg();
+      ev && log("event removed:", ev.title);
+      return json(res, 200, { ok: true });
+    }
+  }
   if (p[0] === "announce" && M === "POST") {
     const b = await body(req);
     if (!b.text) return json(res, 400, { error: "empty" });
@@ -1411,7 +1515,16 @@ async function api(req, res, url) {
     return json(res, 200, { ok: true });
   }
   if (p[0] === "update" && M === "POST") return (lastCheck = Date.now()), json(res, 200, await updateAndRestart(true));
-  if (p[0] === "log" && M === "GET") return json(res, 200, { lines: LOG.slice(-300) });
+  if (p[0] === "log" && M === "GET") {
+    const n = Math.max(50, Math.min(3000, +url.searchParams.get("n") || 300));
+    const items = LOG.slice(-n);
+    return json(res, 200, { lines: items.map((x) => x.line), items: items.map(({ at, cat, err, text }) => ({ at, cat, err, text })) });
+  }
+  // phone alerts: everything after the last one the app has seen
+  if (p[0] === "alerts" && M === "GET") {
+    const after = +url.searchParams.get("after") || 0;
+    return json(res, 200, { seq: alertSeq, items: ALERTS.filter((x) => x.id > after).slice(-50), server: SERVER_VERSION, online: [...clients.values()].filter((c) => c.authed).length });
+  }
   return json(res, 404, { error: "unknown call" });
 }
 
@@ -1517,6 +1630,8 @@ function onHost(ws) {
       H.ready = !!f.ok;
       if (H.ready) H.statAt = Date.now();
       H.ver = f.ver || H.ver;
+    } else if (f.o === "places") {
+      H.places = Array.isArray(f.list) ? f.list.slice(0, 200) : [];
     } else if (f.o === "stat") {
       H.stat = f;
       H.statAt = Date.now();

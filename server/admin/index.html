@@ -94,8 +94,8 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.18";
-const APP_LATEST = "1.8";
+const PAGE_VERSION = "1.19";
+const APP_LATEST = "1.9";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
 const older = (a, b) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; };
@@ -175,6 +175,70 @@ const fail = (e) => { if (e.code === 401) return showLogin("The password changed
 
 // ---------------- dashboard ----------------
 let lastStatus = null;
+// ---------------- live: map of who is where, chat, message / mute / kick ----------------
+async function live() {
+  $("#htitle").textContent = "Live";
+  M().innerHTML = `<div class="card"><h2>Map</h2><canvas id="lmap" width="700" height="700" style="width:100%;max-width:520px;aspect-ratio:1;display:block;margin:0 auto;background:#0f0c09;border-radius:10px"></canvas><p class="muted" id="lmapn" style="text-align:center"></p></div>
+    <div class="card"><h2>Online</h2><div class="list" id="lon"><div class="muted">Loading…</div></div></div>
+    <div class="card"><h2>Chat</h2><div class="row" style="gap:8px;margin-bottom:8px"><input id="lq" placeholder="Search the chat" style="flex:1"></div><div class="log" id="lchat" style="max-height:45vh">…</div></div>
+    <div class="card"><h2>Muted</h2><div class="list" id="lmut"></div></div>`;
+  let data = null;
+  const fmtT = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const drawMap = () => {
+    const c = $("#lmap"); if (!c || !data) return;
+    const g = c.getContext("2d"), W = c.width, pts = [...data.places.map((q) => [q.x, q.z]), ...data.online.filter((o) => o.pos).map((o) => o.pos)];
+    const R = Math.max(300, ...pts.map(([x, z]) => Math.hypot(x, z))) * 1.08, sc = W / 2 / R, P = (x, z) => [W / 2 + x * sc, W / 2 + z * sc];
+    g.clearRect(0, 0, W, W);
+    g.strokeStyle = "#3a3226"; g.lineWidth = 2; g.beginPath(); g.arc(W / 2, W / 2, (R / 1.08) * sc, 0, 7); g.stroke();
+    g.font = "18px system-ui"; g.textAlign = "center";
+    for (const q of data.places) { const [x, y] = P(q.x, q.z); g.fillStyle = q.k === "port" ? "#c9a96a" : "#8a7a5a"; g.fillRect(x - 4, y - 4, 8, 8); g.fillStyle = "#a89a80"; g.textAlign = x > W - 90 ? "right" : x < 90 ? "left" : "center"; g.fillText(q.n, x, y - 9); g.textAlign = "center"; }
+    g.font = "bold 20px system-ui";
+    for (const o of data.online.filter((o) => o.pos)) { const [x, y] = P(o.pos[0], o.pos[1]); g.fillStyle = "#7fe07f"; g.beginPath(); g.arc(x, y, 8, 0, 7); g.fill(); g.fillStyle = "#e8ffe8"; g.fillText(o.name || o.pid, x, y + 28); }
+    $("#lmapn").textContent = data.places.length ? `${data.online.length} online · squares are towns and camps` : "Towns appear on the map after the world restarts once with game 1.26.";
+  };
+  const draw = () => {
+    if (!data || !$("#lon")) return;
+    drawMap();
+    const L = $("#lon"); L.innerHTML = data.online.length ? "" : '<div class="muted">Nobody is in the Realm.</div>';
+    for (const o of data.online) {
+      const d = document.createElement("div"); d.className = "it";
+      const mu = data.mutes[o.pid];
+      d.innerHTML = `<div class="nm"><b>${esc(o.name || o.pid)}</b><span>Lv ${o.lv || "?"} · ${esc(o.hero || "")} · ${o.since ? "online " + dur((Date.now() - o.since) / 1000) : ""}${mu ? " · 🔇 muted" : ""}</span></div><button class="b s" data-m>✉</button><button class="b s" data-u>${mu ? "🔊" : "🔇"}</button><button class="b s d" data-k>Kick</button>`;
+      d.querySelector(".nm").onclick = () => push(() => player(o.pid));
+      d.querySelector("[data-m]").onclick = async () => { const t = prompt(`Message to ${o.name} (only they see it):`, ""); if (!t) return; try { await call("dm", "POST", { pid: o.pid, text: t }); toast("Sent"); load(); } catch (e) { fail(e); } };
+      d.querySelector("[data-u]").onclick = () => muteDialog(o.pid, o.name, !!mu).then(load);
+      d.querySelector("[data-k]").onclick = async () => { const why = prompt("Reason (shown to the player):", "Removed by an admin."); if (why === null) return; try { await call(`players/${o.pid}/kick`, "POST", { why }); toast("Kicked"); load(); } catch (e) { fail(e); } };
+      L.appendChild(d);
+    }
+    const q = ($("#lq")?.value || "").toLowerCase();
+    const C = $("#lchat"), atBottom = C.scrollTop + C.clientHeight >= C.scrollHeight - 30;
+    const rows = data.chat.filter((m) => !q || (m.name + " " + m.text).toLowerCase().includes(q));
+    C.innerHTML = rows.length ? rows.map((m) => `<div><span class="muted">${fmtT(m.at)}</span> <b style="color:${m.admin ? "var(--gold)" : "#9fd0ff"};cursor:pointer" data-pid="${esc(m.pid)}" data-n="${esc(m.name)}">${esc(m.name)}</b>: ${esc(m.text)}</div>`).join("") : '<span class="muted">No chat yet (the chat is kept until the server restarts).</span>';
+    C.querySelectorAll("[data-pid]").forEach((b) => (b.onclick = () => { const mu = !!data.mutes[b.dataset.pid]; if (confirm(`${b.dataset.n}: ${mu ? "unmute" : "mute"} this player?`)) muteDialog(b.dataset.pid, b.dataset.n, mu).then(load); }));
+    if (atBottom) C.scrollTop = C.scrollHeight;
+    const MU = $("#lmut"), ms = Object.entries(data.mutes);
+    MU.innerHTML = ms.length ? "" : '<div class="muted">Nobody is muted.</div>';
+    for (const [pid, m] of ms) {
+      const d = document.createElement("div"); d.className = "it";
+      d.innerHTML = `<div class="nm"><b>${esc(m.name || pid)}</b><span>${m.until ? "until " + new Date(m.until).toLocaleString() : "until unmuted"}${m.why ? " · " + esc(m.why) : ""}</span></div><button class="b s">Unmute</button>`;
+      d.querySelector("button").onclick = async () => { try { await call("mute", "POST", { pid, off: true }); toast("Unmuted"); load(); } catch (e) { fail(e); } };
+      MU.appendChild(d);
+    }
+  };
+  const load = async () => { try { data = await call("live"); draw(); } catch (e) { fail(e); } };
+  $("#lq").oninput = draw;
+  await load();
+  clearInterval(timer);
+  timer = setInterval(() => { if (!$("#lmap")) return clearInterval(timer); load(); }, 5000);
+}
+async function muteDialog(pid, name, isMuted) {
+  try {
+    if (isMuted) { await call("mute", "POST", { pid, off: true }); return toast("Unmuted"); }
+    const h = prompt(`Mute ${name} — for how many hours? (0 = until you unmute)`, "1"); if (h === null) return;
+    const why = prompt("Reason (shown to the player, optional):", "") ?? "";
+    await call("mute", "POST", { pid, name, minutes: Math.round(+h * 60), why }); toast("Muted");
+  } catch (e) { fail(e); }
+}
 async function dash() {
   M().innerHTML = `<div class="muted">Loading…</div>`;
   const draw = async () => {
@@ -197,9 +261,11 @@ ${s.maintenance ? `<div class="card warn"><b>Maintenance mode is ON</b><p class=
         <div class="stat"><div class="v">${s.players}</div><div class="k">characters saved</div></div>
         <div class="stat"><div class="v" style="font-size:16px">${esc(s.hostVersion || s.gameVersion || "?")}</div><div class="k">game version${s.restarts ? " · " + s.restarts + " restart(s)" : ""}</div></div>
       </div></div>
-      <div class="card"><h2>Online now</h2><div class="list" id="onl">${s.online.length ? "" : '<div class="muted">Nobody is online.</div>'}</div></div>`;
+      ${(s.events || []).length ? `<div class="card" style="border-color:#ffb040"><b>🔥 ${s.events.map((e) => esc(e.title) + " — ends in " + dur((e.end - Date.now()) / 1000)).join("<br>🔥 ")}</b></div>` : s.nextEvent ? `<div class="card"><span class="muted">⏳ Next event: <b>${esc(s.nextEvent.title)}</b> in ${dur((s.nextEvent.start - Date.now()) / 1000)}</span></div>` : ""}
+      <div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Online now</h2><button class="b s" id="golive">🗺 Live map & chat</button></div><div class="list" id="onl" style="margin-top:8px">${s.online.length ? "" : '<div class="muted">Nobody is online.</div>'}</div></div>`;
     $("#updgo") && ($("#updgo").onclick = startAppUpdate);
     if (SELF && needsApp() && !updAuto) { updAuto = true; startAppUpdate(); }
+    $("#golive") && ($("#golive").onclick = () => push(live));
     const L = $("#onl");
     for (const o of s.online) {
       const d = document.createElement("div"); d.className = "it tap";
@@ -345,7 +411,8 @@ async function giftDialog(pid, name) {
 let q = "";
 async function players() {
   $("#htitle").textContent = "Players";
-  M().innerHTML = `<div class="card"><input id="q" placeholder="Search by name or friend code" value="${esc(q)}"></div><div class="card list" id="pl"><div class="muted">Loading…</div></div>`;
+  M().innerHTML = `<div class="card"><div class="row" style="gap:8px"><input id="q" placeholder="Search by name, friend code or email" value="${esc(q)}" style="flex:1"><button class="b s" id="plive">🗺 Live</button></div></div><div class="card list" id="pl"><div class="muted">Loading…</div></div>`;
+  $("#plive").onclick = () => push(live);
   let t = null;
   const load = async () => {
     try {
@@ -479,11 +546,47 @@ async function backups(pid) {
 function msg() {
   $("#htitle").textContent = "Message";
   const s = lastStatus || {};
-  M().innerHTML = `<div class="card"><h2>Announcement</h2><p class="muted">Shown as a banner and in chat to everyone in the Realm right now.</p><textarea id="ann" style="min-height:90px" maxlength="300" placeholder="Double XP weekend starts now!"></textarea><div class="row" style="margin-top:8px"><button class="b p" id="send">Send to everyone</button></div></div>
+  M().innerHTML = `<div class="card" style="border-color:#ffb040"><h2>Events</h2>
+      <p class="muted">Double XP or double Soul Shards (from monsters) for everyone, from a start to an end time. Players see it in the main menu and get a banner when it starts. The anti-cheat allows the bigger gains.</p>
+      <div class="list" id="evl"><div class="muted">Loading…</div></div>
+      <div class="row" style="gap:10px;margin-top:10px"><div style="flex:1"><label style="margin-top:0">What</label><select id="evk"><option value="xp">Experience (XP)</option><option value="shards">Soul Shards</option></select></div>
+        <div style="flex:1"><label style="margin-top:0">How much</label><select id="evm"><option value="1.5">1.5×</option><option value="2" selected>2× (double)</option><option value="3">3× (triple)</option></select></div></div>
+      <label>Starts</label><div class="row" style="gap:8px"><select id="evs" style="flex:1"><option value="now">Now</option><option value="at">At a date and time…</option></select><input id="evsat" type="datetime-local" class="hide" style="flex:1"></div>
+      <label>Lasts</label><div class="row" style="gap:8px"><select id="evd" style="flex:1"><option value="2">2 hours</option><option value="6">6 hours</option><option value="24">1 day</option><option value="48" selected>2 days (weekend)</option><option value="72">3 days</option><option value="168">1 week</option></select></div>
+      <label>Name (optional)</label><input id="evt" maxlength="60" placeholder="e.g. Double XP weekend">
+      <label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="evann" type="checkbox" style="width:auto" checked> Also send an announcement to everyone in the Realm now</label>
+      <div class="row" style="margin-top:8px"><button class="b p" id="evadd">Add event</button></div></div>
+    <div class="card"><h2>Announcement</h2><p class="muted">Shown as a banner and in chat to everyone in the Realm right now.</p><textarea id="ann" style="min-height:90px" maxlength="300" placeholder="Double XP weekend starts now!"></textarea><div class="row" style="margin-top:8px"><button class="b p" id="send">Send to everyone</button></div></div>
     <div class="card"><h2>Message of the day</h2><p class="muted">Shown to each player when they enter the Realm.</p><input id="motd" maxlength="200" value="${esc(s.motd || "")}"><div class="row" style="margin-top:8px"><button class="b" id="smotd">Save</button></div></div>
     <div class="card ${s.maintenance ? "warn" : ""}"><h2>Maintenance</h2><p class="muted">While it is on, nobody can enter the Realm and everyone inside is sent to their own world with this message.</p><input id="mmsg" maxlength="200" value="${esc(s.maintenanceMsg || "")}"><div class="row" style="margin-top:8px"><button class="b ${s.maintenance ? "p" : "d"}" id="mtog">${s.maintenance ? "Open the Realm again" : "Close for maintenance"}</button></div></div>
     <div class="card"><h2>Gift to everyone</h2><p class="muted">Soul Shards and Ashen Marks for every player: added at once while they play, or the next time they enter the Realm. To gift one player, open them under Players.</p><button class="b" id="giftall">Send a gift to all players</button></div>
     <div class="card"><h2>Scheduled restart</h2><p class="muted">Warns everyone, then restarts the world. Players reconnect by themselves.</p><div class="row"><button class="b" data-r="60">In 1 minute</button><button class="b" data-r="300">In 5 minutes</button><button class="b d" data-r="0">Now</button></div></div>`;
+  const evLoad = async () => {
+    try {
+      const r = await call("events"), L = $("#evl"); if (!L) return;
+      const ev = (r.events || []).filter((e) => e.end > Date.now()).sort((a, b) => a.start - b.start);
+      L.innerHTML = ev.length ? "" : '<div class="muted">No events planned.</div>';
+      for (const e of ev) {
+        const on = e.start <= Date.now(), d = document.createElement("div"); d.className = "it";
+        d.innerHTML = `<div class="nm"><b>${on ? "🔥 " : "⏳ "}${esc(e.title)}</b><span>${e.kind === "xp" ? "XP" : "Soul Shards"} ×${e.mult} · ${on ? "ends in " + dur((e.end - Date.now()) / 1000) : "starts " + new Date(e.start).toLocaleString()} · ends ${new Date(e.end).toLocaleString()}</span></div><button class="b s d">✕</button>`;
+        d.querySelector("button").onclick = async () => { if (!confirm(`${on ? "Stop" : "Cancel"} "${e.title}"?`)) return; try { await call("events/" + e.id, "DELETE"); toast("Removed"); evLoad(); } catch (x) { fail(x); } };
+        L.appendChild(d);
+      }
+    } catch (e) { $("#evl") && ($("#evl").innerHTML = `<div class="muted">${/404|unknown|not found/i.test(e.message) ? "Update the server program first (Server → Update server program)." : esc(e.message)}</div>`); }
+  };
+  $("#evs").onchange = () => $("#evsat").classList.toggle("hide", $("#evs").value !== "at");
+  $("#evadd").onclick = async () => {
+    const start = $("#evs").value === "at" ? new Date($("#evsat").value).getTime() : Date.now();
+    if (!start || isNaN(start)) return toast("Choose the start date and time");
+    const end = start + +$("#evd").value * 3600e3, kind = $("#evk").value, mult = +$("#evm").value;
+    const title = $("#evt").value.trim() || (mult === 2 ? "Double " : mult === 3 ? "Triple " : mult + "× ") + (kind === "xp" ? "XP" : "Soul Shards");
+    try {
+      await call("events", "POST", { kind, mult, start, end, title });
+      if ($("#evann").checked) await call("announce", "POST", { text: start <= Date.now() + 60e3 ? `🔥 ${title} has started! It lasts until ${new Date(end).toLocaleString([], { weekday: "long", hour: "2-digit", minute: "2-digit" })}.` : `⏳ ${title} starts ${new Date(start).toLocaleString([], { weekday: "long", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}!` }).catch(() => {});
+      toast("Event added"); $("#evt").value = ""; evLoad();
+    } catch (e) { fail(e); }
+  };
+  evLoad();
   $("#send").onclick = async () => { const t = $("#ann").value.trim(); if (!t) return; try { const r = await call("announce", "POST", { text: t }); toast(`Sent to ${r.sent} player(s)`); $("#ann").value = ""; } catch (e) { fail(e); } };
   $("#mtog").onclick = async () => { const on = !s.maintenance; if (on && !confirm("Close the Realm? Everyone inside is sent to their own world.")) return; try { await call("config", "POST", { maintenance: on, maintenanceMsg: $("#mmsg").value }); lastStatus = await call("status"); toast(on ? "The Realm is closed" : "The Realm is open"); msg(); } catch (e) { fail(e); } };
   $("#giftall").onclick = () => giftDialog(null, "every player");
@@ -493,6 +596,26 @@ function msg() {
 }
 
 // ---------------- server ----------------
+let logCatSel = "all", logSearch = "";
+const ALERT_KINDS = [["down", "Server stops answering / comes back"], ["cheat", "Anti-cheat refuses a save"], ["email", "An email can't be sent"], ["backup", "A backup or GitHub copy fails"], ["world", "The world crashes or restarts"], ["server", "The server program restarts or updates"], ["newplayer", "A new player creates an account"]];
+function alertsCard() {
+  let a = {};
+  try { a = JSON.parse(VFAApp.getAlerts() || "{}"); } catch (e) {}
+  const kinds = a.kinds || { down: 1, cheat: 1, email: 1, backup: 1, world: 1, server: 0, newplayer: 0 };
+  return `<div class="card"><h2>Phone alerts</h2>
+    <p class="muted">Your phone checks the server about every 15 minutes (also when the app is closed) and shows a notification for what you tick.</p>
+    <label style="display:flex;gap:8px;align-items:center"><input id="alon" type="checkbox" style="width:auto" ${a.on ? "checked" : ""}> <b>Alerts on</b></label>
+    ${ALERT_KINDS.map(([k, n]) => `<label style="display:flex;gap:8px;align-items:center;margin:6px 0 0 4px"><input type="checkbox" data-ak="${k}" style="width:auto" ${kinds[k] ? "checked" : ""}> ${n}</label>`).join("")}
+    <p class="muted" id="alstat">${a.on ? (a.lastCheck ? "Last check " + ago(a.lastCheck) + (a.lastError ? " — ⚠ " + esc(a.lastError) : " ✓") : "Waiting for the first check…") : "Off."}</p>
+    <div class="row"><button class="b p" id="alsave">Save</button><button class="b" id="altest">Send a test alert</button><button class="b" id="alnow">Check now</button></div></div>`;
+}
+function alertsWire() {
+  if (!$("#alsave")) return;
+  const val = () => { const kinds = {}; M().querySelectorAll("[data-ak]").forEach((c) => (kinds[c.dataset.ak] = c.checked ? 1 : 0)); return { on: $("#alon").checked, base: S.base, pw: S.pw, kinds }; };
+  $("#alsave").onclick = () => { const r = VFAApp.setAlerts(JSON.stringify(val())); toast(/^ERR/.test(r) ? r : $("#alon").checked ? "Alerts on" : "Alerts off"); };
+  $("#altest").onclick = () => { VFAApp.setAlerts(JSON.stringify(val())); VFAApp.testAlert(); toast("Test alert sent — check your notifications"); };
+  $("#alnow").onclick = () => { VFAApp.setAlerts(JSON.stringify(val())); VFAApp.checkAlertsNow(); toast("Checking…"); setTimeout(() => tab === "server" && !stack.length && server(), 6000); };
+}
 async function server() {
   $("#htitle").textContent = "Server";
   let s;
@@ -534,7 +657,11 @@ async function server() {
     <div class="card"><h2>Server program</h2><p class="muted" id="sver">Version ${esc(s.serverVersion || "1.0 (old)")} · checking GitHub…</p><div class="row"><button class="b" id="sself" disabled>Update server program</button></div></div>
     <div class="card"><h2>Admin password</h2><input id="spw" type="password" placeholder="new password (8+ characters)"><div class="row" style="margin-top:8px"><button class="b" id="spws">Change password</button></div></div>
     ${appBackupCard()}
-    <div class="card"><h2>Server log</h2><div class="row" style="margin-bottom:8px"><button class="b s" id="slog">Refresh</button></div><div class="log" id="log">…</div></div>
+    ${window.VFAApp?.setAlerts ? alertsCard() : IN_APP ? '<div class="card"><h2>Phone alerts</h2><p class="muted">Update the app to get alerts on your phone (Server → check for app update).</p></div>' : ""}
+    <div class="card"><h2>Server log</h2>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px" id="lcats">${[["all", "All"], ["err", "⚠ Problems"], ["account", "Accounts"], ["player", "Players"], ["cheat", "Anti-cheat"], ["email", "Email"], ["backup", "Backups"], ["world", "World"], ["server", "Server"], ["other", "Other"]].map(([k, n]) => `<button class="b s${k === logCatSel ? " p" : ""}" data-lc="${k}">${n}</button>`).join("")}</div>
+      <div class="row" style="gap:8px;margin-bottom:8px"><input id="lsearch" placeholder="Search the log" style="flex:1" value="${esc(logSearch)}"><button class="b s" id="slog">↻</button><button class="b s" id="sdl" title="Save the log as a file">⬇</button></div>
+      <p class="muted" id="lcount" style="margin:0 0 6px"></p><div class="log" id="log">…</div></div>
     <p class="muted" style="text-align:center">Server up ${dur(s.uptime)} · ${esc(S.base.replace(/^https?:\/\//, ""))}<br>Admin ${IN_APP ? "app " + esc(APP_VER) + " · " : ""}page ${PAGE_VERSION} · updates itself${window.VFAApp?.updateApp ? ' · <a href="#" id="appchk" style="color:var(--gold)">check for app update</a>' : ""}</p>`;
   $("#appchk") && ($("#appchk").onclick = (e) => { e.preventDefault(); toast("Checking…"); VFAApp.updateApp(); });
   const mshow = (m) => {
@@ -560,7 +687,7 @@ async function server() {
   $("#supd").onclick = async () => { toast("Checking…"); try { const r = await call("update", "POST"); toast(r.changed ? `Downloaded ${r.ver} — world restarts in 60 s` : r.ok ? `Already up to date (${r.ver})` : "Update failed: " + r.why); } catch (e) { fail(e); } };
   $("#srst").onclick = async () => { if (!confirm("Restart the world now? Everyone is disconnected for about a minute.")) return; try { await call("restart", "POST", { delay: 0 }); toast("Restarting…"); } catch (e) { fail(e); } };
   appBackupWire();
-  $("#spws").onclick = async () => { const v = $("#spw").value; if (v.length < 8) return toast("At least 8 characters"); try { await call("config", "POST", { newPassword: v }); S.pw = v; store.set("vfa_pw", v); toast("Password changed"); $("#spw").value = ""; } catch (e) { fail(e); } };
+  $("#spws").onclick = async () => { const v = $("#spw").value; if (v.length < 8) return toast("At least 8 characters"); try { await call("config", "POST", { newPassword: v }); S.pw = v; store.set("vfa_pw", v); try { if (window.VFAApp?.setAlerts) { const a = JSON.parse(VFAApp.getAlerts() || "{}"); a.on && VFAApp.setAlerts(JSON.stringify({ on: true, kinds: a.kinds, base: S.base, pw: v })); } } catch (e) {} toast("Password changed"); $("#spw").value = ""; } catch (e) { fail(e); } };
   call("source").then((g) => {
     if (!$("#srcrepo")) return;
     $("#srcrepo").value = g.repo; $("#srctok").placeholder = g.hasToken ? "•••••••• (saved — leave empty to keep)" : "github_pat_… (only needed when private)";
@@ -576,8 +703,26 @@ async function server() {
     $("#sself").disabled = !newer;
   }).catch(() => {}); else $("#sver").textContent = "This server is too old to update itself: run the setup line once in Termux (see the manual).";
   $("#sself").onclick = async () => { if (!confirm("Update the server program now? Everyone is disconnected for about a minute.")) return; try { const r = await call("server/update", "POST"); toast(`Updating ${r.from} → ${r.to}; back in about a minute`); } catch (e) { fail(e); } };
-  const loadLog = async () => { try { const r = await call("log"); const L = $("#log"); if (L) { L.textContent = r.lines.slice().reverse().join("\n"); } } catch (e) { fail(e); } };
+  let logItems = [];
+  const drawLog = () => {
+    const L = $("#log"); if (!L) return;
+    const q = logSearch.toLowerCase();
+    const rows = logItems.filter((x) => (logCatSel === "all" || (logCatSel === "err" ? x.err : x.cat === logCatSel)) && (!q || x.text.toLowerCase().includes(q))).reverse();
+    $("#lcount").textContent = `${rows.length} of ${logItems.length} lines · newest first`;
+    L.innerHTML = rows.map((x) => `<div style="${x.err ? "color:var(--bad)" : ""}"><span class="muted">${new Date(x.at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span> ${esc(x.text)}</div>`).join("") || '<span class="muted">Nothing matches.</span>';
+  };
+  const loadLog = async () => {
+    try {
+      const r = await call("log?n=3000");
+      logItems = r.items || r.lines.map((l) => ({ at: Date.parse(l.slice(0, 19).replace(" ", "T") + "Z"), cat: "other", err: /fail|error/i.test(l), text: l.slice(20) }));
+      drawLog();
+    } catch (e) { fail(e); }
+  };
+  M().querySelectorAll("[data-lc]").forEach((b) => (b.onclick = () => { logCatSel = b.dataset.lc; M().querySelectorAll("[data-lc]").forEach((x) => x.classList.toggle("p", x === b)); drawLog(); }));
+  $("#lsearch").oninput = () => { logSearch = $("#lsearch").value; drawLog(); };
+  $("#sdl").onclick = () => { try { const w = saveText(`vigilfall-log-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.txt`, logItems.map((x) => new Date(x.at).toISOString().slice(0, 19).replace("T", " ") + " " + x.text).join("\n")); toast("Saved to " + w); } catch (e) { fail(e); } };
   $("#slog").onclick = loadLog; loadLog();
+  alertsWire();
 }
 
 // ---------------- app self-update (Android installer) ----------------
@@ -825,7 +970,9 @@ async function fullBackups() {
 }
 
 function start() {
-  try { window.VFAApp?.setServer?.(S.base); } catch (e) {} $("#login").classList.add("hide"); $("#app").classList.remove("hide"); go("dash"); }
+  try { window.VFAApp?.setServer?.(S.base); } catch (e) {}
+  // keep the phone alerts pointed at this server with the current password
+  try { if (window.VFAApp?.setAlerts) { const a = JSON.parse(VFAApp.getAlerts() || "{}"); a.on && VFAApp.setAlerts(JSON.stringify({ on: true, kinds: a.kinds, base: S.base, pw: S.pw })); } } catch (e) {} $("#login").classList.add("hide"); $("#app").classList.remove("hide"); go("dash"); }
 (async () => {
   if (!S.base || !S.pw) return showLogin();
   try { await call("status"); start(); } catch (e) { showLogin(e.code === 401 ? "Sign in again." : e.message === "Failed to fetch" ? "Could not reach " + S.base.replace(/^https?:\/\//, "") : e.message); }
