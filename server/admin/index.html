@@ -94,7 +94,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.15";
+const PAGE_VERSION = "1.16";
 const APP_LATEST = "1.8";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
@@ -222,12 +222,19 @@ async function aesKey(pass, salt) {
   const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: 250000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
-async function appBackupMake(pass) {
+async function appBackupMake(pass, withServer) {
+  let serverPack = null;
+  if (withServer) {
+    const x = await call("fullbackups/complete", "POST", { pass });
+    const r = await fetch(S.base + x.url, { cache: "no-store" });
+    if (!r.ok) throw new Error("Could not fetch the complete server backup (HTTP " + r.status + ").");
+    serverPack = { file: x.file, server: S.base, data: b64(new Uint8Array(await r.arrayBuffer())) };
+  }
   const ls = {};
   for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); /^vfa_/.test(k) && (ls[k] = localStorage.getItem(k)); }
   let native = {};
   try { native = JSON.parse(window.VFAApp?.exportData?.() || "{}"); } catch (e) {}
-  const data = JSON.stringify({ kind: "vigilfall-admin-backup", v: 1, at: Date.now(), app: APP_VER, page: PAGE_VERSION, ls, native });
+  const data = JSON.stringify({ kind: "vigilfall-admin-backup", v: 2, at: Date.now(), app: APP_VER, page: PAGE_VERSION, ls, native, serverPack });
   const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await aesKey(pass, salt), new TextEncoder().encode(data)));
   return JSON.stringify({ vigilfallAdminBackup: 1, salt: b64(salt), iv: b64(iv), data: b64(ct) });
@@ -248,23 +255,36 @@ function saveText(name, text) {
   return "Downloads";
 }
 function appBackupCard() {
-  return `<div class="card"><h2>Back up this app</h2>
-    <p class="muted">One file with everything this app remembers: your servers, the admin password, the SSH key for the Console, the servers it trusts and your settings. Locked with a password. Restore it on a new phone and nothing has to be set up again.</p>
+  const logged = !!(S.base && S.pw);
+  return `<div class="card" style="border-color:var(--gold)"><h2>Back up everything</h2>
+    <p class="muted">One file, locked with a password, with everything needed to start again on a new phone or a new server:</p>
+    <ul class="muted" style="padding-left:18px;margin:4px 0"><li><b>This app:</b> your servers, the admin password, the SSH key for the Console, the servers it trusts, your settings and your notes below.</li>
+    <li><b>The server</b> (when ticked): every player and their backups, all Realm settings, the admin password, the GitHub tokens, the Brevo API key and sender, and the address with its DuckDNS token.</li></ul>
+    <label>Your private notes (kept only in this app and inside this locked file)</label>
+    <textarea id="abnotes" rows="4" style="width:100%;height:auto;min-height:0;font:13px monospace" placeholder="e.g. Brevo login: … / Oracle Cloud login: … / DuckDNS: … / sender: vigilfall.noreply@outlook.com">${esc(store.get("vfa_notes") || "")}</textarea>
+    <p class="muted" style="margin-top:2px">Logins for websites (Brevo, Oracle, DuckDNS, GitHub, the Outlook sender) can't be read by the app, so write them here if you want them in the backup.</p>
+    ${logged ? `<label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="abserver" type="checkbox" style="width:auto" checked> Include the complete server backup</label>` : ""}
     <label>Password for the file (8+ characters)</label><input id="abpw" type="password" autocapitalize="off" autocorrect="off">
-    <div class="row" style="margin-top:8px"><button class="b p" id="abmake">Save app backup</button><button class="b" id="abload">Restore from a file…</button><input id="abfile" type="file" accept=".json,.vfadmin,application/json,*/*" class="hide"></div>
+    <div class="row" style="margin-top:8px"><button class="b p" id="abmake">Save backup file</button><button class="b" id="abload">Restore from a file…</button><input id="abfile" type="file" accept=".json,.vfadmin,application/json,*/*" class="hide"></div>
     <p class="muted" id="abstat">${IN_APP && !window.VFAApp?.exportData ? "⚠ This app version can't include the SSH key yet: update the app first (Server → check for app update)." : ""}</p></div>`;
 }
 function appBackupWire() {
   if (!$("#abmake")) return;
+  $("#abnotes") && ($("#abnotes").oninput = () => store.set("vfa_notes", $("#abnotes").value));
   $("#abmake").onclick = async () => {
     const pw = $("#abpw").value;
     if (pw.length < 8) return toast("Password: at least 8 characters");
     if (prompt("Type the password again:") !== pw) return toast("The passwords are not the same");
+    $("#abnotes") && store.set("vfa_notes", $("#abnotes").value);
+    const withServer = !!$("#abserver")?.checked;
+    $("#abmake").disabled = true;
+    $("#abstat").textContent = withServer ? "Making the complete server backup…" : "Saving…";
     try {
-      const where = saveText(`vigilfall-admin-backup-${new Date().toISOString().slice(0, 10)}.vfadmin`, await appBackupMake(pw));
-      $("#abstat").textContent = "✓ Saved to " + where + ". Keep it somewhere safe (e.g. Google Drive) together with its password.";
-      toast("App backup saved");
-    } catch (e) { fail(e); }
+      const where = saveText(`vigilfall-everything-${new Date().toISOString().slice(0, 10)}.vfadmin`, await appBackupMake(pw, withServer));
+      $("#abstat").textContent = "✓ Saved to " + where + (withServer ? " (app + complete server)" : " (app only)") + ". Keep it somewhere safe (e.g. Google Drive) and remember its password.";
+      toast("Backup saved");
+    } catch (e) { $("#abstat").textContent = ""; fail(e); }
+    $("#abmake").disabled = false;
   };
   $("#abload").onclick = () => $("#abfile").click();
   $("#abfile").onchange = async () => {
@@ -277,7 +297,7 @@ function appBackupWire() {
       for (const [k, v] of Object.entries(o.ls || {})) localStorage.setItem(k, v);
       let r = "";
       if (o.native && Object.keys(o.native).length) r = window.VFAApp?.importData?.(JSON.stringify(o.native)) || (IN_APP ? "ERR: update the app to restore the SSH key" : "");
-      alert("App restored." + (/^ERR/.test(r) ? "\n\n" + r.replace(/^ERR:?\s*/, "") : ""));
+      alert("App restored." + (/^ERR/.test(r) ? "\n\n" + r.replace(/^ERR:?\s*/, "") : "") + (o.serverPack ? `\n\nThis file also holds a complete server backup (from ${o.serverPack.server.replace(/^https?:\/\//, "")}). Your server is untouched. To put it on a server (e.g. a new one): sign in there → Backups → Upload a backup… → choose this same file.` : ""));
       location.reload();
     } catch (e) { fail(e); }
   };
@@ -677,15 +697,15 @@ async function fullBackups() {
   try { r = await call("fullbackups"); } catch (e) { return fail(e); }
   try { g = await call("github"); } catch (e) { g = null; }
   const tag = (k) => ({ auto: "automatic", manual: "manual", uploaded: "uploaded", github: "from GitHub", "before-restore": "before a restore", complete: "🔒 COMPLETE (everything)" })[k] || k;
-  M().innerHTML = `
-    <div class="card" style="border-color:var(--gold)"><h2>Complete backup — everything</h2>
+  M().innerHTML = `${appBackupCard()}
+    <div class="card"><h2>Complete server backup only</h2>
       <p class="muted">Everything on the server in one file: players, their backups, all settings, the admin password, the GitHub and email keys, and the address with its DuckDNS token. It is locked with a password you choose — without the password nobody can open it, not even you.</p>
       <label>Backup password (8+ characters)</label><input id="cpw" type="password" autocapitalize="off" autocorrect="off">
       <label>Password again</label><input id="cpw2" type="password" autocapitalize="off" autocorrect="off">
       <div class="row" style="margin-top:8px"><button class="b p" id="cdl">Make and download</button><button class="b" id="cmove">Move to a new server…</button></div>
       <div id="cmoveout"></div></div>
     <div class="card"><h2>Server backups</h2><p class="muted">A server backup holds every player's save and save backups plus the Realm settings (admin password included). Use it to undo mistakes or to move to a new server: download it, then upload and restore it there.</p>
-      <div class="row"><button class="b p" id="fbnow">Back up now</button><button class="b" id="fbup">Upload a backup…</button><input id="fbfile" type="file" accept=".tgz,.gz,.vfpack,application/gzip,application/octet-stream" class="hide"></div></div>
+      <div class="row"><button class="b p" id="fbnow">Back up now</button><button class="b" id="fbup">Upload a backup…</button><input id="fbfile" type="file" accept=".tgz,.gz,.vfpack,.vfadmin,application/gzip,application/octet-stream,*/*" class="hide"></div></div>
     <div class="card"><h2>Automatic backups</h2>
       <p class="muted">${r.autoBackupHours > 0 ? `<b>Next automatic backup ${r.nextAutoBackup ? "in " + dur((r.nextAutoBackup - Date.now()) / 1000) : "in about " + r.autoBackupHours + " h"}</b>${g?.repo && g?.hasToken && g?.auto ? " — it is also copied to GitHub right after." : "."}` : "<b>Automatic backups are off.</b>"} Change how often here; the GitHub copy follows the same schedule.</p>
       <div class="row" style="gap:10px"><div style="flex:1"><label>Back up every (hours, 0 = off)</label><input id="fbh" type="number" min="0" max="168" value="${r.autoBackupHours}"></div><div style="flex:1"><label>Keep the last</label><input id="fbk" type="number" min="1" max="100" value="${r.autoBackupKeep}"></div></div>
@@ -729,6 +749,7 @@ async function fullBackups() {
     } catch (e) { fail(e); }
   });
   $("#ghlist") && ($("#ghlist").onclick = () => push(ghBackups));
+  appBackupWire();
   const cpass = () => { const a = $("#cpw").value, b2 = $("#cpw2").value; if (a.length < 8) { toast("Backup password: at least 8 characters"); return null; } if (a !== b2) { toast("The passwords are not the same"); return null; } return a; };
   $("#cdl").onclick = async () => {
     const pass = cpass(); if (!pass) return;
@@ -777,12 +798,25 @@ async function fullBackups() {
   $("#fbsave").onclick = async () => { try { await call("config", "POST", { autoBackupHours: +$("#fbh").value, autoBackupKeep: +$("#fbk").value }); toast("Saved"); fullBackups(); } catch (e) { fail(e); } };
   $("#fbup").onclick = () => $("#fbfile").click();
   $("#fbfile").onchange = async () => {
-    const f = $("#fbfile").files[0]; if (!f) return;
+    let f = $("#fbfile").files[0]; if (!f) return;
+    let packPass = "";
+    // a "back up everything" file from this app: take the complete server backup out of it
+    if (/\.vfadmin$/i.test(f.name) || (f.size < 200e6 && (await f.slice(0, 40).text()).includes("vigilfallAdminBackup"))) {
+      packPass = prompt("Password of this backup file:") || ""; if (!packPass) return;
+      try {
+        const o = await appBackupOpen(await f.text(), packPass);
+        if (!o.serverPack) return toast("This backup file has no server backup inside (it was made with the box unticked).");
+        f = new Blob([unb64(o.serverPack.data)]);
+      } catch (e) { return fail(e); }
+    }
     toast(`Uploading ${kb(f.size)}…`);
     try {
       const res = await fetch(S.base + "/api/fullbackups/upload", { method: "POST", headers: { Authorization: "Bearer " + S.pw, "Content-Type": "application/gzip" }, body: f });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw Object.assign(new Error(j.error || "HTTP " + res.status), { code: res.status });
+      if (j.complete && packPass && confirm("Restore EVERYTHING from it now (players, settings, passwords, keys)? A normal backup of the current state is made first and the Realm restarts.")) {
+        try { await call(`fullbackups/${encodeURIComponent(j.file)}/restore`, "POST", { pass: packPass }); alert("Restored. The Realm restarts now. Sign in with the admin password from the backup."); store.del("vfa_pw"); S.pw = ""; return showLogin("The Realm is restarting from the backup. Sign in in a minute."); } catch (e) { return fail(e); }
+      }
       toast(j.complete ? "Uploaded a complete backup — press Restore on it and type its password" : "Uploaded — press Restore on it to use it"); fullBackups();
     } catch (e) { fail(e); }
   };

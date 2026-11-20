@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.8.1";
+const SERVER_VERSION = "1.8.2";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -425,6 +425,17 @@ function sysInfo() {
   const o = {};
   try { o.domain = (fs.readFileSync("/etc/caddy/vigilfall.caddy", "utf8").match(/^([a-z0-9.-]+\.[a-z]{2,})/m) || [])[1]; } catch (e) {}
   try { const t = fs.readFileSync("/etc/cron.d/vigilfall-duckdns", "utf8"); o.duckdnsToken = (t.match(/token=([\w-]+)/) || [])[1]; } catch (e) {}
+  // older setups: the token is only in a shared DuckDNS updater line that also lists this Realm's name (read only, never changed)
+  if (!o.duckdnsToken && /\.duckdns\.org$/.test(o.domain || "")) {
+    const sub = o.domain.replace(/\.duckdns\.org$/, "");
+    try {
+      for (const f of fs.readdirSync("/etc/cron.d")) {
+        let t = ""; try { t = fs.readFileSync(path.join("/etc/cron.d", f), "utf8"); } catch (e) { continue; }
+        const m = t.match(/domains=([\w,-]+)[^\n]*?token=([\w-]+)/);
+        if (m && m[1].split(",").includes(sub)) { o.duckdnsToken = m[2]; break; }
+      }
+    } catch (e) {}
+  }
   return o;
 }
 async function makePack(pass) {
