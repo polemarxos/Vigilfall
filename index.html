@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.25.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.25.1</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,9 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.25.0";
+  X.VERSION = "1.25.1";
   X.CHANGELOG = {
+    "1.25.1": ["Email fixes: clearer messages for wrong or expired codes, a Back button when changing your email, and codes pasted as 123-456 work."],
     "1.25.0": [
       "Email: new accounts confirm their email with a 6-digit code before playing.",
       "Forgot your password? Get a code by email and set a new one (the recovery code still works too).",
@@ -49654,6 +49655,7 @@ X.EL.quests = {
    1.24.0 — online only: the game can't be played without a live connection to the Vigilfall server (a screen covers
    the game and pauses it until the connection is back). Recovery codes: a forgotten password can be reset without
    the admin. The server refuses saves with impossible jumps (anti-cheat) and the game loads the last good save.
+   1.25.1 — email fixes: clearer code messages, Back from changing a confirmed email, codes pasted as 123-456.
    1.25.0 — email (when the Realm admin has set it up): new accounts confirm their email with a 6-digit code before
    playing; a forgotten password can be reset with a code sent by email; existing players add an email from Account. */
 {
@@ -49980,7 +49982,7 @@ X.EL.quests = {
         out.textContent = T("Connecting…");
         kA("#rcgo2").disabled = !0;
         try {
-          const code = kA("#rccode2").value.trim(), byMail = /^\d{6}$/.test(code.replace(/\s/g, ""));
+          const code = kA("#rccode2").value.trim(), byMail = /^[\d\s-]+$/.test(code) && code.replace(/\D/g, "").length === 6;
           const r = await post(byMail ? "mailresetdone" : "recover", { name: kA("#rcname").value.trim(), code, password: pw });
           setS(sessOf(r, byMail ? {} : { rc: !0 }));
           const p = r.profile || Object.assign(td(), { name: r.name, pid: r.pid });
@@ -49996,7 +49998,7 @@ X.EL.quests = {
       setTimeout(() => kA(name ? "#rccode2" : "#rcname")?.focus(), 50);
     };
     // confirm the email with the 6-digit code (new accounts can't play before this)
-    UP.confirmEmail = function (msg = "") {
+    UP.confirmEmail = function (msg = "", ok = !1) {
       const s = getS();
       hideGate();
       this.show("menu");
@@ -50005,11 +50007,11 @@ X.EL.quests = {
         <h2>✉ ${T("Confirm your email")}</h2>
         <p class="small">${T("We sent a 6-digit code to")} <b>${esc(s.email || "")}</b>. ${T("Enter it here. Check your spam folder too.")}</p>
         ${ipt("cfcode", "6-digit code", "text", 'inputmode="numeric" maxlength="7" style="text-align:center;font:700 24px monospace;letter-spacing:6px"')}
-        <p class="small" id="cfmsg" style="color:#ff8a7a;min-height:1.3em">${esc(msg)}</p>
+        <p class="small" id="cfmsg" style="color:${ok ? "#9fe0a0" : "#ff8a7a"};min-height:1.3em">${esc(msg)}</p>
         <button id="cfgo" class="big">${T("Confirm")}</button>
         <div class="row" style="display:flex;gap:8px"><button id="cfagain" class="ghost">${T("Send the code again")}</button><button id="cfchange" class="ghost">${T("Change email")}</button></div>
         <div id="cfnew" style="display:none">${ipt("cfmail", "New email", "email", `maxlength="120" value="${esc(s.email || "")}"`)}<button id="cfsend">${T("Send the code")}</button></div>
-        <button id="cfout" class="ghost">${T("Sign out")}</button>
+        ${s.needConfirm ? `<button id="cfout" class="ghost">${T("Sign out")}</button>` : `<button id="cfback" class="ghost">${T("Back")}</button>`}
       </div>`;
       const out = kA("#cfmsg");
       const say = (t, ok) => ((out.style.color = ok ? "#9fe0a0" : "#ff8a7a"), (out.textContent = t));
@@ -50018,7 +50020,7 @@ X.EL.quests = {
         try {
           await post("email", { token: getS().token, email });
           setS({ ...getS(), email });
-          this.confirmEmail(T("A new code was sent."));
+          this.confirmEmail(T("A new code was sent."), !0);
         } catch (e) { say(e.message); }
       };
       kA("#cfgo").onclick = async () => {
@@ -50037,7 +50039,8 @@ X.EL.quests = {
       kA("#cfagain").onclick = () => (this.click?.(), send(getS().email));
       kA("#cfchange").onclick = () => (this.click?.(), (kA("#cfnew").style.display = "block"), kA("#cfmail").focus());
       kA("#cfsend").onclick = () => (this.click?.(), send(kA("#cfmail").value.trim()));
-      kA("#cfout").onclick = () => { this.click?.(); if (confirm(T("Sign out? Your progress is saved to your account first."))) X.acct.signOut(); };
+      kA("#cfout") && (kA("#cfout").onclick = () => { this.click?.(); if (confirm(T("Sign out? Your progress is saved to your account first."))) X.acct.signOut(); });
+      kA("#cfback") && (kA("#cfback").onclick = () => (this.click?.(), this.accountDialog()));
       setTimeout(() => kA("#cfcode")?.focus(), 50);
     };
     // account settings: email, new recovery code, change password
@@ -50072,8 +50075,8 @@ X.EL.quests = {
           busy(!0);
           try {
             await post("email", { token: getS().token, email });
-            setS({ ...getS(), email, emailOk: !1 });
-            this.confirmEmail();
+            setS({ ...getS(), email });
+            this.confirmEmail(T("A code was sent to") + " " + email + ".", !0);
           } catch (e) { fail(e); }
         });
       kA("#adrc").onclick = async () => {
@@ -50934,7 +50937,10 @@ Object.assign(X.EL.ui, {
   "There is no account with that name.": "Δεν υπάρχει λογαριασμός με αυτό το όνομα.", "Wait a minute before asking for another email.": "Περίμενε ένα λεπτό πριν ζητήσεις άλλο email.",
   "Too many emails today. Try again tomorrow.": "Πάρα πολλά email σήμερα. Δοκίμασε αύριο.", "Too many emails. Wait an hour.": "Πάρα πολλά email. Περίμενε μία ώρα.",
   "This account has no confirmed email. Use your recovery code or ask the Realm admin.": "Αυτός ο λογαριασμός δεν έχει επιβεβαιωμένο email. Χρησιμοποίησε τον κωδικό ανάκτησης ή ρώτα τον διαχειριστή.",
-  "Email is not set up on this server.": "Το email δεν έχει ρυθμιστεί σε αυτόν τον διακομιστή.", "Confirm your email first (main menu).": "Επιβεβαίωσε πρώτα το email σου (κύριο μενού).",
+  "Email is not set up on this server.": "Το email δεν έχει ρυθμιστεί σε αυτόν τον διακομιστή.",
+  "That code has expired. Ask for a new one.": "Ο κωδικός έληξε. Ζήτα νέο.", "Too many wrong codes. Ask for a new one.": "Πάρα πολλοί λάθος κωδικοί. Ζήτα νέο.",
+  "Wrong code. Check the newest email and try again.": "Λάθος κωδικός. Κοίτα το πιο πρόσφατο email και δοκίμασε ξανά.",
+  "Your password was changed. Sign in again.": "Ο κωδικός σου άλλαξε. Συνδέσου ξανά.", "Confirm your email first (main menu).": "Επιβεβαίωσε πρώτα το email σου (κύριο μενού).",
 });
 Object.assign(X.EL.msg, { "SAVE REFUSED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΠΟΡΡΙΦΘΗΚΕ" });
 Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑΞΕ", "A newer save of this account was found. Loading it…": "Βρέθηκε νεότερη αποθήκευση του λογαριασμού. Φορτώνεται…", "SIGNED OUT": "ΑΠΟΣΥΝΔΕΘΗΚΕΣ" });
@@ -51152,6 +51158,7 @@ Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑ
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.25.1"] && (X.CHANGELOG["1.25.1"] = ["Διορθώσεις email: πιο καθαρά μηνύματα για λάθος ή ληγμένους κωδικούς, κουμπί Πίσω όταν αλλάζεις email, και οι κωδικοί που επικολλώνται ως 123-456 δουλεύουν."]);
       X.CHANGELOG && X.CHANGELOG["1.25.0"] && (X.CHANGELOG["1.25.0"] = [
         "Email: οι νέοι λογαριασμοί επιβεβαιώνουν το email τους με 6ψήφιο κωδικό πριν παίξουν.",
         "Ξέχασες τον κωδικό; Πάρε κωδικό με email και βάλε νέο (ο κωδικός ανάκτησης δουλεύει κι αυτός).",

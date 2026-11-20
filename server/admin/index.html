@@ -94,7 +94,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.16";
+const PAGE_VERSION = "1.18";
 const APP_LATEST = "1.8";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
@@ -265,7 +265,7 @@ function appBackupCard() {
     <p class="muted" style="margin-top:2px">Logins for websites (Brevo, Oracle, DuckDNS, GitHub, the Outlook sender) can't be read by the app, so write them here if you want them in the backup.</p>
     ${logged ? `<label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="abserver" type="checkbox" style="width:auto" checked> Include the complete server backup</label>` : ""}
     <label>Password for the file (8+ characters)</label><input id="abpw" type="password" autocapitalize="off" autocorrect="off">
-    <div class="row" style="margin-top:8px"><button class="b p" id="abmake">Save backup file</button><button class="b" id="abload">Restore from a file…</button><input id="abfile" type="file" accept=".json,.vfadmin,application/json,*/*" class="hide"></div>
+    <div class="row" style="margin-top:8px"><button class="b p" id="abmake">Save backup file</button><button class="b" id="abload">Restore from a file…</button><a class="b" style="display:inline-block;text-decoration:none" href="https://polemarxos.github.io/Vigilfall/backup-viewer.html" title="Opens in your browser; the file never leaves your device">View a backup file…</a><input id="abfile" type="file" accept=".json,.vfadmin,application/json,*/*" class="hide"></div>
     <p class="muted" id="abstat">${IN_APP && !window.VFAApp?.exportData ? "⚠ This app version can't include the SSH key yet: update the app first (Server → check for app update)." : ""}</p></div>`;
 }
 function appBackupWire() {
@@ -538,7 +538,9 @@ async function server() {
     <p class="muted" style="text-align:center">Server up ${dur(s.uptime)} · ${esc(S.base.replace(/^https?:\/\//, ""))}<br>Admin ${IN_APP ? "app " + esc(APP_VER) + " · " : ""}page ${PAGE_VERSION} · updates itself${window.VFAApp?.updateApp ? ' · <a href="#" id="appchk" style="color:var(--gold)">check for app update</a>' : ""}</p>`;
   $("#appchk") && ($("#appchk").onclick = (e) => { e.preventDefault(); toast("Checking…"); VFAApp.updateApp(); });
   const mshow = (m) => {
-    $("#mstat").innerHTML = m.on ? `<b style="color:#8fd18f">On</b> · from ${esc(m.fromName || "Vigilfall")} &lt;${esc(m.from)}&gt;` : `<b>Off</b>${m.keySet ? " · key saved, sender missing" : " · players sign up without email"}`;
+    $("#mstat").innerHTML = (m.on ? `<b style="color:#8fd18f">On</b> · from ${esc(m.fromName || "Vigilfall")} &lt;${esc(m.from)}&gt;` : `<b>Off</b>${m.keySet ? " · key saved, sender missing" : " · players sign up without email"}`)
+      + (m.lastOk ? `<br>Last email sent ${ago(m.lastOk)}.` : "")
+      + (m.lastError && (!m.lastOk || m.lastError.at > m.lastOk) ? `<br><b style="color:var(--bad)">⚠ Last email failed ${ago(m.lastError.at)}:</b> ${esc(m.lastError.msg)}${/IP|unauthori[sz]ed|unrecogni[sz]ed/i.test(m.lastError.msg) ? " — add your server's IP in Brevo → Security → Authorised IPs." : ""}` : "");
     $("#mfrom").value = m.from || ""; $("#mname").value = m.fromName || "";
     $("#mkey").placeholder = m.keySet ? "key saved (leave empty to keep it)" : "xkeysib-…";
     $("#moff").classList.toggle("hide", !m.on && !m.keySet);

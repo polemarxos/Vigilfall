@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vigilfall backup viewer</title>
+<style>
+  :root { --bg:#14110d; --card:#1e1a14; --line:#3a3226; --text:#e8dcc0; --muted:#a89a80; --gold:#e0b860; --bad:#ff8a7a; --ok:#8fd18f; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:18px 14px 60px; }
+  h1 { font:600 22px Georgia, serif; color:var(--gold); margin:6px 0 4px; letter-spacing:.04em; }
+  h2 { font:600 15px Georgia, serif; color:var(--gold); text-transform:uppercase; letter-spacing:.08em; margin:0 0 10px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin:14px 0; }
+  .muted { color:var(--muted); font-size:13px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  input[type=password], input[type=text] { width:100%; padding:11px 12px; border-radius:9px; border:1px solid var(--line); background:#0f0d0a; color:var(--text); font-size:15px; }
+  input[type=file] { width:100%; color:var(--muted); }
+  button { font:inherit; border-radius:9px; border:1px solid var(--line); background:#2a241b; color:var(--text); padding:9px 14px; cursor:pointer; }
+  button.p { background:var(--gold); color:#1b1408; border-color:var(--gold); font-weight:600; }
+  button.s { padding:4px 10px; font-size:13px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td { padding:7px 6px; border-top:1px solid var(--line); vertical-align:top; word-break:break-word; }
+  td.k { color:var(--muted); width:38%; }
+  .sec { font-family:ui-monospace, Menlo, Consolas, monospace; }
+  .hidden-v { filter:blur(6px); user-select:none; }
+  pre { white-space:pre-wrap; word-break:break-all; background:#0f0d0a; border:1px solid var(--line); border-radius:9px; padding:10px; font:12px/1.4 ui-monospace, Menlo, Consolas, monospace; max-height:360px; overflow:auto; }
+  .err { color:var(--bad); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  details summary { cursor:pointer; color:var(--gold); margin:8px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>⚜ Vigilfall backup viewer</h1>
+  <p class="muted">Opens your locked Vigilfall backup files so you can read what's inside: <b>.vfadmin</b> ("Back up everything" from Vigilfall Admin) and <b>.vfpack</b> (complete server backup). Everything is opened <b>here on this device</b>; the file and its password are never sent anywhere.</p>
+  <div class="card">
+    <label>Backup file</label><input id="file" type="file" accept=".vfadmin,.vfpack,.json,*/*">
+    <label>Password of the file</label><input id="pw" type="password" autocomplete="off">
+    <div class="row" style="margin-top:12px"><button class="p" id="go">Open</button><span id="msg" class="muted"></span></div>
+  </div>
+  <div id="out"></div>
+</main>
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const unb64 = (t) => Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
+const when = (t) => (t ? new Date(t).toLocaleString() : "—");
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+// ---------------- scrypt (same as the server's crypto.scryptSync) ----------------
+async function pbkdf2(pass, salt, bytes) {
+  const key = await crypto.subtle.importKey("raw", pass, "PBKDF2", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: 1 }, key, bytes * 8));
+}
+function salsa8(B, x) {
+  for (let i = 0; i < 16; i++) x[i] = B[i];
+  const R = (a, b) => (a << b) | (a >>> (32 - b));
+  for (let i = 0; i < 8; i += 2) {
+    x[4] ^= R(x[0] + x[12], 7); x[8] ^= R(x[4] + x[0], 9); x[12] ^= R(x[8] + x[4], 13); x[0] ^= R(x[12] + x[8], 18);
+    x[9] ^= R(x[5] + x[1], 7); x[13] ^= R(x[9] + x[5], 9); x[1] ^= R(x[13] + x[9], 13); x[5] ^= R(x[1] + x[13], 18);
+    x[14] ^= R(x[10] + x[6], 7); x[2] ^= R(x[14] + x[10], 9); x[6] ^= R(x[2] + x[14], 13); x[10] ^= R(x[6] + x[2], 18);
+    x[3] ^= R(x[15] + x[11], 7); x[7] ^= R(x[3] + x[15], 9); x[11] ^= R(x[7] + x[3], 13); x[15] ^= R(x[11] + x[7], 18);
+    x[1] ^= R(x[0] + x[3], 7); x[2] ^= R(x[1] + x[0], 9); x[3] ^= R(x[2] + x[1], 13); x[0] ^= R(x[3] + x[2], 18);
+    x[6] ^= R(x[5] + x[4], 7); x[7] ^= R(x[6] + x[5], 9); x[4] ^= R(x[7] + x[6], 13); x[5] ^= R(x[4] + x[7], 18);
+    x[11] ^= R(x[10] + x[9], 7); x[8] ^= R(x[11] + x[10], 9); x[9] ^= R(x[8] + x[11], 13); x[10] ^= R(x[9] + x[8], 18);
+    x[12] ^= R(x[15] + x[14], 7); x[13] ^= R(x[12] + x[15], 9); x[14] ^= R(x[13] + x[12], 13); x[15] ^= R(x[14] + x[13], 18);
+  }
+  for (let i = 0; i < 16; i++) B[i] = (B[i] + x[i]) | 0;
+}
+function blockMix(B, Y, r, x) {
+  const X = new Uint32Array(16);
+  X.set(B.subarray((2 * r - 1) * 16, 2 * r * 16));
+  for (let i = 0; i < 2 * r; i++) {
+    for (let k = 0; k < 16; k++) X[k] ^= B[i * 16 + k];
+    salsa8(X, x);
+    Y.set(X, ((i & 1) * r + (i >> 1)) * 16);
+  }
+}
+async function scrypt(pass, salt, N, r, p, len) {
+  const B = await pbkdf2(pass, salt, p * 128 * r);
+  const W = 32 * r, x = new Uint32Array(16);
+  for (let q = 0; q < p; q++) {
+    const blk = new Uint32Array(W);
+    for (let i = 0; i < W; i++) { const o = q * 128 * r + i * 4; blk[i] = B[o] | (B[o + 1] << 8) | (B[o + 2] << 16) | (B[o + 3] << 24); }
+    const V = new Uint32Array(W * N), Y = new Uint32Array(W);
+    let X = blk;
+    for (let i = 0; i < N; i++) { V.set(X, i * W); blockMix(X, Y, r, x); X.set(Y); if ((i & 4095) === 0) await new Promise((ok) => setTimeout(ok)); }
+    for (let i = 0; i < N; i++) {
+      const j = X[(2 * r - 1) * 16] & (N - 1);
+      for (let k = 0; k < W; k++) X[k] ^= V[j * W + k];
+      blockMix(X, Y, r, x); X.set(Y);
+      if ((i & 4095) === 0) await new Promise((ok) => setTimeout(ok));
+    }
+    for (let i = 0; i < W; i++) { const o = q * 128 * r + i * 4, v = X[i]; B[o] = v & 255; B[o + 1] = (v >>> 8) & 255; B[o + 2] = (v >>> 16) & 255; B[o + 3] = v >>> 24; }
+  }
+  return pbkdf2(pass, B, len);
+}
+
+// ---------------- the two file kinds ----------------
+const MAGIC = "VFPACK1\n";
+async function openPack(bytes, pass) {
+  if (dec.decode(bytes.subarray(0, 8)) !== MAGIC) throw new Error("This is not a complete server backup (.vfpack).");
+  const salt = bytes.subarray(8, 24), iv = bytes.subarray(24, 36), tag = bytes.subarray(36, 52), ct = bytes.subarray(52);
+  const raw = await scrypt(enc.encode(pass), salt, 32768, 8, 1, 32);
+  const key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
+  const both = new Uint8Array(ct.length + 16); both.set(ct); both.set(tag, ct.length);
+  let plain;
+  try { plain = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, both)); }
+  catch (e) { throw new Error("Wrong password (or the file is damaged)."); }
+  const tarBytes = new Uint8Array(await new Response(new Blob([plain]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+  return untar(tarBytes);
+}
+function untar(b) {
+  const files = {};
+  let o = 0, longName = "";
+  const str = (a, z) => { let s = ""; for (let i = a; i < z && b[i]; i++) s += String.fromCharCode(b[i]); return s; };
+  while (o + 512 <= b.length) {
+    const name0 = str(o, o + 100);
+    if (!name0) break;
+    const size = parseInt(str(o + 124, o + 136).trim() || "0", 8), type = String.fromCharCode(b[o + 156] || 48);
+    const prefix = str(o + 345, o + 500);
+    let name = longName || (prefix ? prefix + "/" + name0 : name0);
+    longName = "";
+    const data = b.subarray(o + 512, o + 512 + size);
+    if (type === "L") longName = dec.decode(data).replace(/\0+$/, "");
+    else if (type === "0" || type === "\0") files[name.replace(/^\.\//, "")] = data;
+    o += 512 + Math.ceil(size / 512) * 512;
+  }
+  return files;
+}
+async function openAdmin(text, pass) {
+  let o;
+  try { o = JSON.parse(text); } catch (e) { throw new Error("This is not a Vigilfall backup file."); }
+  if (!o.vigilfallAdminBackup) throw new Error("This is not a Vigilfall Admin backup file.");
+  const base = await crypto.subtle.importKey("raw", enc.encode(pass), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: unb64(o.salt), iterations: 250000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  try { return JSON.parse(dec.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(o.iv) }, key, unb64(o.data)))); }
+  catch (e) { throw new Error("Wrong password (or the file is damaged)."); }
+}
+
+// ---------------- showing it ----------------
+let secretN = 0;
+const secret = (v) => {
+  if (v === undefined || v === null || v === "") return '<span class="muted">—</span>';
+  const id = "s" + ++secretN;
+  return `<span class="sec hidden-v" id="${id}">${esc(v)}</span> <button class="s" data-show="${id}">Show</button> <button class="s" data-copy="${id}">Copy</button>`;
+};
+const plainV = (v) => (v === undefined || v === null || v === "" ? '<span class="muted">—</span>' : `<span class="sec">${esc(v)}</span>`);
+const table = (rows) => `<table>${rows.filter(Boolean).map(([k, v]) => `<tr><td class="k">${esc(k)}</td><td>${v}</td></tr>`).join("")}</table>`;
+const json = (bytes) => { try { return JSON.parse(dec.decode(bytes)); } catch (e) { return null; } };
+
+function showServer(files, title) {
+  const cfg = json(files["config.json"] || new Uint8Array()) || {};
+  const sys = json(files["system.json"] || new Uint8Array()) || {};
+  const mail = json(files["mail.json"] || new Uint8Array()) || {};
+  const gh = json(files["github.json"] || new Uint8Array()) || {};
+  const src = json(files["source.json"] || new Uint8Array()) || {};
+  const sess = json(files["sessions.json"] || new Uint8Array()) || {};
+  const players = Object.keys(files).filter((f) => /^players\/[^/]+\.json$/.test(f)).map((f) => json(files[f])).filter(Boolean);
+  const backups = Object.keys(files).filter((f) => /^backups\//.test(f)).length;
+  const lv = (p) => Math.max(1, ...Object.values(p.profile?.heroes || {}).map((h) => h?.level || 1));
+  let h = `<div class="card"><h2>${esc(title)}</h2>
+    <p class="muted">Made ${when(sys.at)}${sys.server ? " by server program " + esc(sys.server) : ""}.</p>
+    <h2 style="margin-top:14px">Address</h2>${table([["Domain", plainV(sys.domain)], ["DuckDNS token", secret(sys.duckdnsToken)]])}
+    <h2 style="margin-top:14px">Realm admin</h2>${table([["Realm name", plainV(cfg.name)], ["Admin password", secret(cfg.adminPassword)], ["Most players", plainV(cfg.maxPlayers)], ["Port", plainV(cfg.port)], ["Maintenance", plainV(cfg.maintenance ? "on" : "off")], ["Anti-cheat", plainV(cfg.antiCheat === false ? "off" : "on (tolerance " + (cfg.cheatTolerance || 1) + ")")], ["World host token", secret(cfg.hostToken)]])}
+    <h2 style="margin-top:14px">Email (Brevo)</h2>${table([["API key", secret(mail.apiKey)], ["Sender address", plainV(mail.from)], ["Sender name", plainV(mail.fromName)]])}
+    <h2 style="margin-top:14px">GitHub backup copies</h2>${table([["Repository", plainV(gh.repo)], ["Token", secret(gh.token)], ["Folder", plainV(gh.folder)]])}
+    ${src.repo || src.token ? `<h2 style="margin-top:14px">Game source</h2>${table([["Repository", plainV(src.repo)], ["Read token", secret(src.token)]])}` : ""}
+    <h2 style="margin-top:14px">Players (${players.length})</h2>
+    <p class="muted">${Object.keys(sess).length} signed-in device(s) · ${backups} player save backup(s). Passwords are stored only as scrambled hashes, so they can't be shown (the admin app can set a new one).</p>
+    <table><tr><td class="k">Name</td><td class="muted">Level · Soul Shards · Email · Last seen</td></tr>${players.sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0)).map((p) => `<tr><td class="k">${esc(p.name || p.pid)}${p.banned ? " (banned)" : ""}</td><td>Lv ${lv(p)} · ◆ ${(p.profile?.shards || 0).toLocaleString()} · ${p.email ? esc(p.email) + (p.emailOk ? " ✔" : " (not confirmed)") : "no email"} · ${when(p.lastSeen)}</td></tr>`).join("")}</table>
+    <details><summary>All files in this backup (${Object.keys(files).length})</summary><pre>${esc(Object.keys(files).sort().join("\n"))}</pre></details>
+  </div>`;
+  return h;
+}
+function showAdmin(o) {
+  const ls = o.ls || {}, nat = o.native || {};
+  const known = { vfa_srv: "Server", vfa_pw: "Admin password", vfa_sshhost: "Console server (SSH)", vfa_sshuser: "Console user", vfa_notes: "Your notes" };
+  const other = Object.keys(ls).filter((k) => !known[k] && k !== "vfa_hist");
+  let h = `<div class="card"><h2>Vigilfall Admin app</h2>
+    <p class="muted">Made ${when(o.at)} with app ${esc(o.app || "?")} (page ${esc(o.page || "?")}).</p>
+    ${table([["Server", plainV(ls.vfa_srv)], ["Admin password", secret(ls.vfa_pw)], ["Console server (SSH)", plainV(ls.vfa_sshhost)], ["Console user", plainV(ls.vfa_sshuser)], ["Server the app remembers", plainV(nat.server)]])}
+    ${ls.vfa_notes ? `<h2 style="margin-top:14px">Your notes</h2><pre>${esc(ls.vfa_notes)}</pre>` : ""}
+    <h2 style="margin-top:14px">SSH key</h2>${nat.sshKey ? `<p class="muted">The private key for the Console. Keep it secret.</p><div class="row"><button class="s" id="keyshow">Show</button><button class="s" id="keycopy">Copy</button><button class="s" id="keysave">Save as file</button></div><pre id="keypre" class="hidden-v">${esc(nat.sshKey)}</pre>` : '<p class="muted">Not in this backup (the app had no key, or it was older than version 1.8).</p>'}
+    ${Object.keys(nat.hosts || {}).length ? `<details><summary>Trusted servers (${Object.keys(nat.hosts).length})</summary><pre>${esc(Object.entries(nat.hosts).map(([k, v]) => k.replace(/^host_|\.fp$/g, "") + "  " + v.trim()).join("\n"))}</pre></details>` : ""}
+    ${ls.vfa_hist ? `<details><summary>Console history</summary><pre>${esc(JSON.parse(ls.vfa_hist || "[]").join("\n"))}</pre></details>` : ""}
+    ${other.length ? `<details><summary>Other app settings</summary><pre>${esc(other.map((k) => k + " = " + ls[k]).join("\n"))}</pre></details>` : ""}
+  </div>`;
+  return h;
+}
+function wire(sshKey) {
+  document.querySelectorAll("[data-show]").forEach((b) => (b.onclick = () => { const e = document.getElementById(b.dataset.show); e.classList.toggle("hidden-v"); b.textContent = e.classList.contains("hidden-v") ? "Show" : "Hide"; }));
+  document.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = () => navigator.clipboard?.writeText(document.getElementById(b.dataset.copy).textContent).then(() => (b.textContent = "Copied"), () => {})));
+  if ($("#keyshow")) {
+    $("#keyshow").onclick = () => { $("#keypre").classList.toggle("hidden-v"); $("#keyshow").textContent = $("#keypre").classList.contains("hidden-v") ? "Show" : "Hide"; };
+    $("#keycopy").onclick = () => navigator.clipboard?.writeText(sshKey).then(() => ($("#keycopy").textContent = "Copied"), () => {});
+    $("#keysave").onclick = () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([sshKey], { type: "text/plain" })); a.download = "vigilfall-ssh.key"; document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 500); };
+  }
+}
+
+$("#go").onclick = async () => {
+  const f = $("#file").files[0], pass = $("#pw").value, out = $("#out"), msg = $("#msg");
+  out.innerHTML = "";
+  if (!f) return (msg.innerHTML = '<span class="err">Choose a backup file first.</span>');
+  if (!pass) return (msg.innerHTML = '<span class="err">Type the password of the file.</span>');
+  $("#go").disabled = true;
+  msg.textContent = "Opening… (this can take a few seconds)";
+  try {
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    if (dec.decode(bytes.subarray(0, 8)) === MAGIC) {
+      out.innerHTML = showServer(await openPack(bytes, pass), "Complete server backup");
+      wire();
+    } else {
+      const o = await openAdmin(dec.decode(bytes), pass);
+      let h = showAdmin(o);
+      if (o.serverPack) {
+        msg.textContent = "Opening the server part…";
+        try { h += showServer(await openPack(unb64(o.serverPack.data), pass), "Server (" + String(o.serverPack.server || "").replace(/^https?:\/\//, "") + ")"); }
+        catch (e) { h += `<div class="card"><h2>Server</h2><p class="err">${esc(e.message)}</p></div>`; }
+      } else h += '<div class="card"><h2>Server</h2><p class="muted">This file has no server backup inside (it was made with "Include the complete server backup" unticked).</p></div>';
+      out.innerHTML = h;
+      wire(o.native?.sshKey);
+    }
+    msg.innerHTML = '<span style="color:var(--ok)">✓ Opened</span>';
+  } catch (e) { msg.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  $("#go").disabled = false;
+};
+$("#pw").onkeydown = (e) => e.key === "Enter" && $("#go").click();
+</script>
+</body>
+</html>

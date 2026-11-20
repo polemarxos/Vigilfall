@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.8.2";
+const SERVER_VERSION = "1.8.3";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -152,6 +152,16 @@ const readRec = async (pid) => {
   try { return JSON.parse(await fsp.readFile(recFile(pid), "utf8")); } catch (e) { return null; }
 };
 const writing = new Map();
+const recLocks = new Map();
+// run read-change-write of one player's record one after another
+const withLock = (pid, fn) => {
+  const prev = recLocks.get(pid) || Promise.resolve();
+  const run = prev.then(fn, fn);
+  const tail = run.catch(() => {});
+  recLocks.set(pid, tail);
+  tail.then(() => recLocks.get(pid) === tail && recLocks.delete(pid));
+  return run;
+};
 const writeRec = async (r) => {
   // serialise writes per player; write to a temp file first so a crash never leaves half a save
   const prev = writing.get(r.pid) || Promise.resolve();
@@ -344,13 +354,17 @@ async function onClientMsg(c, m) {
     if (cfg.maintenance) return sendJ(c.ws, { t: "denied", why: cfg.maintenanceMsg || "The Realm is closed for maintenance." });
     if (!H.ready || !H.ws) return sendJ(c.ws, { t: "denied", why: "The Realm is starting. Try again in a minute.", retry: true });
     if ([...clients.values()].filter((x) => x.authed).length >= cfg.maxPlayers) return sendJ(c.ws, { t: "full" });
+    const why = await withLock(pid, async () => {
+      const r = await readRec(pid);
+      if (!r) return "This account no longer exists.";
+      if (r.banned) return "You are banned from this Realm" + (r.banReason ? ": " + r.banReason : ".");
+      if (needConfirm(r)) return "Confirm your email first (main menu).";
+      Object.assign(r, { lastSeen: Date.now(), ver: String(m.ver || ""), hero: m.hero || r.hero, ip: c.ip });
+      await writeRec(r);
+      return "";
+    });
+    if (why) return sendJ(c.ws, { t: "denied", why });
     let r = await readRec(pid);
-    if (!r) return sendJ(c.ws, { t: "denied", why: "This account no longer exists." });
-    if (r?.banned) return sendJ(c.ws, { t: "denied", why: "You are banned from this Realm" + (r.banReason ? ": " + r.banReason : ".") });
-    if (needConfirm(r)) return sendJ(c.ws, { t: "denied", why: "Confirm your email first (main menu)." });
-    const now = Date.now();
-    Object.assign(r, { lastSeen: now, ver: String(m.ver || ""), hero: m.hero || r.hero, ip: c.ip });
-    await writeRec(r);
     // one session per character
     const old = clientOfPid(pid);
     old && old !== c && kick(old.id, "You logged in somewhere else.");
@@ -389,12 +403,14 @@ async function onClientMsg(c, m) {
     return;
   }
   if (m.t === "_giftok") {
-    const r = await readRec(c.pid);
-    if (r?.gifts?.length) {
-      r.gifts = r.gifts.filter((g) => g.id !== m.id);
-      await writeRec(r);
-      log("gift received", c.pid, m.id);
-    }
+    await withLock(c.pid, async () => {
+      const r = await readRec(c.pid);
+      if (r?.gifts?.length) {
+        r.gifts = r.gifts.filter((g) => g.id !== m.id);
+        await writeRec(r);
+        log("gift received", c.pid, m.id);
+      }
+    });
     return;
   }
   if (m.t === "me") (c.lv = m.lv), (c.hero = m.hero), (c.pos = m.p);
@@ -672,15 +688,20 @@ const saveMail = () => fs.writeFileSync(MAIL_FILE, JSON.stringify(mail), { mode:
 const okEmail = (e) => typeof e === "string" && e.length <= 120 && /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]{2,}$/.test(e);
 const maskEmail = (e) => { const [u, d] = String(e || "").split("@"); return d ? u.slice(0, 2) + "***@" + d : ""; };
 const escH = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+let mailStat = { ok: 0, err: null };
 async function sendMail(to, subject, text) {
   if (!mailOn()) throw new Error("Email is not set up on this server.");
+  try { await sendMail0(to, subject, text); mailStat.ok = Date.now(); }
+  catch (e) { mailStat.err = { at: Date.now(), msg: e.message }; throw e; }
+}
+async function sendMail0(to, subject, text) {
   const html = `<div style="font-family:Georgia,serif;background:#14110d;color:#e8dcc0;padding:24px;border-radius:10px;max-width:520px"><h2 style="color:#e0b860;margin:0 0 12px">${escH(cfg.name || "Vigilfall")}</h2>${text.split("\n").map((l) => `<p style="margin:6px 0">${/^\d{6}$/.test(l.trim()) ? `<b style="font:700 30px monospace;letter-spacing:6px;color:#ffd070">${l.trim()}</b>` : escH(l)}</p>`).join("")}</div>`;
   const r = await fetch((process.env.VF_MAIL_API || "https://api.brevo.com") + "/v3/smtp/email", {
     method: "POST",
     headers: { "api-key": mail.apiKey, "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ sender: { name: mail.fromName || cfg.name || "Vigilfall", email: mail.from }, to: [{ email: to }], subject, textContent: text, htmlContent: html }),
     signal: AbortSignal.timeout(20000),
-  });
+  }).catch((e) => { throw new Error("Could not reach Brevo (" + (e.name === "TimeoutError" ? "no answer in 20 s" : e.cause?.code || e.message) + ")."); });
   if (!r.ok) {
     const j = await r.json().catch(() => ({}));
     throw new Error("Brevo: " + (j.message || "HTTP " + r.status));
@@ -704,8 +725,16 @@ async function mailCode(r, kind, to, ip) {
   r.mailCode = { kind, hash: hash(r.pid + ":" + code), exp: now + 30 * 60e3, tries: 0, to };
   r.mailSent = [...sent, now];
   mailIp.set(ip, [...ipl, now]);
+  if (mailIp.size > 5000) for (const [k, v] of mailIp) if (!v.some((t) => now - t < 3600e3)) mailIp.delete(k);
   await writeRec(r);
 }
+const codeWhy = (r, kind) => {
+  const m = r.mailCode;
+  if (!m || m.kind !== kind) return "Ask for a new code first.";
+  if (m.exp < Date.now()) return "That code has expired. Ask for a new one.";
+  if (m.tries >= 5) return "Too many wrong codes. Ask for a new one.";
+  return "Wrong code. Check the newest email and try again.";
+};
 const codeOk = (r, kind, code) => {
   const m = r.mailCode;
   if (!m || m.kind !== kind || m.exp < Date.now() || m.tries >= 5) return false;
@@ -785,6 +814,12 @@ function cheatCheck(r, prof) {
 async function acctApi(req, res, url) {
   const p = url.pathname.replace(/^\/api\/acct\/?/, "");
   const b = req.method === "POST" ? await body(req).catch(() => ({})) : {};
+  const tokPid = sessions[String(b.token || url.searchParams.get("token") || "")]?.pid;
+  const namePid = byName.get(String(b.name || "").trim().toLowerCase());
+  const key = tokPid || namePid || (p === "register" ? "new:" + String(b.name || "").trim().toLowerCase() : "");
+  return key ? withLock(key, () => acctCall(req, res, url, p, b)) : acctCall(req, res, url, p, b);
+}
+async function acctCall(req, res, url, p, b) {
   const ip = ipOf(req);
   if (p === "info") return json(res, 200, { mail: mailOn() });
   if (p === "mailreset" || p === "mailresetdone") {
@@ -801,7 +836,7 @@ async function acctApi(req, res, url) {
     }
     const pw = String(b.password || "");
     if (pw.length < 6) return json(res, 400, { error: "Password: at least 6 characters." });
-    if (!codeOk(r, "reset", b.code)) { failed(key); await writeRec(r); return json(res, 401, { error: "Wrong or expired code." }); }
+    if (!codeOk(r, "reset", b.code)) { failed(key); await writeRec(r); return json(res, 401, { error: codeWhy(r, "reset") }); }
     acctFails.delete(key);
     r.pwHash = pwHash(pw);
     delete r.mailCode;
@@ -810,6 +845,7 @@ async function acctApi(req, res, url) {
     saveSessions();
     await writeRec(r);
     log("password reset by email", r.name, ip);
+    { const c = clientOfPid(r.pid); c && kick(c.id, "Your password was changed. Sign in again."); }
     return json(res, 200, { ok: true, token: newSession(pid), ...acctView(r) });
   }
   if (p === "register" || p === "login" || p === "recover") {
@@ -832,7 +868,12 @@ async function acctApi(req, res, url) {
       await writeRec(r);
       log("account created", name, pid, ip);
       let mailError;
-      if (mailOn()) try { await mailCode(r, "confirm", email, ip); } catch (e) { mailError = e.message; log("confirmation email failed", name, e.message); }
+      if (mailOn()) try { await mailCode(r, "confirm", email, ip); } catch (e) {
+        mailError = e.message;
+        log("confirmation email failed", name, e.message);
+        r.needEmail = false; // can't confirm what never arrived: play now, add the email later from Account
+        await writeRec(r);
+      }
       return json(res, 200, { ok: true, token: newSession(pid), recovery, mailError, ...acctView(r) });
     }
     const pid = byName.get(low), r = pid && (await readRec(pid));
@@ -851,6 +892,7 @@ async function acctApi(req, res, url) {
       saveSessions();
       await writeRec(r);
       log("password reset with recovery code", r.name, ip);
+      { const c = clientOfPid(r.pid); c && kick(c.id, "Your password was changed. Sign in again."); }
       return json(res, 200, { ok: true, token: newSession(pid), recovery, ...acctView(r) });
     }
     if (!r || !pwOk(pw, r.pwHash)) {
@@ -885,7 +927,7 @@ async function acctApi(req, res, url) {
     if (!r.mailCode || r.mailCode.kind !== "confirm") return json(res, 400, { error: "Ask for a new code first." });
     const k = "cf|" + r.pid;
     if (tooMany(k)) return json(res, 429, { error: "Too many tries. Wait 10 minutes." });
-    if (!codeOk(r, "confirm", b.code)) { failed(k); await writeRec(r); return json(res, 401, { error: "Wrong or expired code." }); }
+    if (!codeOk(r, "confirm", b.code)) { failed(k); await writeRec(r); return json(res, 401, { error: codeWhy(r, "confirm") }); }
     r.email = r.mailCode.to;
     r.emailOk = true;
     delete r.mailCode;
@@ -1265,11 +1307,12 @@ async function api(req, res, url) {
     return json(res, 200, { url: "/dl/" + dlToken({ data, name: `vigilfall-save-${b.pid}${b.backup ? "-" + String(b.backup).replace(/\.json$/, "") : ""}.json`, type: "application/json" }) });
   }
   if (p[0] === "mail") {
-    const view = () => ({ on: mailOn(), from: mail.from || "", fromName: mail.fromName || "", keySet: !!mail.apiKey });
+    const view = () => ({ on: mailOn(), from: mail.from || "", fromName: mail.fromName || "", keySet: !!mail.apiKey, lastOk: mailStat.ok, lastError: mailStat.err });
     if (M === "GET") return json(res, 200, view());
     if (M === "DELETE") { mail = {}; saveMail(); log("email switched off"); return json(res, 200, view()); }
     if (M === "POST") {
       const b = await body(req);
+      const before = { ...mail };
       if (typeof b.apiKey === "string" && b.apiKey.trim()) mail.apiKey = b.apiKey.trim();
       if (typeof b.from === "string") { const f = b.from.trim().toLowerCase(); if (f && !okEmail(f)) return json(res, 400, { error: "The sender address is not a valid email." }); mail.from = f; }
       if (typeof b.fromName === "string") mail.fromName = b.fromName.trim().slice(0, 60);
@@ -1277,7 +1320,12 @@ async function api(req, res, url) {
       if (b.test) {
         if (!okEmail(String(b.test))) return json(res, 400, { error: "Enter a valid address for the test." });
         try { await sendMail(String(b.test), (cfg.name || "Vigilfall") + ": test email", "This is a test from your Vigilfall Realm server.\nEmail works: players can confirm their accounts and reset their passwords.\nThis email was sent automatically. Please do not reply: replies are not read."); }
-        catch (e) { return json(res, 502, { error: e.message, ...view() }); }
+        catch (e) {
+          // the test failed: keep the settings that were there before, so new players never wait for emails that can't be sent
+          mail = before;
+          saveMail();
+          return json(res, 502, { error: e.message + " — nothing was changed.", ...view() });
+        }
         log("test email sent");
         return json(res, 200, { ok: true, tested: true, ...view() });
       }
@@ -1291,16 +1339,16 @@ async function api(req, res, url) {
     const pids = b.all ? [...recs.keys()] : [String(b.pid || "")].filter(okPid);
     if (!pids.length) return json(res, 400, { error: "No player chosen." });
     let live = 0;
-    for (const pid of pids) {
+    for (const pid of pids) await withLock(pid, async () => {
       const r = await readRec(pid);
-      if (!r) continue;
+      if (!r) return;
       const g = { id: rnd(10), shards, marks, note: String(b.note || "").slice(0, 160), at: Date.now() };
       r.gifts = [...(r.gifts || []), g];
       r.acAllow = { shards: (r.acAllow?.shards || 0) + shards, marks: (r.acAllow?.marks || 0) + marks };
       await writeRec(r);
       const c = clientOfPid(pid);
       if (c) (sendJ(c.ws, { t: "gift", ...g }), live++);
-    }
+    });
     log("gift", b.all ? "to all" : pids[0], shards + " shards", marks + " marks");
     return json(res, 200, { ok: true, players: pids.length, live });
   }
@@ -1362,7 +1410,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "OPTIONS") return (res.writeHead(204, CORS), res.end());
     if (url.pathname === "/health") return json(res, 200, { ok: true, name: cfg.name, online: [...clients.values()].filter((c) => c.authed).length, max: cfg.maxPlayers, ver: H.ver || gameVer, ready: H.ready, maintenance: cfg.maintenance, server: SERVER_VERSION });
     if (url.pathname.startsWith("/api/acct/")) return await acctApi(req, res, url);
-    if (url.pathname.startsWith("/api/")) return await api(req, res, url);
+    if (url.pathname.startsWith("/api/")) {
+      const m = url.pathname.match(/^\/api\/players\/([A-Za-z0-9-]{4,24})(\/|$)/);
+      return m ? await withLock(m[1], () => api(req, res, url)) : await api(req, res, url);
+    }
     if (url.pathname.startsWith("/dl/")) {
       const it = dls.get(url.pathname.slice(4));
       if (!it || it.exp < Date.now()) return json(res, 404, { error: "This download link has expired. Make a new one in the admin app." });
