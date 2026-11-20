@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.8.0";
+const SERVER_VERSION = "1.8.1";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -687,8 +687,8 @@ async function mailCode(r, kind, to, ip) {
   const code = String(crypto.randomInt(0, 1e6)).padStart(6, "0");
   const name = cfg.name || "Vigilfall";
   const text = kind === "reset"
-    ? `Hello ${r.name},\nSomeone asked to reset the password of your Vigilfall account. Your code is:\n${code}\nEnter it in the game with your new password. It works for 30 minutes.\nIf it wasn't you, ignore this email: your password stays the same.`
-    : `Hello ${r.name},\nWelcome to Vigilfall! Your confirmation code is:\n${code}\nEnter it in the game to confirm your email. It works for 30 minutes.`;
+    ? `Hello ${r.name},\nSomeone asked to reset the password of your Vigilfall account. Your code is:\n${code}\nEnter it in the game with your new password. It works for 30 minutes.\nIf it wasn't you, ignore this email: your password stays the same.\nThis email was sent automatically. Please do not reply: replies are not read.`
+    : `Hello ${r.name},\nWelcome to Vigilfall! Your confirmation code is:\n${code}\nEnter it in the game to confirm your email. It works for 30 minutes.\nThis email was sent automatically. Please do not reply: replies are not read.`;
   await sendMail(to, kind === "reset" ? `${name}: password reset code ${code}` : `${name}: confirm your email (${code})`, text);
   r.mailCode = { kind, hash: hash(r.pid + ":" + code), exp: now + 30 * 60e3, tries: 0, to };
   r.mailSent = [...sent, now];
@@ -1265,7 +1265,7 @@ async function api(req, res, url) {
       saveMail();
       if (b.test) {
         if (!okEmail(String(b.test))) return json(res, 400, { error: "Enter a valid address for the test." });
-        try { await sendMail(String(b.test), (cfg.name || "Vigilfall") + ": test email", "This is a test from your Vigilfall Realm server.\nEmail works: players can confirm their accounts and reset their passwords."); }
+        try { await sendMail(String(b.test), (cfg.name || "Vigilfall") + ": test email", "This is a test from your Vigilfall Realm server.\nEmail works: players can confirm their accounts and reset their passwords.\nThis email was sent automatically. Please do not reply: replies are not read."); }
         catch (e) { return json(res, 502, { error: e.message, ...view() }); }
         log("test email sent");
         return json(res, 200, { ok: true, tested: true, ...view() });
