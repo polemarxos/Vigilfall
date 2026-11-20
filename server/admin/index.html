@@ -92,7 +92,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.12";
+const PAGE_VERSION = "1.13";
 const APP_LATEST = "1.7";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
@@ -256,7 +256,7 @@ async function players() {
       L.innerHTML = r.players.length ? "" : '<div class="muted">No players yet.</div>';
       for (const p of r.players) {
         const d = document.createElement("div"); d.className = "it tap";
-        d.innerHTML = `<div class="nm"><b>${esc(p.name || "?")}</b><span>${esc(p.pid)} · Lv ${p.lv} · ${p.heroes} hero(es) · ◆ ${(p.shards || 0).toLocaleString()} · ${p.online ? "online" : ago(p.lastSeen)}</span></div>${p.banned ? '<span class="pill ban">banned</span>' : p.online ? '<span class="pill on">online</span>' : ""}`;
+        d.innerHTML = `<div class="nm"><b>${esc(p.name || "?")}</b><span>${esc(p.pid)} · Lv ${p.lv} · ${p.heroes} hero(es) · ◆ ${(p.shards || 0).toLocaleString()} · ${p.online ? "online" : ago(p.lastSeen)}</span></div>${p.flags ? `<span class="pill ban" title="refused saves">⚠ ${p.flags}</span>` : ""}${p.banned ? '<span class="pill ban">banned</span>' : p.online ? '<span class="pill on">online</span>' : ""}`;
         d.onclick = () => push(() => player(p.pid));
         L.appendChild(d);
       }
@@ -278,6 +278,8 @@ async function player(pid) {
     <div class="card"><div class="row" style="justify-content:space-between"><div><b style="font-size:18px">${esc(r.name)}</b><div class="muted">Friend code ${esc(pid)} · joined ${ago(r.created)} · last seen ${r.online ? "now" : ago(r.lastSeen)}</div><div class="muted">Game ${esc(r.ver || "?")}${r.adminRev ? " · edited " + r.adminRev + "×" : ""}${r.acct ? "" : " · old save (before accounts)"}</div></div>
       <div>${r.banned ? `<span class="pill ban">banned</span>` : r.online ? '<span class="pill on">online</span>' : ""}</div></div>
       ${r.banned && r.banReason ? `<p class="muted">Reason: ${esc(r.banReason)}</p>` : ""}
+      ${r.acct ? `<p class="muted">Recovery code: ${r.rc ? "set" : "not set yet"}</p>` : ""}
+      ${(r.flags || []).length ? `<div style="margin-top:8px"><b style="color:#ff8a7a">⚠ Anti-cheat refused ${r.flags.length} save(s)</b>${r.flags.slice(-5).reverse().map((f) => `<div class="muted">${ago(f.at)} — ${esc(f.why)}</div>`).join("")}<div class="muted">Each refused save is kept in Backups ("refused"). If it was real progress, restore it from there.</div></div>` : ""}
       <div class="row" style="margin-top:10px">
         ${r.online ? '<button class="b s" data-x="kick">Kick</button>' : ""}
         ${r.banned ? '<button class="b s" data-x="unban">Unban</button>' : '<button class="b s d" data-x="ban">Ban</button>'}
@@ -399,6 +401,8 @@ async function server() {
       <label>Check for new versions every (minutes)</label>
       <div class="row"><input id="smin" type="number" min="1" max="1440" value="${s.updateMinutes || 10}" style="flex:1"><button class="b s" data-m="5">5</button><button class="b s" data-m="10">10</button><button class="b s" data-m="60">60</button><button class="b s" data-m="1440">1 day</button></div>
       <p class="muted">${s.autoUpdate ? `Last check ${s.lastCheck ? ago(s.lastCheck) : "not yet"} · next ${s.nextCheck ? "in " + Math.max(1, Math.round((s.nextCheck - Date.now()) / 60000)) + " min" : "—"}` : "Automatic updates are off."}</p>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:12px"><input id="sac" type="checkbox" style="width:auto" ${s.antiCheat !== false ? "checked" : ""}> Anti-cheat: refuse saves with impossible jumps</label>
+      <label>Anti-cheat tolerance (1 = normal, higher = allows bigger jumps)</label><input id="stol" type="number" min="1" max="20" value="${s.cheatTolerance || 1}">
       <div class="row" style="margin-top:10px"><button class="b p" id="ssave">Save</button></div></div>
     <div class="card"><h2>Game version</h2><p class="muted">Server has <b>${esc(s.gameVersion || "?")}</b>, the world runs <b>${esc(s.hostVersion || "?")}</b>.</p>
       <div class="row"><button class="b" id="supd">Check for update now</button><button class="b d" id="srst">Restart world now</button></div></div>
@@ -413,7 +417,7 @@ async function server() {
     <div class="card"><h2>Server log</h2><div class="row" style="margin-bottom:8px"><button class="b s" id="slog">Refresh</button></div><div class="log" id="log">…</div></div>
     <p class="muted" style="text-align:center">Server up ${dur(s.uptime)} · ${esc(S.base.replace(/^https?:\/\//, ""))}<br>Admin ${IN_APP ? "app " + esc(APP_VER) + " · " : ""}page ${PAGE_VERSION} · updates itself${window.VFAApp?.updateApp ? ' · <a href="#" id="appchk" style="color:var(--gold)">check for app update</a>' : ""}</p>`;
   $("#appchk") && ($("#appchk").onclick = (e) => { e.preventDefault(); toast("Checking…"); VFAApp.updateApp(); });
-  $("#ssave").onclick = async () => { try { await call("config", "POST", { name: $("#sname").value, maxPlayers: +$("#smax").value, autoUpdate: $("#sauto").checked, updateMinutes: +$("#smin").value }); toast("Saved"); server(); } catch (e) { fail(e); } };
+  $("#ssave").onclick = async () => { try { await call("config", "POST", { name: $("#sname").value, maxPlayers: +$("#smax").value, autoUpdate: $("#sauto").checked, updateMinutes: +$("#smin").value, antiCheat: $("#sac").checked, cheatTolerance: +$("#stol").value || 1 }); toast("Saved"); server(); } catch (e) { fail(e); } };
   M().querySelectorAll("[data-m]").forEach((b) => (b.onclick = () => ($("#smin").value = b.dataset.m)));
   $("#supd").onclick = async () => { toast("Checking…"); try { const r = await call("update", "POST"); toast(r.changed ? `Downloaded ${r.ver} — world restarts in 60 s` : r.ok ? `Already up to date (${r.ver})` : "Update failed: " + r.why); } catch (e) { fail(e); } };
   $("#srst").onclick = async () => { if (!confirm("Restart the world now? Everyone is disconnected for about a minute.")) return; try { await call("restart", "POST", { delay: 0 }); toast("Restarting…"); } catch (e) { fail(e); } };

@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.23.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.24.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,14 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.23.0";
+  X.VERSION = "1.24.0";
   X.CHANGELOG = {
+    "1.24.0": [
+      "Vigilfall is now played online only: without a connection to the server the game pauses until it is back.",
+      "Recovery codes: new accounts get a recovery code to set a new password without the admin. Already have an account? Main menu → Account makes one.",
+      "Account settings: change your password and make a new recovery code.",
+      "The server refuses saves with impossible jumps (like millions of Soul Shards at once) and loads your last good save.",
+    ],
     "1.23.0": [
       "Accounts: sign in with a name and password. Your character is kept on the Vigilfall server and follows you to any PC or phone.",
       "Without internet the last account used on a device can still play; the progress is sent when the server is back.",
@@ -49639,8 +49645,10 @@ X.EL.quests = {
 
 /* ---- FP_accounts.js ---- */
 /* 1.23.0 — accounts. Every player signs in with a name and password; the save lives on the Realm server and follows
-   the player to any PC or phone. The last account used on a device can still play when the server can't be reached;
-   progress is sent when it is back. Old (pre-account) saves are wiped once. */
+   the player to any PC or phone. Old (pre-account) saves are wiped once.
+   1.24.0 — online only: the game can't be played without a live connection to the Vigilfall server (a screen covers
+   the game and pauses it until the connection is back). Recovery codes: a forgotten password can be reset without
+   the admin. The server refuses saves with impossible jumps (anti-cheat) and the game loads the last good save. */
 {
   if (!X.realmServer) {
     const LS = localStorage;
@@ -49656,6 +49664,7 @@ X.EL.quests = {
 
     const app = () => window.__app;
     const T = (s) => (X.EL?.T && X.lang === "el" ? X.EL.T(s) : s);
+    const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
     const getS = () => { try { return JSON.parse(LS.getItem("vf_session") || "null"); } catch (e) { return null; } };
     const setS = (s) => (s ? LS.setItem("vf_session", JSON.stringify(s)) : LS.removeItem("vf_session"));
     const strip = (p) => JSON.stringify(p, (k, v) => (k === "savedAt" || k === "adminRev" || k === "ckey" ? void 0 : v));
@@ -49664,12 +49673,12 @@ X.EL.quests = {
     const post = async (path, body, ms = 20000) => {
       const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
       try {
-        const r = await fetch(base() + "/api/acct/" + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: c.signal });
+        const r = await fetch(base() + "/api/acct/" + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: c.signal, cache: "no-store" });
         const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw Object.assign(new Error(j.error || "HTTP " + r.status), { code: r.status, signedOut: j.signedOut });
+        if (!r.ok) throw Object.assign(new Error(T(j.error || "HTTP " + r.status)), { code: r.status, signedOut: j.signedOut });
         return j;
       } catch (e) {
-        if (e.name === "AbortError" || e.message === "Failed to fetch" || /NetworkError|Load failed/.test(e.message)) throw Object.assign(new Error(T("Can't reach the Vigilfall server.")), { offline: !0 });
+        if (e.name === "AbortError" || e.message === "Failed to fetch" || /NetworkError|Load failed|network/i.test(e.message)) throw Object.assign(new Error(T("Can't reach the Vigilfall server.")), { offline: !0 });
         throw e;
       } finally { clearTimeout(t); }
     };
@@ -49687,10 +49696,94 @@ X.EL.quests = {
       } catch (e) { console.error("account install", e); }
       setTimeout(() => location.reload(), 200);
     };
+
+    // ---------------- online only: a screen covers the game while the server can't be reached ----------------
+    let gate = null, gateKey = "", lostAt = 0, fails = 0, verified = !1;
+    const gateEl = () => {
+      if (gate) return gate;
+      gate = document.createElement("div");
+      gate.id = "vfgate";
+      gate.style.cssText = "position:fixed;inset:0;z-index:2147483000;display:none;align-items:center;justify-content:center;background:rgba(6,8,12,.92);color:#e8e0d0;font-family:inherit;text-align:center;padding:24px;pointer-events:auto";
+      ["keydown", "keyup", "mousedown", "touchstart", "wheel", "contextmenu"].forEach((ev) => gate.addEventListener(ev, (e) => e.stopPropagation(), !0));
+      document.body.appendChild(gate);
+      return gate;
+    };
+    const showGate = (state) => {
+      const g = gateEl(), ap = app(), playing = ap?.game?.running;
+      const long = lostAt && Date.now() - lostAt > 120e3;
+      // keep the same buttons while nothing changes (no flicker under a finger)
+      const key = [state, !!playing, !!long, fails > 1].join();
+      if (key === gateKey && g.style.display === "flex") return;
+      gateKey = key;
+      const title = state === "boot" ? T("Connecting to the Vigilfall server…") : T("Connection to the server lost");
+      const sub = state === "boot" ? T("Vigilfall is played online only.") : T("The game is paused until the connection is back. Reconnecting…");
+      g.innerHTML = `<div style="max-width:440px">
+        <div style="font-size:42px;margin-bottom:10px">🕯</div>
+        <h2 style="margin:0 0 8px">${title}</h2>
+        <p class="small" style="opacity:.85">${sub}</p>
+        <p class="small" id="vfgmsg" style="color:#ff9a8a;min-height:1.3em">${fails > 1 ? T("Can't reach the Vigilfall server.") + " " + T("Check your internet connection.") : ""}</p>
+        <div class="row" style="justify-content:center;gap:10px;display:flex;flex-wrap:wrap">
+          <button id="vfgretry" class="big">${T("Try again")}</button>
+          ${playing && long ? `<button id="vfgmenu" class="ghost">${T("Back to the main menu")}</button>` : ""}
+          ${!playing ? `<button id="vfgsrv" class="ghost">⚙ ${T("Server")}</button>` : ""}
+        </div></div>`;
+      g.style.display = "flex";
+      // pause the game (not in the Realm, whose world runs on the server); the pause menu waits under the screen
+      if (playing && ap && ap.net?.hostPid !== "@realm" && !ap.paused) {
+        try { (ap.paused = !0), ap.ui.pause?.(!0), (ap.game.keys = {}), (ap.game.mouse = { l: !1, r: !1 }); document.exitPointerLock?.(); } catch (e) {}
+      }
+      g.querySelector("#vfgretry").onclick = () => { g.querySelector("#vfgmsg").textContent = T("Connecting…"); beat(!0); };
+      g.querySelector("#vfgmenu") && (g.querySelector("#vfgmenu").onclick = () => ap.quit());
+      g.querySelector("#vfgsrv") && (g.querySelector("#vfgsrv").onclick = () => { g.style.display = "none"; ap.ui.realmDialog?.(() => { ap.ui.mainMenu(); beat(!0); }); });
+    };
+    const hideGate = () => gate && ((gate.style.display = "none"), (gateKey = ""));
+    let beating = !1;
+    async function beat(now) {
+      const s = getS();
+      if (!s || beating) return;
+      beating = !0;
+      try {
+        const r = await post("ping", { token: s.token }, 8000);
+        fails = 0;
+        lostAt = 0;
+        X.acct.online = !0;
+        "rc" in r && setS({ ...getS(), rc: !!r.rc });
+        const first = !verified;
+        verified = !0;
+        if (first) {
+          // the server's save wins over whatever is on this device
+          await X.acct.sync("boot");
+          if (X.acct._taking) return;
+        } else if ((r.rev || 0) > (getS()?.rev || 0)) X.acct.sync("rev");
+        hideGate();
+        if (first) app()?.ui?.curScreen !== "game" && !app()?.game?.running && app()?.ui?.mainMenu?.();
+      } catch (e) {
+        if (e.signedOut) {
+          setS(null);
+          hideGate();
+          app()?.game?.running ? location.reload() : app()?.ui?.signIn?.("in", e.message);
+          return;
+        }
+        fails++;
+        X.acct.online = !1;
+        if (!verified) showGate("boot");
+        else if (fails >= 2 || now) (lostAt ||= Date.now()), showGate("lost");
+      } finally { beating = !1; }
+    }
+    let beatT = null;
+    const startBeat = () => {
+      if (beatT) return;
+      const tick = () => { beatT = setTimeout(tick, gate?.style.display === "flex" ? 5000 : 15000); beat(); };
+      tick();
+    };
+    addEventListener("offline", () => getS() && verified && ((fails = 2), (lostAt ||= Date.now()), showGate("lost")));
+    addEventListener("online", () => beat(!0));
+
     let syncing = null, lastSync = 0;
     X.acct = {
       session: getS,
       token: () => getS()?.token || "",
+      verified: () => verified,
       onTake: (p, rev) => { const s = getS(); s && setS({ ...s, rev: rev ?? s.rev, hash: hash(p) }); },
       async sync(why) {
         const s = getS(), ap = app();
@@ -49706,7 +49799,15 @@ X.EL.quests = {
             lastSync = Date.now();
             X.acct.online = !0;
             if (r.take && r.profile) {
+              X.acct._taking = !0;
               const g = ap.game;
+              if (r.refused) {
+                const msg = T("The server refused this save") + " (" + r.refused + "). " + T("Your last good save is loaded.");
+                g?.running ? g.ui.banner(T("SAVE REFUSED"), msg, "#ff6a5a") : sessionStorage.setItem("vf_acctrefused", r.refused);
+                g?.running && sessionStorage.setItem("vf_acctrefused", r.refused);
+                setTimeout(() => install(r.profile, r.rev, "refused"), g?.running ? 4000 : 0);
+                return;
+              }
               if (g?.running) g.ui.banner(T("YOUR SAVE CHANGED"), T("A newer save of this account was found. Loading it…"), "#ffb060");
               setTimeout(() => install(r.profile, r.rev, "newer"), g?.running ? 2500 : 0);
               return;
@@ -49715,10 +49816,11 @@ X.EL.quests = {
             for (const gift of r.gifts || []) (p.giftsGot || []).includes(gift.id) || X.realmMsg?.({ t: "gift", ...gift });
           } catch (e) {
             X.acct.online = !e.offline;
+            if (e.offline && verified) (fails = Math.max(fails, 1)), beat();
             if (e.signedOut) {
               setS(null);
               const g = ap.game;
-              g?.running ? g.ui.banner(T("SIGNED OUT"), e.message, "#ff6a5a") : ap.ui?.mainMenu?.();
+              g?.running ? g.ui.banner(T("SIGNED OUT"), e.message, "#ff6a5a") : ap.ui?.signIn?.("in", e.message);
             }
           } finally { syncing = null; }
         })();
@@ -49738,8 +49840,8 @@ X.EL.quests = {
     };
     // the Realm's old save path now goes through the account
     X.realmSave = (why) => X.acct.sync(why);
-    setInterval(() => X.acct.sync("auto"), 60e3);
-    document.addEventListener("visibilitychange", () => document.hidden && X.acct.sync("hide"));
+    setInterval(() => verified && X.acct.sync("auto"), 60e3);
+    document.addEventListener("visibilitychange", () => (document.hidden ? X.acct.sync("hide") : getS() && beat()));
     addEventListener("pagehide", () => X.acct.sync("exit"));
 
     // ---- the name always is the account name; the friend code is the account's code ----
@@ -49747,25 +49849,48 @@ X.EL.quests = {
     AP.boot = function (...a) {
       const s = getS();
       if (s && this.profile) (this.profile.name = s.name), (this.profile.pid = s.pid);
-      return bt0.apply(this, a);
+      const r = bt0.apply(this, a);
+      // signed in: nothing can be played until the server answers
+      if (s) setTimeout(() => { verified || showGate("boot"); startBeat(); }, 0);
+      return r;
     };
 
-    // ---- sign-in screen in place of the main menu ----
+    // ---------------- screens ----------------
     const UP = XC.prototype, mm0 = UP.mainMenu;
-    UP.signIn = function (mode = "in", msg = "") {
+    const head = () => `<div class="title-wrap"><div class="title">${jn}</div><div class="subtitle">${Il}</div></div>`;
+    const ipt = (id, ph, type = "text", extra = "") => `<input id="${id}" type="${type}" placeholder="${T(ph)}" maxlength="64" autocapitalize="off" autocorrect="off" spellcheck="false" style="text-transform:none" ${extra}>`;
+    // the recovery code is shown once; the player must keep it
+    UP.showRecovery = function (code, then, intro) {
       this.show("menu");
       const M = kA("#menu");
-      M.innerHTML = `<div class="title-wrap"><div class="title">${jn}</div><div class="subtitle">${Il}</div></div>
+      M.innerHTML = `${head()}<div class="dialog acct" style="max-width:440px">
+        <h2>${T("Your recovery code")}</h2>
+        <p class="small">${intro || T("If you ever forget your password, this code lets you set a new one. Write it down or take a photo and keep it safe. It is shown only now.")}</p>
+        <div id="rccode" style="font:700 26px/1.4 monospace;letter-spacing:3px;color:#ffd070;background:rgba(0,0,0,.35);border:1px solid #6a5a3a;border-radius:8px;padding:14px;margin:10px 0;user-select:all;-webkit-user-select:all">${esc(code)}</div>
+        <button id="rccopy" class="ghost">${T("Copy the code")}</button>
+        <label class="small" style="display:flex;gap:8px;align-items:center;justify-content:center;margin:12px 0"><input type="checkbox" id="rcok" style="-webkit-appearance:checkbox;appearance:auto;width:20px;height:20px;min-height:0;padding:0;margin:0;flex:0 0 auto"> ${T("I have written it down")}</label>
+        <button id="rcgo" class="big" disabled>${T("Continue")}</button>
+      </div>`;
+      kA("#rccopy").onclick = () => { this.click?.(); navigator.clipboard?.writeText(code).then(() => (kA("#rccopy").textContent = T("Copied")), () => {}); };
+      kA("#rcok").onchange = (e) => (kA("#rcgo").disabled = !e.target.checked);
+      kA("#rcgo").onclick = () => (this.click?.(), then());
+    };
+    UP.signIn = function (mode = "in", msg = "") {
+      hideGate();
+      this.show("menu");
+      const M = kA("#menu");
+      M.innerHTML = `${head()}
         <div class="dialog acct" style="max-width:420px">
           <h2>${mode === "in" ? T("Sign in") : T("Create your account")}</h2>
           <p class="small">${T("Your character is kept on the Vigilfall server and follows you to any PC or phone.")}</p>
-          <input id="acname" placeholder="${T("Name")}" maxlength="16" autocapitalize="off" autocorrect="off" spellcheck="false" style="text-transform:none">
-          <input id="acpw" type="password" placeholder="${T("Password")}" maxlength="64" style="text-transform:none">
-          ${mode === "up" ? `<input id="acpw2" type="password" placeholder="${T("Password again")}" maxlength="64" style="text-transform:none">` : ""}
-          <p class="small" id="acmsg" style="color:#ff8a7a;min-height:1.3em">${msg}</p>
+          ${ipt("acname", "Name", "text", 'maxlength="16"')}
+          ${ipt("acpw", "Password", "password")}
+          ${mode === "up" ? ipt("acpw2", "Password again", "password") : ""}
+          <p class="small" id="acmsg" style="color:#ff8a7a;min-height:1.3em">${esc(msg)}</p>
           <button id="acgo" class="big">${mode === "in" ? T("Sign in") : T("Create account")}</button>
           <button id="acswap" class="ghost">${mode === "in" ? T("New here? Create an account") : T("I already have an account")}</button>
-          <p class="small" style="opacity:.7">${mode === "up" ? T("Name: 3 to 16 letters or numbers. Password: at least 6 characters. Forgot it later? The Realm admin can reset it.") + "<br>" : ""}${T("Server")}: ${(X.realmHttp() || "").replace(/^https?:\/\//, "")} <a href="#" id="acsrv" style="color:#ffd070">⚙</a></p>
+          ${mode === "in" ? `<button id="acforgot" class="ghost">${T("Forgot your password?")}</button>` : ""}
+          <p class="small" style="opacity:.7">${mode === "up" ? T("Name: 3 to 16 letters or numbers. Password: at least 6 characters. You get a recovery code for a forgotten password.") + "<br>" : ""}${T("Vigilfall is played online only.")} ${T("Server")}: ${esc((X.realmHttp() || "").replace(/^https?:\/\//, ""))} <a href="#" id="acsrv" style="color:#ffd070">⚙</a></p>
         </div>`;
       const go = async () => {
         const name = kA("#acname").value.trim(), pw = kA("#acpw").value;
@@ -49776,11 +49901,12 @@ X.EL.quests = {
         kA("#acgo").disabled = !0;
         try {
           const r = await post(mode === "in" ? "login" : "register", { name, password: pw });
-          setS({ name: r.name, pid: r.pid, token: r.token, rev: r.rev || 0, hash: "" });
+          setS({ name: r.name, pid: r.pid, token: r.token, rev: r.rev || 0, hash: "", rc: !!r.rc });
           const p = r.profile || Object.assign(td(), { name: r.name, pid: r.pid });
           p.name = r.name;
           p.pid = r.pid;
-          install(p, r.rev || 0, r.profile ? "welcome" : "new");
+          const done = () => install(p, r.rev || 0, r.profile ? "welcome" : "new");
+          r.recovery ? this.showRecovery(r.recovery, done) : done();
         } catch (e) {
           out.style.color = "#ff8a7a";
           out.textContent = e.message;
@@ -49791,10 +49917,94 @@ X.EL.quests = {
       kA("#acpw").onkeydown = (e) => e.key === "Enter" && (mode === "in" ? go() : kA("#acpw2").focus());
       kA("#acpw2") && (kA("#acpw2").onkeydown = (e) => e.key === "Enter" && go());
       kA("#acswap").onclick = () => (this.click?.(), this.signIn(mode === "in" ? "up" : "in"));
+      kA("#acforgot") && (kA("#acforgot").onclick = () => (this.click?.(), this.recoverScreen(kA("#acname").value.trim())));
       kA("#acsrv").onclick = (e) => (e.preventDefault(), this.realmDialog?.(() => this.signIn(mode)));
       setTimeout(() => kA("#acname")?.focus(), 50);
     };
-    let booted = !1;
+    // forgotten password: name + recovery code + a new password
+    UP.recoverScreen = function (name = "") {
+      this.show("menu");
+      const M = kA("#menu");
+      M.innerHTML = `${head()}<div class="dialog acct" style="max-width:420px">
+        <h2>${T("Forgot your password?")}</h2>
+        <p class="small">${T("Enter your name, your recovery code and a new password.")}</p>
+        ${ipt("rcname", "Name", "text", `maxlength="16" value="${esc(name)}"`)}
+        ${ipt("rccode2", "Recovery code (e.g. ABCD-EFGH-JKLM)", "text", 'style="text-transform:uppercase"')}
+        ${ipt("rcpw", "New password", "password")}
+        ${ipt("rcpw2", "New password again", "password")}
+        <p class="small" id="rcmsg" style="color:#ff8a7a;min-height:1.3em"></p>
+        <button id="rcgo2" class="big">${T("Set the new password")}</button>
+        <button id="rcback" class="ghost">${T("Back")}</button>
+        <p class="small" style="opacity:.7">${T("No recovery code? Ask the Realm admin to reset your password.")}</p>
+      </div>`;
+      kA("#rcback").onclick = () => (this.click?.(), this.signIn("in"));
+      kA("#rcgo2").onclick = async () => {
+        this.click?.();
+        const out = kA("#rcmsg"), pw = kA("#rcpw").value;
+        if (pw !== kA("#rcpw2").value) return (out.textContent = T("The passwords are not the same."));
+        out.style.color = "#c9d8e8";
+        out.textContent = T("Connecting…");
+        kA("#rcgo2").disabled = !0;
+        try {
+          const r = await post("recover", { name: kA("#rcname").value.trim(), code: kA("#rccode2").value, password: pw });
+          setS({ name: r.name, pid: r.pid, token: r.token, rev: r.rev || 0, hash: "", rc: !0 });
+          const p = r.profile || Object.assign(td(), { name: r.name, pid: r.pid });
+          p.name = r.name;
+          p.pid = r.pid;
+          this.showRecovery(r.recovery, () => install(p, r.rev || 0, "reset"), T("Your password is changed. Your old recovery code no longer works — here is the new one. Write it down and keep it safe."));
+        } catch (e) {
+          out.style.color = "#ff8a7a";
+          out.textContent = e.message;
+          kA("#rcgo2").disabled = !1;
+        }
+      };
+      setTimeout(() => kA(name ? "#rccode2" : "#rcname")?.focus(), 50);
+    };
+    // account settings: new recovery code, change password
+    UP.accountDialog = function () {
+      const s = getS();
+      this.show("menu");
+      const M = kA("#menu");
+      M.innerHTML = `${head()}<div class="dialog acct" style="max-width:440px">
+        <h2>${T("Account")} — ${esc(s.name)}</h2>
+        <p class="small">${s.rc ? T("You have a recovery code.") : "⚠ " + T("You have no recovery code yet. Make one, so you can reset a forgotten password yourself.")}</p>
+        ${ipt("adpw", "Current password", "password")}
+        <button id="adrc" class="big">${s.rc ? T("Make a new recovery code") : T("Make a recovery code")}</button>
+        <hr style="opacity:.2;margin:14px 0">
+        ${ipt("adnew", "New password", "password")}
+        ${ipt("adnew2", "New password again", "password")}
+        <button id="adchg">${T("Change password")}</button>
+        <p class="small" id="admsg" style="color:#ff8a7a;min-height:1.3em"></p>
+        <button id="adback" class="ghost">${T("Back")}</button>
+      </div>`;
+      const out = kA("#admsg");
+      const busy = (b) => { kA("#adrc").disabled = b; kA("#adchg").disabled = b; if (b) (out.style.color = "#c9d8e8"), (out.textContent = T("Connecting…")); };
+      const fail = (e) => { busy(!1); out.style.color = "#ff8a7a"; out.textContent = e.message; };
+      kA("#adback").onclick = () => (this.click?.(), this.mainMenu());
+      kA("#adrc").onclick = async () => {
+        this.click?.();
+        busy(!0);
+        try {
+          const r = await post("recovery", { token: getS().token, password: kA("#adpw").value });
+          setS({ ...getS(), rc: !0 });
+          this.showRecovery(r.recovery, () => this.mainMenu(), s.rc ? T("Your old recovery code no longer works — here is the new one. Write it down and keep it safe.") : void 0);
+        } catch (e) { fail(e); }
+      };
+      kA("#adchg").onclick = async () => {
+        this.click?.();
+        const pw = kA("#adnew").value;
+        if (pw !== kA("#adnew2").value) return (out.style.color = "#ff8a7a"), (out.textContent = T("The passwords are not the same."));
+        if (pw.length < 6) return (out.style.color = "#ff8a7a"), (out.textContent = T("Password: at least 6 characters."));
+        busy(!0);
+        try {
+          await post("password", { token: getS().token, old: kA("#adpw").value, password: pw });
+          busy(!1);
+          out.style.color = "#9fe0a0";
+          out.textContent = T("Password changed. Other devices are signed out.");
+          kA("#adpw").value = kA("#adnew").value = kA("#adnew2").value = "";
+        } catch (e) { fail(e); }
+      };
+    };
     UP.mainMenu = function (...a) {
       const s = getS();
       if (!s) return this.signIn("in", X._acctWiped ? T("Vigilfall now uses accounts. Old saves were reset: create an account to start.") : "");
@@ -49803,21 +50013,25 @@ X.EL.quests = {
         const col = document.querySelector("#menu .menu-col");
         // the name is the account name; slots, import and export are gone (the save lives in the account)
         const nb = col?.querySelector(".namebox");
-        if (nb) nb.outerHTML = `<div class="namebox acctbox" style="display:flex;align-items:center;gap:10px;justify-content:space-between"><span>${T("Signed in as")} <b>${s.name}</b></span><button data-a="signout" class="ghost" style="flex:0 0 auto;padding:6px 12px">${T("Sign out")}</button></div>`;
+        if (nb)
+          nb.outerHTML = `<div class="namebox acctbox" style="display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap"><span>${T("Signed in as")} <b>${esc(s.name)}</b></span><span style="display:flex;gap:6px"><button data-a="account" class="ghost" style="flex:0 0 auto;padding:6px 12px">${s.rc ? "" : "⚠ "}${T("Account")}</button><button data-a="signout" class="ghost" style="flex:0 0 auto;padding:6px 12px">${T("Sign out")}</button></span></div>`;
         col?.querySelector("[data-a=saves]")?.remove();
         const so = col?.querySelector("[data-a=signout]");
         so && (so.onclick = (e) => { e.stopPropagation(); this.click?.(); if (confirm(T("Sign out? Your progress is saved to your account first."))) X.acct.signOut(); });
+        const ac = col?.querySelector("[data-a=account]");
+        ac && (ac.onclick = (e) => { e.stopPropagation(); this.click?.(); this.accountDialog(); });
         const note = sessionStorage.getItem("vf_acctnote");
         if (note) {
           sessionStorage.removeItem("vf_acctnote");
-          const t = { new: T("Account created. Welcome to Vigilfall!"), welcome: T("Welcome back — your character is here."), newer: T("Loaded the newest save of your account.") }[note];
+          const ref = sessionStorage.getItem("vf_acctrefused");
+          sessionStorage.removeItem("vf_acctrefused");
+          const t = { new: T("Account created. Welcome to Vigilfall!"), welcome: T("Welcome back — your character is here."), newer: T("Loaded the newest save of your account."), reset: T("Your password is changed. Welcome back!"), refused: T("The server refused the last save") + (ref ? " (" + ref + ")" : "") + ". " + T("Your last good save is loaded.") }[note];
           t && setTimeout(() => (this.toastMenu ? this.toastMenu(t) : 0), 300);
         }
       } catch (e) {}
-      if (!booted) (booted = !0), X.acct.sync("boot");
       return r;
     };
-    X.HELP?.systems?.push?.(["Your account", "You sign in with a name and password. Your character is kept on the Vigilfall server: sign in on any PC or phone and continue where you stopped. Progress is sent every minute and when you close the game. Without internet the last account used on that device can still play; the progress is sent when the server can be reached again. Forgot your password? The Realm admin can reset it."]);
+    X.HELP?.systems?.push?.(["Your account", "You sign in with a name and password. Your character is kept on the Vigilfall server: sign in on any PC or phone and continue where you stopped. Progress is sent every minute and when you close the game. Vigilfall is played online only: without a connection to the server the game pauses until it is back. Keep your recovery code: with it you can set a new password if you forget yours (Main menu → Account makes a new one). The server refuses saves with impossible jumps and loads your last good save."]);
   }
 }
 
@@ -50289,7 +50503,7 @@ X.EL.tutTouch = [
 Object.assign(X.EL.help, {
   "The Realm": ["Το Βασίλειο", "Η Είσοδος στο Βασίλειο (κύριο μενού) σε βάζει στον κοινό διαδικτυακό κόσμο που τρέχει στον διακομιστή του Vigilfall: όλοι όσοι είναι συνδεδεμένοι παίζουν στον ίδιο κόσμο. Βλέπεις μόνο παίκτες και τέρατα κοντά σου. Τα μπουντρούμια, οι επιδρομές και η Αναζήτηση Μπουντρουμιών πηγαίνουν την ομάδα σου στον κόσμο του αρχηγού και σας φέρνουν πίσω στο Βασίλειο μετά. Η αποθήκευσή σου αντιγράφεται στον διακομιστή κάθε λεπτό· αν ο διαχειριστής την αλλάξει, το παιχνίδι ξεκινά ξανά στο μενού με τη νέα αποθήκευση. Το ⚙ δίπλα στο κουμπί αλλάζει τη διεύθυνση του διακομιστή."],
 });
-Object.assign(X.EL.help, { "Your account": ["Ο λογαριασμός σου", "Συνδέεσαι με όνομα και κωδικό. Ο χαρακτήρας σου φυλάγεται στον διακομιστή του Vigilfall: συνδέσου σε οποιονδήποτε υπολογιστή ή κινητό και συνέχισε από εκεί που σταμάτησες. Η πρόοδος στέλνεται κάθε λεπτό και όταν κλείνεις το παιχνίδι. Χωρίς ίντερνετ ο τελευταίος λογαριασμός της συσκευής παίζει κανονικά· η πρόοδος στέλνεται όταν ο διακομιστής ξαναβρεθεί. Ξέχασες τον κωδικό; Ο διαχειριστής του Βασιλείου μπορεί να τον αλλάξει."] });
+Object.assign(X.EL.help, { "Your account": ["Ο λογαριασμός σου", "Συνδέεσαι με όνομα και κωδικό. Ο χαρακτήρας σου φυλάγεται στον διακομιστή του Vigilfall: συνδέσου σε οποιονδήποτε υπολογιστή ή κινητό και συνέχισε από εκεί που σταμάτησες. Η πρόοδος στέλνεται κάθε λεπτό και όταν κλείνεις το παιχνίδι. Το Vigilfall παίζεται μόνο online: χωρίς σύνδεση με τον διακομιστή το παιχνίδι σταματά μέχρι να επανέλθει. Φύλαξε τον κωδικό ανάκτησης: με αυτόν βάζεις νέο κωδικό αν ξεχάσεις τον δικό σου (Κύριο μενού → Λογαριασμός φτιάχνει νέο). Ο διακομιστής απορρίπτει αποθηκεύσεις με αδύνατα άλματα και φορτώνει την τελευταία σωστή."] });
 
 /* ---- FY_el_ui.js ---- */
 /* 1.19.0 — Greek (ελληνικά): achievements, interface words, messages */
@@ -50583,6 +50797,28 @@ Object.assign(X.EL.ui, {
   "Can't reach the Vigilfall server.": "Δεν υπάρχει σύνδεση με τον διακομιστή του Vigilfall.",
   "Wrong name or password.": "Λάθος όνομα ή κωδικός.", "That name is taken.": "Αυτό το όνομα υπάρχει ήδη.", "Name: 3 to 16 letters, numbers, - or _.": "Όνομα: 3 έως 16 γράμματα, αριθμοί, - ή _.", "Password: at least 6 characters.": "Κωδικός: τουλάχιστον 6 χαρακτήρες.", "Too many tries. Wait 10 minutes.": "Πολλές προσπάθειες. Περίμενε 10 λεπτά.",
 });
+// 1.24.0 — online only, recovery codes, anti-cheat
+Object.assign(X.EL.ui, {
+  "Connecting to the Vigilfall server…": "Σύνδεση με τον διακομιστή του Vigilfall…", "Connection to the server lost": "Χάθηκε η σύνδεση με τον διακομιστή",
+  "Vigilfall is played online only.": "Το Vigilfall παίζεται μόνο online.", "The game is paused until the connection is back. Reconnecting…": "Το παιχνίδι σταμάτησε μέχρι να επανέλθει η σύνδεση. Επανασύνδεση…",
+  "Check your internet connection.": "Έλεγξε τη σύνδεσή σου στο ίντερνετ.", "Try again": "Ξανά", "Back to the main menu": "Πίσω στο κύριο μενού",
+  "Your recovery code": "Ο κωδικός ανάκτησής σου", "If you ever forget your password, this code lets you set a new one. Write it down or take a photo and keep it safe. It is shown only now.": "Αν ξεχάσεις ποτέ τον κωδικό σου, με αυτόν βάζεις νέο. Γράψ' τον ή βγάλε φωτογραφία και φύλαξέ τον. Εμφανίζεται μόνο τώρα.",
+  "Copy the code": "Αντιγραφή κωδικού", Copied: "Αντιγράφηκε", "I have written it down": "Τον έχω γράψει", Continue: "Συνέχεια",
+  "Forgot your password?": "Ξέχασες τον κωδικό;", "Name: 3 to 16 letters or numbers. Password: at least 6 characters. You get a recovery code for a forgotten password.": "Όνομα: 3 έως 16 γράμματα ή αριθμοί. Κωδικός: τουλάχιστον 6 χαρακτήρες. Παίρνεις κωδικό ανάκτησης για την περίπτωση που τον ξεχάσεις.",
+  "Enter your name, your recovery code and a new password.": "Γράψε το όνομά σου, τον κωδικό ανάκτησης και νέο κωδικό.", "Recovery code (e.g. ABCD-EFGH-JKLM)": "Κωδικός ανάκτησης (π.χ. ABCD-EFGH-JKLM)",
+  "New password": "Νέος κωδικός", "New password again": "Νέος κωδικός ξανά", "Set the new password": "Ορισμός νέου κωδικού", Back: "Πίσω",
+  "No recovery code? Ask the Realm admin to reset your password.": "Δεν έχεις κωδικό ανάκτησης; Ζήτα από τον διαχειριστή να αλλάξει τον κωδικό σου.",
+  "Your password is changed. Your old recovery code no longer works — here is the new one. Write it down and keep it safe.": "Ο κωδικός σου άλλαξε. Ο παλιός κωδικός ανάκτησης δεν ισχύει πια — ορίστε ο νέος. Γράψ' τον και φύλαξέ τον.",
+  "Your old recovery code no longer works — here is the new one. Write it down and keep it safe.": "Ο παλιός κωδικός ανάκτησης δεν ισχύει πια — ορίστε ο νέος. Γράψ' τον και φύλαξέ τον.",
+  Account: "Λογαριασμός", "You have a recovery code.": "Έχεις κωδικό ανάκτησης.", "You have no recovery code yet. Make one, so you can reset a forgotten password yourself.": "Δεν έχεις ακόμη κωδικό ανάκτησης. Φτιάξε έναν, για να αλλάζεις μόνος σου έναν ξεχασμένο κωδικό.",
+  "Current password": "Τρέχων κωδικός", "Make a new recovery code": "Νέος κωδικός ανάκτησης", "Make a recovery code": "Φτιάξε κωδικό ανάκτησης", "Change password": "Αλλαγή κωδικού",
+  "Password changed. Other devices are signed out.": "Ο κωδικός άλλαξε. Οι άλλες συσκευές αποσυνδέθηκαν.", "Your password is changed. Welcome back!": "Ο κωδικός σου άλλαξε. Καλώς ήρθες πίσω!",
+  "The server refused this save": "Ο διακομιστής απέρριψε αυτή την αποθήκευση", "The server refused the last save": "Ο διακομιστής απέρριψε την τελευταία αποθήκευση", "Your last good save is loaded.": "Φορτώθηκε η τελευταία σωστή αποθήκευση.",
+  "Wrong name or recovery code.": "Λάθος όνομα ή κωδικός ανάκτησης.", "The password is wrong.": "Ο κωδικός είναι λάθος.", "The current password is wrong.": "Ο τρέχων κωδικός είναι λάθος.",
+  "This account has no recovery code. Ask the Realm admin to reset the password.": "Αυτός ο λογαριασμός δεν έχει κωδικό ανάκτησης. Ζήτα από τον διαχειριστή να αλλάξει τον κωδικό.",
+  "Signed out: please sign in again.": "Αποσυνδέθηκες: συνδέσου ξανά.",
+});
+Object.assign(X.EL.msg, { "SAVE REFUSED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΠΟΡΡΙΦΘΗΚΕ" });
 Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑΞΕ", "A newer save of this account was found. Loading it…": "Βρέθηκε νεότερη αποθήκευση του λογαριασμού. Φορτώνεται…", "SIGNED OUT": "ΑΠΟΣΥΝΔΕΘΗΚΕΣ" });
 
 /* ---- FZ_el.js ---- */
@@ -50798,6 +51034,12 @@ Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑ
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.24.0"] && (X.CHANGELOG["1.24.0"] = [
+        "Το Vigilfall παίζεται πλέον μόνο online: χωρίς σύνδεση με τον διακομιστή το παιχνίδι σταματά μέχρι να επανέλθει.",
+        "Κωδικοί ανάκτησης: οι νέοι λογαριασμοί παίρνουν κωδικό ανάκτησης για να βάλεις νέο κωδικό χωρίς τον διαχειριστή. Έχεις ήδη λογαριασμό; Κύριο μενού → Λογαριασμός για να φτιάξεις έναν.",
+        "Ρυθμίσεις λογαριασμού: άλλαξε τον κωδικό σου και φτιάξε νέο κωδικό ανάκτησης.",
+        "Ο διακομιστής απορρίπτει αποθηκεύσεις με αδύνατα άλματα (π.χ. εκατομμύρια Θραύσματα Ψυχής μονομιάς) και φορτώνει την τελευταία σωστή αποθήκευση.",
+      ]);
       X.CHANGELOG && X.CHANGELOG["1.23.0"] && (X.CHANGELOG["1.23.0"] = [
         "Λογαριασμοί: συνδέσου με όνομα και κωδικό. Ο χαρακτήρας σου φυλάγεται στον διακομιστή του Vigilfall και σε ακολουθεί σε κάθε υπολογιστή ή κινητό.",
         "Χωρίς ίντερνετ ο τελευταίος λογαριασμός μιας συσκευής παίζει κανονικά· η πρόοδος στέλνεται όταν ο διακομιστής ξαναβρεθεί.",

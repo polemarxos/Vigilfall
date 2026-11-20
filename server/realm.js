@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.6.0";
+const SERVER_VERSION = "1.7.0";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -33,6 +33,8 @@ cfg = Object.assign(
     autoBackupHours: 6,
     autoBackupKeep: 10,
     maintenance: false,
+    antiCheat: true,
+    cheatTolerance: 1,
     maintenanceMsg: "The Realm is closed for maintenance. Please come back soon.",
     adminPassword: process.env.VF_ADMIN_PASSWORD || rnd(14),
     hostToken: rnd(24),
@@ -112,8 +114,9 @@ const backup = async (r, why) => {
   await fsp.mkdir(dir, { recursive: true });
   const name = Date.now() + "-" + why + ".json";
   await fsp.writeFile(path.join(dir, name), JSON.stringify(r.profile));
-  const all = (await fsp.readdir(dir)).sort();
-  for (const f of all.slice(0, Math.max(0, all.length - 20))) await fsp.unlink(path.join(dir, f)).catch(() => {});
+  // refused (anti-cheat) saves are kept apart, so a flood of them never pushes out the good backups
+  const all = (await fsp.readdir(dir)).sort(), bad = all.filter((f) => f.includes("-refused")), good = all.filter((f) => !f.includes("-refused"));
+  for (const f of [...good.slice(0, Math.max(0, good.length - 20)), ...bad.slice(0, Math.max(0, bad.length - 5))]) await fsp.unlink(path.join(dir, f)).catch(() => {});
 };
 const hash = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
 
@@ -575,15 +578,50 @@ const okName = (n) => typeof n === "string" && /^[A-Za-z0-9_-]{3,16}$/.test(n);
 const PIDCH = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const newPid = () => { let p; do { p = Array.from(crypto.randomBytes(8), (b) => PIDCH[b % PIDCH.length]).join(""); } while (recs.has(p)); return p; };
 const acctFails = new Map();
-const acctView = (r) => ({ name: r.name, pid: r.pid, rev: r.rev || 0, profile: r.profile || null, savedAt: r.savedAt || 0, gifts: r.gifts || [] });
+const acctView = (r) => ({ name: r.name, pid: r.pid, rev: r.rev || 0, profile: r.profile || null, savedAt: r.savedAt || 0, gifts: r.gifts || [], rc: !!r.rcHash });
+// recovery code: lets a player set a new password without the admin (shown once, kept only as a hash)
+const newRecovery = () => Array.from({ length: 3 }, () => Array.from(crypto.randomBytes(4), (b) => PIDCH[b % PIDCH.length]).join("")).join("-");
+const normRc = (c) => String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const tooMany = (key) => { const f = acctFails.get(key); return f && f.n >= 8 && Date.now() - f.t < 10 * 60e3; };
+const failed = (key) => { const f = acctFails.get(key); acctFails.set(key, { n: (f && Date.now() - f.t < 10 * 60e3 ? f.n : 0) + 1, t: Date.now() }); };
+
+// ---- anti-cheat: refuse saves with impossible jumps (the server keeps the last good save; the refused one is kept as a "refused" backup) ----
+const MAX_LEVEL = 60;
+const num = (v) => (typeof v === "number" && isFinite(v) ? v : NaN);
+function cheatCheck(r, prof) {
+  if (!cfg.antiCheat) return null;
+  const tol = Math.max(1, +cfg.cheatTolerance || 1);
+  const old = r.profile || { shards: 0, marks: 0, heroes: {} };
+  const sh = num(prof.shards), mk = num(prof.marks);
+  if (isNaN(sh) || isNaN(mk) || sh < 0 || mk < 0) return "broken Soul Shards or Ashen Marks";
+  if (sh > 5e7 * tol || mk > 5e5 * tol) return "far more Soul Shards or Ashen Marks than the game can give";
+  let lvUp = 0;
+  for (const [id, h] of Object.entries(prof.heroes || {})) {
+    const lv = num(h?.level ?? 1);
+    if (isNaN(lv) || lv < 1 || lv > MAX_LEVEL) return "a hero above level " + MAX_LEVEL;
+    lvUp = Math.max(lvUp, lv - (old.heroes?.[id]?.level || 1));
+  }
+  // gains since the last accepted save, plus a rolling one-hour total
+  const now = Date.now(), hrs = Math.min(24, Math.max(0, (now - (r.acceptedAt || now)) / 3600e3));
+  const allow = r.acAllow || { shards: 0, marks: 0 };
+  const dS = Math.max(0, sh - (old.shards || 0) - allow.shards), dM = Math.max(0, mk - (old.marks || 0) - allow.marks);
+  const w = r.acWin && now - r.acWin.t < 3600e3 ? r.acWin : { t: now, s: 0, m: 0, l: 0 };
+  const lim = { s: (60000 + 100000 * hrs) * tol, m: (600 + 800 * hrs) * tol, l: (8 + 20 * hrs) * tol };
+  const hour = { s: 250000 * tol, m: 2500 * tol, l: 30 * tol };
+  if (dS > lim.s || w.s + dS > hour.s) return "+" + Math.round(dS).toLocaleString("en") + " Soul Shards too fast";
+  if (dM > lim.m || w.m + dM > hour.m) return "+" + Math.round(dM).toLocaleString("en") + " Ashen Marks too fast";
+  if (lvUp > lim.l || w.l + Math.max(0, lvUp) > hour.l) return "+" + lvUp + " hero levels too fast";
+  r._acNext = { win: { t: w.t, s: w.s + dS, m: w.m + dM, l: w.l + Math.max(0, lvUp) } };
+  return null;
+}
 async function acctApi(req, res, url) {
   const p = url.pathname.replace(/^\/api\/acct\/?/, "");
   const b = req.method === "POST" ? await body(req).catch(() => ({})) : {};
   const ip = ipOf(req);
-  if (p === "register" || p === "login") {
+  if (p === "register" || p === "login" || p === "recover") {
     const name = String(b.name || "").trim(), pw = String(b.password || "");
-    const key = ip + "|" + name.toLowerCase(), f = acctFails.get(key);
-    if (f && f.n >= 8 && Date.now() - f.t < 10 * 60e3) return json(res, 429, { error: "Too many tries. Wait 10 minutes." });
+    const key = ip + "|" + name.toLowerCase();
+    if (tooMany(key)) return json(res, 429, { error: "Too many tries. Wait 10 minutes." });
     if (!okName(name)) return json(res, 400, { error: "Name: 3 to 16 letters, numbers, - or _." });
     if (pw.length < 6) return json(res, 400, { error: "Password: at least 6 characters." });
     const low = name.toLowerCase();
@@ -591,15 +629,33 @@ async function acctApi(req, res, url) {
       if (byName.has(low)) return json(res, 409, { error: "That name is taken." });
       if (cfg.maintenance) return json(res, 503, { error: cfg.maintenanceMsg || "Closed for maintenance." });
       const pid = newPid(), now = Date.now();
-      const r = { pid, acct: low, name, pwHash: pwHash(pw), created: now, lastSeen: now, rev: 0, adminRev: 0, ip };
+      const recovery = newRecovery();
+      const r = { pid, acct: low, name, pwHash: pwHash(pw), rcHash: pwHash(normRc(recovery)), created: now, lastSeen: now, rev: 0, adminRev: 0, ip };
       byName.set(low, pid);
       await writeRec(r);
       log("account created", name, pid, ip);
-      return json(res, 200, { ok: true, token: newSession(pid), ...acctView(r) });
+      return json(res, 200, { ok: true, token: newSession(pid), recovery, ...acctView(r) });
     }
     const pid = byName.get(low), r = pid && (await readRec(pid));
+    if (p === "recover") {
+      if (!r || !r.rcHash || !pwOk(normRc(b.code), r.rcHash)) {
+        failed(key);
+        return json(res, 401, { error: r && !r.rcHash ? "This account has no recovery code. Ask the Realm admin to reset the password." : "Wrong name or recovery code." });
+      }
+      acctFails.delete(key);
+      if (r.banned) return json(res, 403, { error: "This account is banned" + (r.banReason ? ": " + r.banReason : ".") });
+      const recovery = newRecovery();
+      r.pwHash = pwHash(pw);
+      r.rcHash = pwHash(normRc(recovery));
+      r.lastSeen = Date.now();
+      for (const k in sessions) sessions[k].pid === r.pid && delete sessions[k];
+      saveSessions();
+      await writeRec(r);
+      log("password reset with recovery code", r.name, ip);
+      return json(res, 200, { ok: true, token: newSession(pid), recovery, ...acctView(r) });
+    }
     if (!r || !pwOk(pw, r.pwHash)) {
-      acctFails.set(key, { n: (f && Date.now() - f.t < 10 * 60e3 ? f.n : 0) + 1, t: Date.now() });
+      failed(key);
       return json(res, 401, { error: "Wrong name or password." });
     }
     acctFails.delete(key);
@@ -615,9 +671,23 @@ async function acctApi(req, res, url) {
   if (!r) return json(res, 401, { error: "This account no longer exists.", signedOut: true });
   if (r.banned) return json(res, 403, { error: "This account is banned" + (r.banReason ? ": " + r.banReason : "."), signedOut: true });
   if (p === "me") return json(res, 200, acctView(r));
+  // light "am I online" check the game makes every few seconds
+  if (p === "ping") return json(res, 200, { ok: true, rev: r.rev || 0, rc: !!r.rcHash });
+  if (p === "recovery") {
+    const k = "rc|" + r.pid;
+    if (tooMany(k)) return json(res, 429, { error: "Too many tries. Wait 10 minutes." });
+    if (!pwOk(String(b.password || ""), r.pwHash)) { failed(k); return json(res, 401, { error: "The password is wrong." }); }
+    const recovery = newRecovery();
+    r.rcHash = pwHash(normRc(recovery));
+    await writeRec(r);
+    log("new recovery code", r.name);
+    return json(res, 200, { ok: true, recovery });
+  }
   if (p === "logout") { delete sessions[String(b.token)]; saveSessions(); return json(res, 200, { ok: true }); }
   if (p === "password") {
-    if (!pwOk(String(b.old || ""), r.pwHash)) return json(res, 401, { error: "The current password is wrong." });
+    const k = "rc|" + r.pid;
+    if (tooMany(k)) return json(res, 429, { error: "Too many tries. Wait 10 minutes." });
+    if (!pwOk(String(b.old || ""), r.pwHash)) { failed(k); return json(res, 401, { error: "The current password is wrong." }); }
     if (String(b.password || "").length < 6) return json(res, 400, { error: "Password: at least 6 characters." });
     r.pwHash = pwHash(b.password);
     for (const k in sessions) sessions[k].pid === r.pid && k !== b.token && delete sessions[k];
@@ -644,6 +714,17 @@ async function acctApi(req, res, url) {
       }
       await backup(r, "other-device");
     }
+    const why = cheatCheck(r, prof);
+    if (why) {
+      await backup({ pid: r.pid, profile: prof }, "refused");
+      r.flags = [...(r.flags || []), { at: Date.now(), why, ip }].slice(-50);
+      await writeRec(r);
+      log("anti-cheat refused a save", r.name, r.pid, why);
+      return json(res, 200, { take: true, refused: why, ...acctView(r) });
+    }
+    if (r._acNext) (r.acWin = r._acNext.win), delete r._acNext;
+    r.acAllow = { shards: 0, marks: 0 };
+    r.acceptedAt = Date.now();
     const hourly = !r.lastBackup || Date.now() - r.lastBackup > 3600e3;
     if (hourly && r.profile) (await backup(r, "auto"), (r.lastBackup = Date.now()));
     prof.name = r.name;
@@ -723,7 +804,7 @@ async function api(req, res, url) {
   if (p[0] === "status" && M === "GET") {
     const mem = process.memoryUsage();
     return json(res, 200, {
-      name: cfg.name, motd: cfg.motd, maxPlayers: cfg.maxPlayers, autoUpdate: cfg.autoUpdate, updateMinutes: cfg.updateMinutes, serverVersion: SERVER_VERSION, maintenance: cfg.maintenance, maintenanceMsg: cfg.maintenanceMsg, autoBackupHours: cfg.autoBackupHours, autoBackupKeep: cfg.autoBackupKeep, lastAutoBackup, lastCheck, nextCheck, gameUrl: cfg.gameUrl,
+      name: cfg.name, motd: cfg.motd, maxPlayers: cfg.maxPlayers, autoUpdate: cfg.autoUpdate, updateMinutes: cfg.updateMinutes, serverVersion: SERVER_VERSION, maintenance: cfg.maintenance, maintenanceMsg: cfg.maintenanceMsg, autoBackupHours: cfg.autoBackupHours, autoBackupKeep: cfg.autoBackupKeep, antiCheat: cfg.antiCheat, cheatTolerance: cfg.cheatTolerance, lastAutoBackup, lastCheck, nextCheck, gameUrl: cfg.gameUrl,
       gameVersion: gameVer, hostVersion: H.ver, hostUp: !!H.child, hostReady: H.ready, hostSince: H.startedAt, restarts: H.restarts,
       world: H.stat, uptime: Math.round(process.uptime()), load: os.loadavg(), cpus: os.cpus().length,
       mem: { total: os.totalmem(), free: os.freemem(), server: mem.rss }, players: recs.size, online: onlineList(),
@@ -733,7 +814,7 @@ async function api(req, res, url) {
     const q = (url.searchParams.get("q") || "").toLowerCase();
     const list = [...recs.values()]
       .filter((r) => !q || r.pid.toLowerCase().includes(q) || String(r.name || "").toLowerCase().includes(q))
-      .map((r) => ({ pid: r.pid, name: r.name, lastSeen: r.lastSeen, created: r.created, banned: !!r.banned, online: online.has(r.pid), ...r.sum, hero: r.hero, ver: r.ver }))
+      .map((r) => ({ pid: r.pid, name: r.name, lastSeen: r.lastSeen, created: r.created, banned: !!r.banned, online: online.has(r.pid), ...r.sum, hero: r.hero, ver: r.ver, flags: (r.flags || []).length }))
       .sort((a, b) => b.online - a.online || (b.lastSeen || 0) - (a.lastSeen || 0));
     return json(res, 200, { players: list });
   }
@@ -744,8 +825,8 @@ async function api(req, res, url) {
     if (!r) return json(res, 404, { error: "No such player." });
     const act = p[2];
     if (!act && M === "GET") {
-      const { keyHash, pwHash, ...rest } = r;
-      return json(res, 200, { ...rest, locked: !!keyHash, online: online.has(pid) });
+      const { keyHash, pwHash, rcHash, ...rest } = r;
+      return json(res, 200, { ...rest, rc: !!rcHash, locked: !!keyHash, online: online.has(pid) });
     }
     if (!act && M === "PUT") {
       const b = await body(req);
@@ -852,7 +933,7 @@ async function api(req, res, url) {
     return json(res, 200, { ok: true });
   }
   if (p[0] === "fullbackups") {
-    if (!p[1] && M === "GET") return json(res, 200, { backups: listFull(), autoBackupHours: cfg.autoBackupHours, autoBackupKeep: cfg.autoBackupKeep, lastAutoBackup, nextAutoBackup });
+    if (!p[1] && M === "GET") return json(res, 200, { backups: listFull(), autoBackupHours: cfg.autoBackupHours, autoBackupKeep: cfg.autoBackupKeep, antiCheat: cfg.antiCheat, cheatTolerance: cfg.cheatTolerance, lastAutoBackup, nextAutoBackup });
     if (!p[1] && M === "POST") return json(res, 200, { ok: true, file: await makeFull("manual") });
     if (p[1] === "upload" && M === "POST") {
       const name = `${Date.now()}-uploaded.tgz`, dst = path.join(FULL, name);
@@ -942,6 +1023,7 @@ async function api(req, res, url) {
       if (!r) continue;
       const g = { id: rnd(10), shards, marks, note: String(b.note || "").slice(0, 160), at: Date.now() };
       r.gifts = [...(r.gifts || []), g];
+      r.acAllow = { shards: (r.acAllow?.shards || 0) + shards, marks: (r.acAllow?.marks || 0) + marks };
       await writeRec(r);
       const c = clientOfPid(pid);
       if (c) (sendJ(c.ws, { t: "gift", ...g }), live++);
@@ -969,6 +1051,8 @@ async function api(req, res, url) {
     if (typeof b.autoUpdate === "boolean") cfg.autoUpdate = b.autoUpdate;
     if (b.autoBackupHours !== undefined) cfg.autoBackupHours = Math.max(0, Math.min(168, Math.round(+b.autoBackupHours) || 0));
     if (b.autoBackupKeep !== undefined) cfg.autoBackupKeep = Math.max(1, Math.min(100, Math.round(+b.autoBackupKeep) || 10));
+    if (typeof b.antiCheat === "boolean") cfg.antiCheat = b.antiCheat;
+    if (b.cheatTolerance !== undefined) cfg.cheatTolerance = Math.max(1, Math.min(20, Math.round(+b.cheatTolerance) || 1));
     if (typeof b.maintenanceMsg === "string") cfg.maintenanceMsg = b.maintenanceMsg.slice(0, 200);
     if (typeof b.maintenance === "boolean" && b.maintenance !== cfg.maintenance) {
       cfg.maintenance = b.maintenance;
