@@ -92,7 +92,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.10";
+const PAGE_VERSION = "1.11";
 const APP_LATEST = "1.7";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
@@ -179,7 +179,7 @@ async function dash() {
     M().innerHTML = `${updCard()}
 ${s.maintenance ? `<div class="card warn"><b>Maintenance mode is ON</b><p class="muted">Nobody can enter the Realm. Turn it off under Message.</p></div>` : ""}
       <div class="card"><h2>World</h2><div class="grid">
-        <div class="stat"><div class="v" style="color:${s.hostReady ? "var(--good)" : "var(--bad)"}">${s.hostReady ? "Online" : s.hostUp ? "Starting…" : "Down"}</div><div class="k">${s.hostReady ? "running " + dur((Date.now() - s.hostSince) / 1000) : "world host"}</div></div>
+        <div class="stat"><div class="v" style="color:${s.hostReady ? "var(--good)" : "var(--bad)"}">${s.hostReady ? "Online" : s.hostUp ? "Starting…" : "Down"}</div><div class="k">${s.hostReady ? (w.sleeping ? "resting — nobody online" : "running " + dur((Date.now() - s.hostSince) / 1000)) : "world host"}</div></div>
         <div class="stat"><div class="v">${s.online.length}<span class="muted"> / ${s.maxPlayers}</span></div><div class="k">players online</div></div>
         <div class="stat"><div class="v">${w.tick ?? "–"}<span class="muted"> ms</span></div><div class="k">world tick (worst ${w.worst ?? "–"} ms)</div></div>
         <div class="stat"><div class="v">${w.enemies ?? "–"}</div><div class="k">monsters awake${w.blood ? " · 🌑 blood moon" : ""}</div></div>
