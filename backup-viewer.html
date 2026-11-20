@@ -229,7 +229,7 @@ $("#go").onclick = async () => {
   } catch (e) { msg.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
   $("#go").disabled = false;
 };
-$("#pw").onkeydown = (e) => e.key === "Enter" && $("#go").click();
+$("#pw").onkeydown = (e) => { if (e.key === "Enter") $("#go").click(); };
 </script>
 </body>
 </html>

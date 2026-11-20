@@ -94,7 +94,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.20";
+const PAGE_VERSION = "1.21";
 const APP_LATEST = "1.10";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
@@ -150,7 +150,7 @@ $("#lgo").onclick = async () => {
   try { await call("status"); store.set("vfa_srv", S.base); store.set("vfa_pw", S.pw); start(); }
   catch (e) { $("#lerr").textContent = e.code === 401 ? "Wrong password." : e.message === "Failed to fetch" ? "Could not reach the server." : e.message; }
 };
-$("#lpw").onkeydown = (e) => e.key === "Enter" && $("#lgo").click();
+$("#lpw").onkeydown = (e) => { if (e.key === "Enter") $("#lgo").click(); };
 $("#hout").onclick = () => { if (confirm("Sign out of this server?")) { store.del("vfa_pw"); S.pw = ""; showLogin(); } };
 
 // ---------------- navigation ----------------
@@ -858,7 +858,7 @@ function consoleTab() {
   $("#cforget").onclick = () => { if (confirm("Forget the servers this app has connected to? Use this after moving to a new server.")) { VFAApp.forgetServers(); toast("Done"); } };
   M().querySelectorAll("[data-q]").forEach((b) => (b.onclick = () => { save(); const q = QUICK[+b.dataset.q]; conExec(q[1], q[2]); }));
   $("#crun").onclick = () => { save(); const c = $("#ccmd").value.trim(); c && conExec(c); };
-  $("#ccmd").onkeydown = (e) => e.key === "Enter" && $("#crun").click();
+  $("#ccmd").onkeydown = (e) => { if (e.key === "Enter") $("#crun").click(); };
   $("#chist") && ($("#chist").onchange = (e) => { $("#ccmd").value = e.target.value; });
   $("#cstop").onclick = () => { conRun && VFAApp.cancel(conRun.id); };
   $("#cclr").onclick = () => { if (conRun) conRun.text = ""; $("#cout").textContent = ""; };
