@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.27.1</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.27.2</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,9 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.27.1";
+  X.VERSION = "1.27.2";
   X.CHANGELOG = {
+    "1.27.2": ["On Android, the main menu keeps a small \"💻 Play on PC\" button to see the PC link again."],
     "1.27.1": ["Playing on Android? Vigilfall also plays on a PC: the game now shows the link with a Copy button. Sign in with the same account and your character is there."],
     "1.27.0": ["Game Masters: accounts the Realm admin chooses get a GM menu for testing and running the Realm, and show [GM] in the Realm."],
     "1.26.1": ["Fixed: numbers could not be typed into the email code box (and on some keyboards into the password boxes)."],
@@ -50552,7 +50553,8 @@ if (!X.realmServer) {
 /* ---- FR_pcnotice.js ---- */
 /* 1.27.1 — tell Android players that Vigilfall also plays on a PC, with the link to copy.
    Shown until the player taps "Got it" (remembered on the device and in the account): in the main menu, and as a card
-   a few seconds after a game starts. "Later" only hides it until the game is opened again. */
+   a few seconds after a game starts. "Later" only hides it until the game is opened again.
+   1.27.2 — after "Got it", a small "💻 Play on PC" button stays in the main menu to open the link again. */
 if (!X.realmServer && /Android/i.test(navigator.userAgent)) {
   const LINK = "https://polemarxos.github.io/Vigilfall/";
   const T = (s) => (X.EL?.T && X.lang === "el" ? X.EL.T(s) : s);
@@ -50564,6 +50566,7 @@ if (!X.realmServer && /Android/i.test(navigator.userAgent)) {
     const p = app()?.profile;
     if (p) { p.pcNotice = 1; try { app().saveProfile(); } catch (e) {} }
     document.querySelectorAll(".pcnotice").forEach((e) => e.remove());
+    try { document.querySelector("#menu .menu-col") && app()?.game?.running !== !0 && app()?.ui?.mainMenu?.(); } catch (e) {}
   };
   const copy = async (btn, inp) => {
     let ok = !1;
@@ -50572,14 +50575,14 @@ if (!X.realmServer && /Android/i.test(navigator.userAgent)) {
     btn.textContent = ok ? "✓ " + T("Copied") : T("Select the link and copy it");
     setTimeout(() => (btn.textContent = "📋 " + T("Copy link")), 2500);
   };
-  const html = (inGame) => `
+  const html = (inGame, again) => `
     <div style="font-weight:600;color:#ffd070;margin-bottom:4px">💻 ${T("Vigilfall also plays on a PC!")}</div>
     <div style="font-size:13px;opacity:.9;margin-bottom:8px">${T("Open this link in any browser on your computer (Chrome, Edge, Firefox) and sign in with the same account: your character is there too.")}</div>
     <input class="pclink" readonly value="${LINK}" style="width:100%;text-transform:none;font:13px ui-monospace,monospace;padding:8px;margin:0 0 8px;background:#0f0c09;color:#e8dcc0;border:1px solid #6a5a3a;border-radius:7px">
     <div style="display:flex;gap:6px;flex-wrap:wrap">
       <button class="pccopy" style="flex:1 1 auto;min-height:0;padding:8px 10px">📋 ${T("Copy link")}</button>
       ${navigator.share ? `<button class="pcshare ghost" style="flex:1 1 auto;min-height:0;padding:8px 10px">↗ ${T("Share")}</button>` : ""}
-      <button class="pcok ghost" style="flex:1 1 auto;min-height:0;padding:8px 10px">✓ ${T("Got it")}</button>
+      <button class="pcok ghost" style="flex:1 1 auto;min-height:0;padding:8px 10px">${again ? "✕ " + T("Close") : "✓ " + T("Got it")}</button>
       ${inGame ? `<button class="pclater ghost" style="flex:0 0 auto;min-height:0;padding:8px 10px">${T("Later")}</button>` : ""}
     </div>`;
   const wire = (box) => {
@@ -50587,7 +50590,7 @@ if (!X.realmServer && /Android/i.test(navigator.userAgent)) {
     inp.onclick = () => { inp.select(); inp.setSelectionRange(0, 999); };
     box.querySelector(".pccopy").onclick = (e) => { e.stopPropagation(); copy(e.currentTarget, inp); };
     box.querySelector(".pcshare") && (box.querySelector(".pcshare").onclick = (e) => { e.stopPropagation(); navigator.share({ title: "Vigilfall", text: T("Play Vigilfall on your PC:"), url: LINK }).catch(() => {}); });
-    box.querySelector(".pcok").onclick = (e) => { e.stopPropagation(); ack(); };
+    box.querySelector(".pcok").onclick = (e) => { e.stopPropagation(); box.dataset.again ? box.remove() : ack(); };
     box.querySelector(".pclater") && (box.querySelector(".pclater").onclick = (e) => { e.stopPropagation(); later = !0; box.remove(); });
     ["keydown", "touchstart", "mousedown"].forEach((ev) => box.addEventListener(ev, (e) => e.stopPropagation(), { passive: !0 }));
   };
@@ -50597,6 +50600,28 @@ if (!X.realmServer && /Android/i.test(navigator.userAgent)) {
     const r = mm0.apply(this, a);
     try {
       const col = document.querySelector("#menu .menu-col");
+      if (done() && col && !col.querySelector("[data-a=pcagain]")) {
+        // already seen: a small button opens the card again (nothing is reset)
+        const b = document.createElement("button");
+        b.dataset.a = "pcagain";
+        b.className = "ghost";
+        b.textContent = "💻 " + T("Play on PC");
+        const after = col.querySelector("[data-a=gm]") || col.querySelector(".evline") || col.querySelector(".acctbox");
+        after ? after.after(b) : col.prepend(b);
+        b.onclick = (e) => {
+          e.stopPropagation();
+          this.click?.();
+          const open = col.querySelector(".pcnotice");
+          if (open) return open.remove();
+          const box = document.createElement("div");
+          box.className = "pcnotice";
+          box.dataset.again = "1";
+          box.style.cssText = "border:1px solid #8a6a3a;background:rgba(30,24,14,.92);border-radius:10px;padding:10px 12px;margin:6px 0;text-align:left";
+          box.innerHTML = html(!1, !0);
+          b.after(box);
+          wire(box);
+        };
+      }
       if (!done() && col && !col.querySelector(".pcnotice")) {
         const box = document.createElement("div");
         box.className = "pcnotice";
@@ -51430,7 +51455,7 @@ Object.assign(X.EL.ui, {
   "Your password was changed. Sign in again.": "Ο κωδικός σου άλλαξε. Συνδέσου ξανά.",
   "Vigilfall also plays on a PC!": "Το Vigilfall παίζεται και σε υπολογιστή!",
   "Open this link in any browser on your computer (Chrome, Edge, Firefox) and sign in with the same account: your character is there too.": "Άνοιξε αυτόν τον σύνδεσμο σε οποιονδήποτε browser στον υπολογιστή σου (Chrome, Edge, Firefox) και συνδέσου με τον ίδιο λογαριασμό: ο χαρακτήρας σου είναι κι εκεί.",
-  "Copy link": "Αντιγραφή συνδέσμου", "Select the link and copy it": "Επίλεξε τον σύνδεσμο και αντίγραψέ τον", "Got it": "Εντάξει", Later: "Αργότερα", Share: "Κοινοποίηση", "Play Vigilfall on your PC:": "Παίξε Vigilfall στον υπολογιστή σου:",
+  "Play on PC": "Παίξε σε υπολογιστή", Close: "Κλείσιμο", "Copy link": "Αντιγραφή συνδέσμου", "Select the link and copy it": "Επίλεξε τον σύνδεσμο και αντίγραψέ τον", "Got it": "Εντάξει", Later: "Αργότερα", Share: "Κοινοποίηση", "Play Vigilfall on your PC:": "Παίξε Vigilfall στον υπολογιστή σου:",
   "Game Master": "Αρχηγός Παιχνιδιού", "Hero & items": "Ήρωας & αντικείμενα", Cheats: "Κόλπα", World: "Κόσμος", Realm: "Βασίλειο",
   "Start the game (any hero) to use these.": "Ξεκίνα το παιχνίδι (με οποιονδήποτε ήρωα) για να τα χρησιμοποιήσεις.", "Start the game first.": "Ξεκίνα πρώτα το παιχνίδι.",
   Levels: "Επίπεδα", "All heroes to level": "Όλοι οι ήρωες στο επίπεδο", level: "επίπεδο", Level: "Επίπεδο", Set: "Ορισμός", Currency: "Νομίσματα", Items: "Αντικείμενα",
@@ -51670,6 +51695,7 @@ Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑ
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.27.2"] && (X.CHANGELOG["1.27.2"] = ["Στο Android το κύριο μενού κρατά ένα μικρό κουμπί «💻 Παίξε σε υπολογιστή» για να ξαναδείς τον σύνδεσμο."]);
       X.CHANGELOG && X.CHANGELOG["1.27.1"] && (X.CHANGELOG["1.27.1"] = ["Παίζεις σε Android; Το Vigilfall παίζεται και σε υπολογιστή: το παιχνίδι δείχνει τώρα τον σύνδεσμο με κουμπί Αντιγραφής. Συνδέσου με τον ίδιο λογαριασμό και ο χαρακτήρας σου είναι εκεί."]);
       X.CHANGELOG && X.CHANGELOG["1.27.0"] && (X.CHANGELOG["1.27.0"] = ["Αρχηγοί Παιχνιδιού (GM): οι λογαριασμοί που ορίζει ο διαχειριστής έχουν μενού GM για δοκιμές και διαχείριση του Βασιλείου, και εμφανίζονται ως [GM] στο Βασίλειο."]);
       X.CHANGELOG && X.CHANGELOG["1.26.1"] && (X.CHANGELOG["1.26.1"] = ["Διορθώθηκε: δεν γράφονταν αριθμοί στο πεδίο του κωδικού email (και σε κάποια πληκτρολόγια στα πεδία κωδικού)."]);

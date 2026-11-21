@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.27.2",
+    "date": "2026-11-21",
+    "changes": [
+      "On Android, the main menu keeps a small \"💻 Play on PC\" button to see the PC link again."
+    ]
+  },
+  {
     "version": "1.27.1",
     "date": "2026-11-21",
     "changes": [
