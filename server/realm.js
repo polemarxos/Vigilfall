@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.12.0";
+const SERVER_VERSION = "1.13.0";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -715,6 +715,7 @@ async function latestServer() {
   return (t.match(/SERVER_VERSION = "([\d.]+)"/) || [])[1] || null;
 }
 let selfUpdating = false;
+let latestCache = null;
 async function selfUpdate() {
   if (selfUpdating) throw new Error("Already updating.");
   selfUpdating = true;
@@ -1558,6 +1559,27 @@ async function api(req, res, url) {
     });
     log("gift", b.all ? "to all" : pids[0], shards + " shards", marks + " marks");
     return json(res, 200, { ok: true, players: pids.length, live });
+  }
+  // 1.13: one look at every version — what this server has, what the world runs, and what is newest on GitHub
+  if (p[0] === "versions" && M === "GET") {
+    const fresh = url.searchParams.get("fresh") === "1";
+    if (fresh || !latestCache || Date.now() - latestCache.at > 5 * 60e3) {
+      const one = async (f) => { try { return await f(); } catch (e) { return null; } };
+      const [g, srv, ai] = await Promise.all([
+        one(async () => String(await srcGet("version.txt")).trim()),
+        one(latestServer),
+        one(async () => { const b = await srcGet("VigilfallAdmin.json", { optional: true }); return b ? JSON.parse(String(b)) : null; }),
+      ]);
+      latestCache = { at: Date.now(), game: g, server: srv, admin: ai ? ai.versionName : null, ok: !!(g || srv) };
+    }
+    const L = latestCache;
+    return json(res, 200, {
+      checkedAt: L.at, reachable: L.ok,
+      game: { have: gameVer, running: H.ver, latest: L.game },
+      server: { have: SERVER_VERSION, latest: L.server },
+      admin: { have: adminAppInfo ? adminAppInfo.versionName : null, latest: L.admin },
+      autoUpdate: !!cfg.autoUpdate, lastCheck, nextCheck,
+    });
   }
   if (p[0] === "server" && M === "GET") {
     let latest = null;

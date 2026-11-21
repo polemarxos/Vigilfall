@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.28.0",
+    "date": "2026-11-21",
+    "changes": [
+      "Dungeon and raid companions now play their roles properly: dungeons are 1 tank, 1 healer and 2 DPS, raids 2 tanks, 2 healers and 4 DPS.",
+      "Fixed: monsters could never attack companions (they were treated as if they were inside a house), so tanks never held aggro and you took every hit.",
+      "Tanks pull only when the group is ready, go for bosses loose on the group first, taunt them back and turn big enemies away from everyone; in raids the second tank picks up the adds.",
+      "Healers heal tanks first, need to see who they heal, keep 8–14 m behind the tank, stay out of melee and pace their mana.",
+      "DPS attack the tank's target, never open a fight with a tank around, and melee DPS stand behind the enemy.",
+      "Companions no longer shoot, heal or dodge through walls; raid mechanics never send them into a wall; tanks stand in small slams and puddles instead of dancing out of every one."
+    ]
+  },
+  {
     "version": "1.27.2",
     "date": "2026-11-21",
     "changes": [

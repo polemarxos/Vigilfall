@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.27.2</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.28.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -30802,7 +30802,7 @@ Object.assign(rw.unbound, { hp: 240000 });
         pkt = { t: "me", gl: yC(gear), sw: 0, p: pos, y: g.player.yaw, hp: st.hp, mh: st.hp, hero, cos: { finish: cosF, cloak: cosC, aura: "none", flame: "warm" }, name, dn: !1, st: !1, ln: !0, lv };
       g.updateRemote(id, pkt);
       let r = g.remotes.get(id);
-      Object.assign(r, { bot: !0, role, level: lv, st, hp: st.hp, maxHp: st.hp, cd: {}, atkT: Math.random(), sw: 0, lv, pid: id, dead: !1, downed: !1, potT: 0, speed: 5.4, home: g.player.pos.clone() });
+      Object.assign(r, { bot: !0, role, level: lv, st, hp: st.hp, maxHp: st.hp, cd: {}, atkT: Math.random(), sw: 0, lv, pid: id, dead: !1, downed: !1, potT: 0, speed: 5.4, spawnAt: g.player.pos.clone() });
       r.pos.set(...pos);
       r.target = r.pos.clone();
       return r;
@@ -30997,8 +30997,13 @@ Object.assign(rw.unbound, { hp: 240000 });
   // a point to stand on that is outside every enemy ground zone and pending telegraph, or null when safe
   X.botHazard = (g, r) => {
     let bad = [];
-    for (let z of g.zones || []) z.enemy && z.life > 0.3 && bad.push([z.pos, z.r + 0.8]);
-    for (let t of g.telegraphs || []) t.enemyTele && t.r && t.t < t.delay && bad.push([t.pos, t.r + 0.9]);
+    // 1.28: a bot that keeps backing out of ground pools (a corridor full of poison) runs through them for a while like a
+    // player would; telegraphed blasts are always dodged
+    if (!(r._hazPass > g.t)) for (let z of g.zones || []) z.enemy && z.life > 0.3 && bad.push([z.pos, z.r + 0.8]);
+    // a healthy tank stands in small slams and puddles to keep the boss where it is (it has the armour for it)
+    let tough = r.role === "Tank" && r.hp > r.maxHp * 0.5;
+    tough && (bad.length = 0);
+    for (let t of g.telegraphs || []) t.enemyTele && t.r && t.t < t.delay && !(tough && t.r < 5) && bad.push([t.pos, t.r + 0.9]);
     if (!bad.length) return null;
     let inside = bad.filter(([p, rr]) => Math.hypot(r.pos.x - p.x, r.pos.z - p.z) < rr);
     if (!inside.length) return null;
@@ -31011,7 +31016,7 @@ Object.assign(rw.unbound, { hp: 240000 });
         let x = r.pos.x + Math.sin(a) * dist,
           z = r.pos.z + Math.cos(a) * dist;
         if (bad.some(([p, rr]) => Math.hypot(x - p.x, z - p.z) < rr)) continue;
-        if (blocked(g, x, z, r.pos.y)) continue;
+        if (blocked(g, x, z, r.pos.y) || !seenPt(g, r.pos, { x, y: r.pos.y, z })) continue; // never "escape" through a wall
         // prefer staying near the host and our own target
         let score = dist + 0.15 * Math.hypot(x - g.player.pos.x, z - g.player.pos.z);
         score < bd && ((bd = score), (best = new N(x, r.pos.y, z)));
@@ -31034,6 +31039,24 @@ Object.assign(rw.unbound, { hp: 240000 });
     r.target.copy(r.pos);
     g.fx?.("burst", r.pos.clone().setY(r.pos.y + 1), { color: 0x9a9a9a, n: 12 });
   };
+  // 1.28: line of sight for bots — walls and pillars block it, low props do not. Cached per bot and enemy for 0.3 s.
+  let seenPt = (g, a, b) => {
+    let dx = b.x - a.x, dz = b.z - a.z, n = Math.ceil(Math.hypot(dx, dz) / 0.6), y = Math.max(a.y, b.y) + 1.6;
+    for (let k = 1; k < n; k++) {
+      let c = g.world.pointBlocked(a.x + (dx * k) / n, y, a.z + (dz * k) / n);
+      if (c && c.tag !== "prop") return !1;
+    }
+    return !0;
+  };
+  let seen = (g, r, e) => {
+    let m = (r._los ||= new Map()), c = m.get(e.id);
+    if (c && g.t - c.t < 0.3) return c.v;
+    let v = seenPt(g, r.pos, e.pos);
+    m.size > 200 && m.clear();
+    m.set(e.id, { t: g.t, v });
+    return v;
+  };
+  X.botSees = seenPt;
   P.updateBots = function (dt) {
     if (!this.isHost) return;
     let bots = X.bots.list(this);
@@ -31042,13 +31065,23 @@ Object.assign(rw.unbound, { hp: 240000 });
     let allies = X.allies(this),
       enemies = [...this.enemies.values()].filter((e) => e.alive && !(e.rise > 0)),
       tanks = allies.filter((a) => a.role === "Tank" && !a.downed),
+      tankIds = new Set(tanks.map((a) => a.id)),
+      allyIds = new Set(allies.map((a) => a.id)),
+      // the main tank is the first standing tank (a player tank before companions); the others off-tank
+      mainTank = tanks[0] || null,
+      engaged = (e) => !!e.target && allyIds.has(e.target),
+      // ready to pull: nobody down, the healer is standing and has mana, the tank is healthy
+      heals = allies.filter((a) => a.role === "Healer"),
+      ready = !allies.some((a) => a.downed) && (!heals.length || heals.some((h) => { let b = this.remotes.get(h.id); return !b?.bot || (b.mana ?? 100) > 35; })),
       idx = 0;
+    ready = ready && !bots.some((b) => b.role === "Tank" && b.hp < b.maxHp * 0.6);
     for (let r of bots) {
       let i = idx++;
       r.moving = !1;
       r.ifr = Math.max(0, (r.ifr || 0) - dt);
       r.combatT = Math.max(0, (r.combatT || 0) - dt);
       for (let k in r.cd) r.cd[k] = Math.max(0, r.cd[k] - dt);
+      r.role === "Healer" && (r.mana = Math.min(100, (r.mana ?? 100) + dt * (r.combatT > 0 ? 3 : 9)));
       r.hot && ((r.hp = Math.min(r.maxHp, r.hp + r.hot.amt * dt)), (r.hot.t -= dt), r.hot.t <= 0 && (r.hot = null));
       if (r.downed) {
         // a downed bot gets back up after 25 s unless revived (players can hold F on it)
@@ -31063,6 +31096,7 @@ Object.assign(rw.unbound, { hp: 240000 });
       // raid mechanics (EQ_raid): a bot sent somewhere goes there first
       if (r.mechGoal && this.t < r.mechGoal.until) {
         r.combatT = 6;
+        r._m = "mech";
         moveBot(this, r, r.mechGoal.pos, dt, 0.4);
         r.target.copy(r.pos);
         X.bots.packet(r);
@@ -31070,8 +31104,11 @@ Object.assign(rw.unbound, { hp: 240000 });
       }
       // ---- get out of fire, poison and telegraphed blasts first ----
       let haz = X.botHazard(this, r);
+      r._hazT = Math.max(0, (r._hazT || 0) + (haz ? dt : -dt * 0.5));
+      if (haz && r._hazT > 3.5) ((r._hazPass = this.t + 4), (r._hazT = 0), (haz = X.botHazard(this, r)));
       if (haz) {
         r.combatT = 6;
+        r._m = "haz";
         moveBot(this, r, haz, dt, 0.3);
         r.target.copy(r.pos);
         X.bots.packet(r);
@@ -31080,27 +31117,42 @@ Object.assign(rw.unbound, { hp: 240000 });
       // ---- stuck for a while, or left far behind: rejoin the host like a player using a path ----
       let hostD = r.pos.distanceTo(this.player.pos);
       if ((r.stuck > 5 && hostD > 6) || (hostD > 55 && !(r.combatT > 0)) || hostD > 75) {
+        r._m = "rejoin";
         X.botRejoin(this, r, i);
         X.bots.packet(r);
         continue;
       }
-      let near = enemies.filter((e) => e.pos.distanceTo(r.pos) < 32 || allies.some((a) => e.target === a.id)),
+      // 1.28: who the bot may fight. Fights the party is already in count from further away; anything else only when the
+      // bot can see it (no shooting or chasing through walls). Only a tank opens a fight (DPS and healers wait for the
+      // pull), unless no tank is standing, and a tank only pulls what the group is next to, when the group is ready.
+      let near = enemies.filter((e) => {
+          let d = e.pos.distanceTo(r.pos);
+          if (engaged(e)) return d < 40 && (d < 10 || seen(this, r, e));
+          if (d > 24 || !seen(this, r, e)) return !1;
+          if (r.role !== "Tank" && tanks.length) return d < 4.5; // self-defence only
+          return e.pos.distanceTo(this.player.pos) < 30 && (r.role !== "Tank" || ready);
+        }),
         tgt = null;
       X.botNear && (near = X.botNear(this, r, near));
+      let nearest = (arr) => arr.slice().sort((a, b) => a.pos.distanceTo(r.pos) - b.pos.distanceTo(r.pos))[0] || null;
+      let healer = r.role === "Healer";
       // ---- choose what to do by role ----
       if (r.role === "Tank") {
-        // enemies on non-tank allies first (closest), else nearest
-        let loose = near.filter((e) => e.target && e.target !== r.id && allies.find((a) => a.id === e.target && a.role !== "Tank"));
-        tgt = (loose.length ? loose : near).sort((a, b) => a.pos.distanceTo(r.pos) - b.pos.distanceTo(r.pos))[0] || null;
+        // main tank: whatever is on the group, else the nearest. Off-tank (raids): adds first, the boss only when it got loose
+        let isMain = !mainTank || mainTank.id === r.id,
+          loose = near.filter((e) => engaged(e) && !tankIds.has(e.target)),
+          adds = near.filter((e) => !e.def?.boss && !(e.target && tankIds.has(e.target) && e.target !== r.id));
+        // a boss or elite loose on the group comes before everything else
+        let bigLoose = loose.filter((e) => e.def?.boss || e.def?.elite || e.instBoss);
+        tgt = nearest(bigLoose.length && isMain ? bigLoose : loose.length ? loose : isMain ? near : adds.length ? adds : near);
         // taunt a loose enemy
-        let tt = loose.find((e) => e.tauntT <= 0 && e.pos.distanceTo(r.pos) < 22);
+        let tt = (isMain && bigLoose.find((e) => e.tauntT <= 0 && e.pos.distanceTo(r.pos) < 22)) || loose.find((e) => e.tauntT <= 0 && e.pos.distanceTo(r.pos) < 22);
         if (tt && !(r.cd.taunt > 0)) {
           ((r.cd.taunt = 8), this.taunt(tt, r.id), this.floatText(tt.pos.clone().setY(tt.pos.y + 2.2), "TAUNT", "#ffd070"), this.audio.play("bash", r.pos, 0.5));
         }
-      } else if (r.role === "Healer") {
-        let hurt = allies.filter((a) => !a.downed && a.pos.distanceTo(r.pos) < 34).sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0],
-          downed = allies.find((a) => a.downed && !a.bot && a.pos.distanceTo(r.pos) < 30) || allies.find((a) => a.downed && a.pos.distanceTo(r.pos) < 30);
-        if (downed && !(r.cd.rev > 0) && near.length === 0) {
+      } else if (healer) {
+        let downed = allies.find((a) => a.downed && !a.bot && a.pos.distanceTo(r.pos) < 30) || allies.find((a) => a.downed && a.pos.distanceTo(r.pos) < 30);
+        if (downed && !(r.cd.rev > 0) && !near.some(engaged)) {
           // revive when safe
           if (moveBot(this, r, downed.pos, dt, 1.8)) {
             r.revT = (r.revT || 0) + dt;
@@ -31113,34 +31165,88 @@ Object.assign(rw.unbound, { hp: 240000 });
           X.bots.packet(r);
           continue;
         }
-        if (hurt && hurt.hp < hurt.maxHp * 0.85 && !(r.cd.heal > 0)) {
-          let crit = hurt.hp < hurt.maxHp * 0.4;
-          r.cd.heal = crit ? 1.2 : 1.8;
-          r.sw++;
-          X.botHeal(this, r, hurt, r.st.heal * (crit ? 1.35 : 1));
+        // heal priority: lowest health, tanks first (they take the hits), only allies in range and in sight; mana paces it
+        let pr = (a) => a.hp / a.maxHp - (a.role === "Tank" ? 0.12 : 0),
+          cand = allies.filter((a) => !a.downed && a.hp < a.maxHp * 0.92).sort((a, b) => pr(a) - pr(b)),
+          hurt = cand[0] || null,
+          canSee = hurt && hurt.pos.distanceTo(r.pos) < 30 && seenPt(this, r.pos, hurt.pos);
+        if (hurt && !canSee) r._healGo = hurt;
+        else r._healGo = null;
+        let thr = r.mana < 20 ? (hurt?.role === "Tank" ? 0.55 : 0.45) : 0.85;
+        if (hurt && canSee && hurt.hp < hurt.maxHp * thr && !(r.cd.heal > 0)) {
+          let crit = hurt.hp < hurt.maxHp * 0.4,
+            cost = crit ? 9 : 6;
+          if (r.mana >= cost || crit) {
+            r.mana = Math.max(0, r.mana - cost);
+            r.cd.heal = crit ? 1.2 : 1.8;
+            r.sw++;
+            X.botHeal(this, r, hurt, r.st.heal * (crit ? 1.35 : 1));
+          }
         }
-        tgt = near.sort((a, b) => a.pos.distanceTo(r.pos) - b.pos.distanceTo(r.pos))[0] || null;
+        // only fight when nobody needs healing
+        tgt = cand.some((a) => a.hp < a.maxHp * 0.7) ? null : nearest(near.filter(engaged)) || nearest(near);
       } else {
-        // DPS: the tank's target, else whatever is nearest
-        let tankTgt = near.find((e) => tanks.some((t) => e.target === t.id));
-        tgt = tankTgt || near.sort((a, b) => a.pos.distanceTo(r.pos) - b.pos.distanceTo(r.pos))[0] || null;
+        // DPS: the main tank's target, then any tank's, then whatever is on the group; never open a fight with a tank about
+        let onMain = mainTank && near.find((e) => e.target === mainTank.id),
+          onTank = near.find((e) => tankIds.has(e.target)),
+          onUs = near.filter((e) => engaged(e));
+        tgt = onMain || onTank || nearest(onUs) || nearest(near);
       }
       let ranged = ["bow", "orb", "staff", "totem", "tide", "grimoire", "flask"].includes(FI.find((h) => h.id === r.hero).weapon);
       X.botSkills(this, r, tgt, near, allies, dt);
-      if (tgt) {
+      let fightOn = near.some(engaged);
+      if (healer && r._healGo && !tgt) {
+        // the one who needs healing is out of sight or range: go to them
+        r._m = "healgo";
+        moveBot(this, r, r._healGo.pos, dt, 8);
+        r.combatT = 6;
+      } else if (healer && !tgt && fightOn && mainTank && mainTank.id !== r.id) {
+        // busy healing: stay 8-14 m from the main tank, in sight of it, out of melee
+        r._m = "heal";
+        r.combatT = 6;
+        let dT = mainTank.pos.distanceTo(r.pos),
+          close = near.filter(engaged).find((e) => e.pos.distanceTo(r.pos) < 6);
+        if (dT > 14 || !seenPt(this, r.pos, mainTank.pos)) moveBot(this, r, mainTank.pos, dt, 10);
+        else if (close) moveBot(this, r, r.pos.clone().sub(close.pos).setY(0).normalize().multiplyScalar(5).add(r.pos), dt, 0.5);
+        r.yaw = Math.atan2(-(mainTank.pos.x - r.pos.x), -(mainTank.pos.z - r.pos.z));
+      } else if (tgt) {
         r.combatT = 6;
         let d = tgt.pos.distanceTo(r.pos),
-          want = ranged ? 9 : 1.9 + (tgt.def.radius || 0.5) * (tgt.scale || 1);
-        if (d > want + 0.3) moveBot(this, r, tgt.pos, dt, want);
-        else if (ranged && d < 4) {
+          reach = (tgt.def.radius || 0.5) * (tgt.scale || 1),
+          want = ranged ? (healer ? 11 : 9) : 1.9 + reach,
+          vis = seen(this, r, tgt);
+        r._m = (vis ? "fight " : "seek ") + tgt.type + " " + d.toFixed(0);
+        let holder = tgt.target && tankIds.has(tgt.target) ? allies.find((a) => a.id === tgt.target) : null,
+          spot = null;
+        if (!vis) moveBot(this, r, tgt.pos, dt, 2); // no line of sight: close in until there is one
+        else if (d > want + 0.3) moveBot(this, r, tgt.pos, dt, want);
+        else if (ranged && d < (healer ? 7 : 4)) {
           // back off from melee
           let away = r.pos.clone().sub(tgt.pos).setY(0).normalize().multiplyScalar(6).add(r.pos);
           moveBot(this, r, away, dt, 0.5);
+        } else if (r.role === "Tank" && tgt.target === r.id && (tgt.def.boss || tgt.def.elite || (tgt.scale || 1) > 1.1)) {
+          // turn big hitters away from the group: stand on the far side of the enemy from everyone else
+          let C = new N(), n = 0;
+          for (let a of allies) if (a.id !== r.id && !a.downed && a.role !== "Tank" && a.pos.distanceTo(tgt.pos) < 30) (C.add(a.pos), n++);
+          if (n) {
+            C.multiplyScalar(1 / n);
+            let v = tgt.pos.clone().sub(C).setY(0);
+            v.lengthSq() > 0.25 && (spot = tgt.pos.clone().addScaledVector(v.normalize(), want));
+          }
+        } else if (!ranged && r.role === "DPS" && holder) {
+          // melee DPS stand behind the enemy, away from its face (the tank), fanned out a little
+          let v = tgt.pos.clone().sub(holder.pos).setY(0);
+          if (v.lengthSq() > 0.25) {
+            v.normalize();
+            let a = ((i % 3) - 1) * 0.55, c = Math.cos(a), s = Math.sin(a);
+            spot = tgt.pos.clone().add(new N(v.x * c - v.z * s, 0, v.x * s + v.z * c).multiplyScalar(want));
+          }
         }
+        if (spot && !this.world.pointBlocked(spot.x, r.pos.y + 1, spot.z) && Math.hypot(spot.x - r.pos.x, spot.z - r.pos.z) > 1.2) moveBot(this, r, spot, dt, 0.6);
         r.yaw = Math.atan2(-(tgt.pos.x - r.pos.x), -(tgt.pos.z - r.pos.z));
         // attack
         r.atkT -= dt;
-        let inRange = d <= (ranged ? 26 : want + 1.2);
+        let inRange = vis && d <= (ranged ? 26 : want + 1.2);
         if (inRange && r.atkT <= 0) {
           r.atkT = ranged ? 1.15 : 1.0;
           r.sw++;
@@ -31161,6 +31267,7 @@ Object.assign(rw.unbound, { hp: 240000 });
       } else {
         // follow the party
         let fp = followPoint(this, r, i);
+        r._m = "follow";
         r.pos.distanceTo(fp) > 2.2 ? moveBot(this, r, fp, dt, 1.5) : X.botIdle?.(this, r, dt);
       }
       r.target.copy(r.pos);
@@ -33781,8 +33888,16 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.27.2";
+  X.VERSION = "1.28.0";
   X.CHANGELOG = {
+    "1.28.0": [
+      "Dungeon and raid companions now play their roles properly: dungeons are 1 tank, 1 healer and 2 DPS, raids 2 tanks, 2 healers and 4 DPS.",
+      "Fixed: monsters could never attack companions (they were treated as if they were inside a house), so tanks never held aggro and you took every hit.",
+      "Tanks pull only when the group is ready, go for bosses loose on the group first, taunt them back and turn big enemies away from everyone; in raids the second tank picks up the adds.",
+      "Healers heal tanks first, need to see who they heal, keep 8–14 m behind the tank, stay out of melee and pace their mana.",
+      "DPS attack the tank's target, never open a fight with a tank around, and melee DPS stand behind the enemy.",
+      "Companions no longer shoot, heal or dodge through walls; raid mechanics never send them into a wall; tanks stand in small slams and puddles instead of dancing out of every one.",
+    ],
     "1.27.2": ["On Android, the main menu keeps a small \"💻 Play on PC\" button to see the PC link again."],
     "1.27.1": ["Playing on Android? Vigilfall also plays on a PC: the game now shows the link with a Copy button. Sign in with the same account and your character is there."],
     "1.27.0": ["Game Masters: accounts the Realm admin chooses get a GM menu for testing and running the Realm, and show [GM] in the Realm."],
@@ -44174,7 +44289,12 @@ Object.assign(X.COMPANIONS, {
 
   // ---- bots know the mechanics ----
   let botsOf = (g) => (X.bots?.list ? X.bots.list(g).filter((r) => !r.downed) : []),
-    send = (r, pos, dur, g) => (r.mechGoal = { pos: pos.clone(), until: g.t + dur });
+    send = (r, pos, dur, g) => {
+      // never aim a bot into a wall: pull the spot back toward the bot until it stands in the open and in sight
+      let p = pos.clone();
+      for (let k = 0; k < 8 && (g.world.pointBlocked(p.x, r.pos.y + 1, p.z) || (X.botSees && !X.botSees(g, r.pos, p))); k++) p.lerp(r.pos, 0.3);
+      r.mechGoal = { pos: p, until: g.t + dur };
+    };
   X.botNear = function (g, r, near) {
     // while a boss is immune its guards come first
     let guards = near.filter((e) => e.guardOf && e.guardOf.immune > 0);
@@ -47771,7 +47891,7 @@ X.EL.quests = {
         g.fx?.("burst", tgt.pos.clone().setY(tgt.pos.y + 1.2), { color: colorOf(r), n: 18 });
       }
       // E: taunting blast when several enemies are close
-      const close = near.filter((e) => e.pos.distanceTo(r.pos) < 6);
+      const close = near.filter((e) => e.pos.distanceTo(r.pos) < 6 && (!X.botSees || X.botSees(g, r.pos, e.pos)));
       if (close.length >= 2 && !(cd.e > 0)) {
         cd.e = 12;
         callout(g, r, "E");
@@ -47792,13 +47912,14 @@ X.EL.quests = {
       }
       if (!near.length) r._pullSaid = !1;
     } else if (r.role === "Healer") {
-      const live = allies.filter((a) => !a.downed && a.pos.distanceTo(r.pos) < 30);
+      const live = allies.filter((a) => !a.downed && a.pos.distanceTo(r.pos) < 30 && (!X.botSees || X.botSees(g, r.pos, a.pos)));
+      const mana = (c) => ((r.mana ?? 100) >= c ? ((r.mana = (r.mana ?? 100) - c), !0) : !1);
       // Q: heal-over-time on the tank (or the most hurt ally)
       if (!(cd.q > 0) && live.length) {
         const tank = live.find((a) => a.role === "Tank" && a.hp < a.maxHp * 0.95),
           low = live.slice().sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0],
           a = tank || (low && low.hp < low.maxHp * 0.9 ? low : null);
-        if (a) {
+        if (a && mana(10)) {
           cd.q = 7;
           callout(g, r, "Q");
           healAlly(g, r, a, r.st.heal * 1.2, !0);
@@ -47806,7 +47927,7 @@ X.EL.quests = {
       }
       // E: group heal when two or more are hurt
       const hurt = live.filter((a) => a.hp < a.maxHp * 0.7);
-      if (hurt.length >= 2 && !(cd.e > 0)) {
+      if (hurt.length >= 2 && !(cd.e > 0) && mana(18)) {
         cd.e = 12;
         callout(g, r, "E");
         for (const a of hurt) healAlly(g, r, a, r.st.heal * 0.8);
@@ -47817,11 +47938,12 @@ X.EL.quests = {
         cd.r = 90;
         callout(g, r, "R");
         for (const a of live) healAlly(g, r, a, a.maxHp * 0.5);
+        r.mana = Math.min(100, (r.mana ?? 100) + 30);
         g.fx?.("burst", r.pos.clone().setY(r.pos.y + 1.5), { color: 0xfff0b0, n: 40 });
       }
     } else {
       // DPS — Q: kick casters / wind-ups
-      const kick = near.find((e) => isCaster(e) && e.pos.distanceTo(r.pos) < 14 && !(e.stun > 0) && (e.windup > 0 || e.cast || e.hp > e.maxHp * 0.4));
+      const kick = near.find((e) => isCaster(e) && e.target && e.pos.distanceTo(r.pos) < 14 && !(e.stun > 0) && (e.windup > 0 || e.cast || e.hp > e.maxHp * 0.4));
       if (kick && !(cd.q > 0)) {
         cd.q = 12;
         callout(g, r, "Q");
@@ -47829,7 +47951,7 @@ X.EL.quests = {
       }
       // E: cleave when the pack is bunched up
       if (tgt && !(cd.e > 0)) {
-        const pack = near.filter((e) => e.pos.distanceTo(tgt.pos) < 5);
+        const pack = near.filter((e) => e.pos.distanceTo(tgt.pos) < 5 && (!X.botSees || X.botSees(g, tgt.pos, e.pos)));
         if (pack.length >= 3) {
           cd.e = 10;
           callout(g, r, "E");
@@ -51695,6 +51817,7 @@ Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑ
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.28.0"] && (X.CHANGELOG["1.28.0"] = ["Οι σύντροφοι σε μπουντρούμια και επιδρομές παίζουν σωστά τον ρόλο τους: μπουντρούμια με 1 tank, 1 healer και 2 DPS, επιδρομές με 2 tank, 2 healer και 4 DPS.", "Διόρθωση: τα τέρατα δεν μπορούσαν ποτέ να χτυπήσουν τους συντρόφους (τους θεωρούσαν μέσα σε σπίτι), οπότε ο tank δεν κρατούσε ποτέ την προσοχή τους και έτρωγες εσύ όλα τα χτυπήματα.", "Οι tank τραβούν εχθρούς μόνο όταν η ομάδα είναι έτοιμη, πιάνουν πρώτα τα αφεντικά που κυνηγούν την ομάδα, τα προκαλούν πίσω και γυρίζουν τους μεγάλους εχθρούς μακριά από όλους· στις επιδρομές ο δεύτερος tank αναλαμβάνει τους βοηθούς.", "Οι healer θεραπεύουν πρώτα τους tank, πρέπει να βλέπουν όποιον θεραπεύουν, μένουν 8–14 μ. πίσω από τον tank, μακριά από μάχη σώμα με σώμα, και μοιράζουν το mana τους.", "Οι DPS χτυπούν τον στόχο του tank, δεν ξεκινούν ποτέ μάχη όταν υπάρχει tank, και οι DPS σώμα με σώμα στέκονται πίσω από τον εχθρό.", "Οι σύντροφοι δεν πυροβολούν, δεν θεραπεύουν και δεν αποφεύγουν πια μέσα από τοίχους· οι μηχανισμοί των επιδρομών δεν τους στέλνουν ποτέ σε τοίχο· οι tank μένουν μέσα σε μικρά χτυπήματα και λακκούβες αντί να πηδούν έξω από κάθε μία."]);
       X.CHANGELOG && X.CHANGELOG["1.27.2"] && (X.CHANGELOG["1.27.2"] = ["Στο Android το κύριο μενού κρατά ένα μικρό κουμπί «💻 Παίξε σε υπολογιστή» για να ξαναδείς τον σύνδεσμο."]);
       X.CHANGELOG && X.CHANGELOG["1.27.1"] && (X.CHANGELOG["1.27.1"] = ["Παίζεις σε Android; Το Vigilfall παίζεται και σε υπολογιστή: το παιχνίδι δείχνει τώρα τον σύνδεσμο με κουμπί Αντιγραφής. Συνδέσου με τον ίδιο λογαριασμό και ο χαρακτήρας σου είναι εκεί."]);
       X.CHANGELOG && X.CHANGELOG["1.27.0"] && (X.CHANGELOG["1.27.0"] = ["Αρχηγοί Παιχνιδιού (GM): οι λογαριασμοί που ορίζει ο διαχειριστής έχουν μενού GM για δοκιμές και διαχείριση του Βασιλείου, και εμφανίζονται ως [GM] στο Βασίλειο."]);

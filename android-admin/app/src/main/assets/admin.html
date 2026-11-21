@@ -94,7 +94,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.23";
+const PAGE_VERSION = "1.24";
 const APP_LATEST = "1.10";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
@@ -239,8 +239,44 @@ async function muteDialog(pid, name, isMuted) {
     await call("mute", "POST", { pid, name, minutes: Math.round(+h * 60), why }); toast("Muted");
   } catch (e) { fail(e); }
 }
+// ---- 1.24: versions card — game, server program and admin app, with what is newest on GitHub ----
+let verInfo = null, verAt = 0, verBusy = false;
+const verLoad = async (fresh) => {
+  if (verBusy) return;
+  verBusy = true;
+  try { verInfo = await call("versions" + (fresh ? "?fresh=1" : "")); verAt = Date.now(); }
+  catch (e) { verInfo = verInfo || { old: true }; }
+  verBusy = false;
+};
+function verCard(s) {
+  const v = verInfo;
+  if (!v) return `<div class="card" id="vercard"><h2>Versions</h2><p class="muted">Checking GitHub…</p></div>`;
+  if (v.old) return `<div class="card" id="vercard"><h2>Versions</h2><p class="muted">Game <b>${esc(s.hostVersion || s.gameVersion || "?")}</b> · server program <b>${esc(s.serverVersion || "old")}</b>. Update the server program (Server tab) to see when updates are available.</p></div>`;
+  const row = (icon, name, have, latest, extra, btn) => {
+    const newer = have && latest && older(have, latest);
+    const st = !latest ? `<span class="muted">GitHub not reachable</span>` : newer ? `<b style="color:var(--gold)">⬆ ${esc(latest)} available</b>` : `<span style="color:var(--good)">✓ up to date</span>`;
+    return `<div class="it"><div class="nm"><b>${icon} ${name} <span style="font-weight:400">${esc(have || "?")}</span></b><span>${st}${extra ? " · " + extra : ""}</span></div>${newer && btn ? btn : ""}</div>`;
+  };
+  const g = v.game, sv = v.server, ad = v.admin;
+  const gRun = g.running && g.have && g.running !== g.have ? `world still runs ${esc(g.running)} until its restart` : "";
+  const any = [[g.have, g.latest], [sv.have, sv.latest], [ad.have, ad.latest]].some(([a, b]) => a && b && older(a, b)) || (IN_APP && APP_VER && ad.latest && older(APP_VER, ad.latest));
+  return `<div class="card" id="vercard"${any ? ' style="border-color:var(--gold)"' : ""}><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Versions</h2><button class="b s" id="verchk">↻ Check now</button></div>
+    <div class="list" style="margin-top:8px">
+      ${row("🎮", "Game", g.have, g.latest, gRun || (v.autoUpdate ? "updates by itself" : "automatic updates off"), '<button class="b s p" id="verg">Update game</button>')}
+      ${row("🖥", "Server program", sv.have, sv.latest, "", '<button class="b s p" id="vers">Update</button>')}
+      ${row("📱", "Admin app", IN_APP && APP_VER ? APP_VER : ad.have, ad.latest, IN_APP ? "" : "on the server: " + esc(ad.have || "?"), IN_APP && SELF ? '<button class="b s p" id="vera">Update</button>' : "")}
+    </div>
+    <p class="muted" style="margin:6px 0 0">Newest versions checked on GitHub ${ago(v.checkedAt)}.</p></div>`;
+}
+function verWire() {
+  $("#verchk") && ($("#verchk").onclick = async () => { $("#verchk").disabled = true; toast("Checking GitHub…"); await verLoad(true); $("#vercard") && ($("#vercard").outerHTML = verCard(lastStatus || {})); verWire(); });
+  $("#verg") && ($("#verg").onclick = async () => { if (!confirm("Download the new game now? The world restarts 60 seconds later (players get a warning).")) return; try { const r = await call("update", "POST"); toast(r.changed ? `Downloaded ${r.ver} — world restarts in 60 s` : r.ok ? `Already up to date (${r.ver})` : "Update failed: " + r.why); verLoad(true); } catch (e) { fail(e); } });
+  $("#vers") && ($("#vers").onclick = async () => { if (!confirm("Update the server program now? Everyone is disconnected for about a minute.")) return; try { const r = await call("server/update", "POST"); toast(`Updating ${r.from} → ${r.to}; back in about a minute`); verInfo = null; setTimeout(() => verLoad(true), 70e3); } catch (e) { fail(e); } });
+  $("#vera") && ($("#vera").onclick = () => startAppUpdate());
+}
 async function dash() {
   M().innerHTML = `<div class="muted">Loading…</div>`;
+  if (!verInfo || Date.now() - verAt > 5 * 60e3) verLoad(false).then(() => { if (tab === "dash" && !stack.length && $("#vercard")) { $("#vercard").outerHTML = verCard(lastStatus || {}); verWire(); } });
   const draw = async () => {
     if (tab !== "dash" || stack.length) return;
     let s;
@@ -261,11 +297,13 @@ ${s.maintenance ? `<div class="card warn"><b>Maintenance mode is ON</b><p class=
         <div class="stat"><div class="v">${s.players}</div><div class="k">characters saved</div></div>
         <div class="stat"><div class="v" style="font-size:16px">${esc(s.hostVersion || s.gameVersion || "?")}</div><div class="k">game version${s.restarts ? " · " + s.restarts + " restart(s)" : ""}</div></div>
       </div></div>
+      ${verCard(s)}
       ${(s.events || []).length ? `<div class="card" style="border-color:#ffb040"><b>🔥 ${s.events.map((e) => esc(e.title) + " — ends in " + dur((e.end - Date.now()) / 1000)).join("<br>🔥 ")}</b></div>` : s.nextEvent ? `<div class="card"><span class="muted">⏳ Next event: <b>${esc(s.nextEvent.title)}</b> in ${dur((s.nextEvent.start - Date.now()) / 1000)}</span></div>` : ""}
       <div class="card"><div class="row" style="justify-content:space-between;align-items:center"><h2 style="margin:0">Online now</h2><button class="b s" id="golive">🗺 Live map & chat</button></div><div class="list" id="onl" style="margin-top:8px">${s.online.length ? "" : '<div class="muted">Nobody is online.</div>'}</div></div>`;
     $("#updgo") && ($("#updgo").onclick = startAppUpdate);
     if (SELF && needsApp() && !updAuto) { updAuto = true; startAppUpdate(); }
     $("#golive") && ($("#golive").onclick = () => push(live));
+    verWire();
     const L = $("#onl");
     for (const o of s.online) {
       const d = document.createElement("div"); d.className = "it tap";
