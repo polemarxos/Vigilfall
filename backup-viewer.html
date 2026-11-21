@@ -152,6 +152,7 @@ const table = (rows) => `<table>${rows.filter(Boolean).map(([k, v]) => `<tr><td 
 const json = (bytes) => { try { return JSON.parse(dec.decode(bytes)); } catch (e) { return null; } };
 
 function showServer(files, title) {
+  Object.assign(lastFiles, files);
   const cfg = json(files["config.json"] || new Uint8Array()) || {};
   const sys = json(files["system.json"] || new Uint8Array()) || {};
   const mail = json(files["mail.json"] || new Uint8Array()) || {};
@@ -173,6 +174,7 @@ function showServer(files, title) {
     <h2 style="margin-top:14px">Players (${players.length})</h2>
     <p class="muted">${Object.keys(sess).length} signed-in device(s) · ${backups} player save backup(s). Passwords are stored only as scrambled hashes, so they can't be shown (the admin app can set a new one).</p>
     <table><tr><td class="k">Name</td><td class="muted">Level · Soul Shards · Email · Last seen</td></tr>${players.sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0)).map((p) => `<tr><td class="k">${esc(p.name || p.pid)}${p.banned ? " (banned)" : ""}</td><td>Lv ${lv(p)} · ◆ ${(p.profile?.shards || 0).toLocaleString()} · ${p.email ? esc(p.email) + (p.emailOk ? " ✔" : " (not confirmed)") : "no email"} · ${when(p.lastSeen)}</td></tr>`).join("")}</table>
+    ${(() => { const pf = Object.keys(files).filter((f) => /^program\//.test(f)).sort((a, b) => (a === "program/setup.sh" ? -1 : b === "program/setup.sh" ? 1 : a.localeCompare(b))); return pf.length ? `<h2 style="margin-top:14px">Server program (${esc(sys.server || "")})</h2><p class="muted">The installer and program files of that server, as they were when the backup was made. The setup normally downloads the newest ones from GitHub; these are a spare copy.</p><table>${pf.map((f) => `<tr><td class="k">${esc(f.replace(/^program\//, ""))}</td><td><button class="s" data-dl="${esc(f)}">⬇ Download</button> <span class="muted">${(files[f].length / 1024).toFixed(1)} KB</span></td></tr>`).join("")}</table>` : `<p class="muted">This backup has no server program files (made before server 1.12.0).</p>`; })()}
     <details><summary>All files in this backup (${Object.keys(files).length})</summary><pre>${esc(Object.keys(files).sort().join("\n"))}</pre></details>
   </div>`;
   return h;
@@ -192,7 +194,9 @@ function showAdmin(o) {
   </div>`;
   return h;
 }
+let lastFiles = {};
 function wire(sshKey) {
+  document.querySelectorAll("[data-dl]").forEach((b) => (b.onclick = () => { const f = lastFiles[b.dataset.dl]; if (!f) return; const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([f], { type: "application/octet-stream" })); a.download = b.dataset.dl.split("/").pop(); document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 500); }));
   document.querySelectorAll("[data-show]").forEach((b) => (b.onclick = () => { const e = document.getElementById(b.dataset.show); e.classList.toggle("hidden-v"); b.textContent = e.classList.contains("hidden-v") ? "Show" : "Hide"; }));
   document.querySelectorAll("[data-copy]").forEach((b) => (b.onclick = () => navigator.clipboard?.writeText(document.getElementById(b.dataset.copy).textContent).then(() => (b.textContent = "Copied"), () => {})));
   if ($("#keyshow")) {

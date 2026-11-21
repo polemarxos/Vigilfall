@@ -94,7 +94,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.22";
+const PAGE_VERSION = "1.23";
 const APP_LATEST = "1.10";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
@@ -325,7 +325,7 @@ function appBackupCard() {
   return `<div class="card" style="border-color:var(--gold)"><h2>Back up everything</h2>
     <p class="muted">One file, locked with a password, with everything needed to start again on a new phone or a new server:</p>
     <ul class="muted" style="padding-left:18px;margin:4px 0"><li><b>This app:</b> your servers, the admin password, the SSH key for the Console, the servers it trusts, your settings and your notes below.</li>
-    <li><b>The server</b> (when ticked): every player and their backups, all Realm settings, the admin password, the GitHub tokens, the Brevo API key and sender, and the address with its DuckDNS token.</li></ul>
+    <li><b>The server</b> (when ticked): every player and their backups, all Realm settings, the admin password, the GitHub tokens, the Brevo API key and sender, the Firebase alert keys, the address with its DuckDNS token, and the server program itself (setup.sh and the other program files).</li></ul>
     <label>Your private notes (kept only in this app and inside this locked file)</label>
     <textarea id="abnotes" rows="4" style="width:100%;height:auto;min-height:0;font:13px monospace" placeholder="e.g. Brevo login: … / Oracle Cloud login: … / DuckDNS: … / sender: vigilfall.noreply@outlook.com">${esc(store.get("vfa_notes") || "")}</textarea>
     <p class="muted" style="margin-top:2px">Logins for websites (Brevo, Oracle, DuckDNS, GitHub, the Outlook sender) can't be read by the app, so write them here if you want them in the backup.</p>
@@ -899,7 +899,7 @@ async function fullBackups() {
   const tag = (k) => ({ auto: "automatic", manual: "manual", uploaded: "uploaded", github: "from GitHub", "before-restore": "before a restore", complete: "🔒 COMPLETE (everything)" })[k] || k;
   M().innerHTML = `${appBackupCard()}
     <div class="card"><h2>Complete server backup only</h2>
-      <p class="muted">Everything on the server in one file: players, their backups, all settings, the admin password, the GitHub and email keys, and the address with its DuckDNS token. It is locked with a password you choose — without the password nobody can open it, not even you.</p>
+      <p class="muted">Everything on the server in one file: players, their backups, all settings, the admin password, the GitHub, email and Firebase keys, the address with its DuckDNS token, and the server program (setup.sh and the other program files). It is locked with a password you choose — without the password nobody can open it, not even you.</p>
       <label>Backup password (8+ characters)</label><input id="cpw" type="password" autocapitalize="off" autocorrect="off">
       <label>Password again</label><input id="cpw2" type="password" autocapitalize="off" autocorrect="off">
       <div class="row" style="margin-top:8px"><button class="b p" id="cdl">Make and download</button><button class="b" id="cmove">Move to a new server…</button></div>

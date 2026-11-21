@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.11.0";
+const SERVER_VERSION = "1.12.0";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -524,8 +524,18 @@ async function makePack(pass) {
   const sysF = path.join(DATA, "system.json");
   fs.writeFileSync(sysF, JSON.stringify({ ...sysInfo(), at: Date.now(), server: SERVER_VERSION, name: cfg.name }), { mode: 0o600 });
   const tmp = path.join(os.tmpdir(), "vf-pack-" + rnd(8) + ".tgz");
-  try { await runCmd("tar", ["czf", tmp, "-C", DATA, ...PACK_ITEMS.filter((i) => fs.existsSync(path.join(DATA, i)))]); }
-  finally { fs.rmSync(sysF, { force: true }); }
+  // the server program goes along (setup.sh, realm.js, host.js, package files, admin page) in program/ — kept for reference,
+  // a restore never overwrites the installed program with it
+  const prog = path.join(os.tmpdir(), "vf-prog-" + rnd(8));
+  try {
+    for (const f of ["setup.sh", "realm.js", "host.js", "package.json", "package-lock.json", "README.md", "admin/index.html"]) {
+      const src = path.join(ROOT, f);
+      if (!fs.existsSync(src)) continue;
+      fs.mkdirSync(path.dirname(path.join(prog, "program", f)), { recursive: true });
+      fs.copyFileSync(src, path.join(prog, "program", f));
+    }
+    await runCmd("tar", ["czf", tmp, "-C", DATA, ...PACK_ITEMS.filter((i) => fs.existsSync(path.join(DATA, i))), ...(fs.existsSync(path.join(prog, "program")) ? ["-C", prog, "program"] : [])]);
+  } finally { fs.rmSync(sysF, { force: true }); fs.rmSync(prog, { recursive: true, force: true }); }
   const plain = await fsp.readFile(tmp);
   await fsp.unlink(tmp).catch(() => {});
   const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12);
