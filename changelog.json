@@ -1,0 +1,417 @@
+[
+  {
+    "version": "1.27.0",
+    "date": "2026-11-21",
+    "changes": [
+      "Game Masters: accounts the Realm admin chooses get a GM menu for testing and running the Realm, and show [GM] in the Realm."
+    ]
+  },
+  {
+    "version": "1.26.1",
+    "date": "2026-11-20",
+    "changes": [
+      "Fixed: numbers could not be typed into the email code box (and on some keyboards into the password boxes)."
+    ]
+  },
+  {
+    "version": "1.26.0",
+    "date": "2026-11-20",
+    "changes": [
+      "Realm events: the Realm can run double XP or double Soul Shards for a while. The main menu shows when an event is on and how long it lasts."
+    ]
+  },
+  {
+    "version": "1.25.2",
+    "date": "2026-11-20",
+    "changes": [
+      "Email never arrives, or you lost that address? Your recovery code gets you in (and still resets a forgotten password). Add a working email later from Account."
+    ]
+  },
+  {
+    "version": "1.25.1",
+    "date": "2026-11-20",
+    "changes": [
+      "Email fixes: clearer messages for wrong or expired codes, a Back button when changing your email, and codes pasted as 123-456 work."
+    ]
+  },
+  {
+    "version": "1.25.0",
+    "date": "2026-11-20",
+    "changes": [
+      "Email: new accounts confirm their email with a 6-digit code before playing.",
+      "Forgot your password? Get a code by email and set a new one (the recovery code still works too).",
+      "Main menu → Account: add or change your email."
+    ]
+  },
+  {
+    "version": "1.24.0",
+    "date": "2026-11-20",
+    "changes": [
+      "Vigilfall is now played online only: without a connection to the server the game pauses until it is back.",
+      "Recovery codes: new accounts get a recovery code to set a new password without the admin. Already have an account? Main menu → Account makes one.",
+      "Account settings: change your password and make a new recovery code.",
+      "The server refuses saves with impossible jumps (like millions of Soul Shards at once) and loads your last good save."
+    ]
+  },
+  {
+    "version": "1.23.0",
+    "date": "2026-11-20",
+    "changes": [
+      "Accounts: sign in with a name and password. Your character is kept on the Vigilfall server and follows you to any PC or phone.",
+      "Without internet the last account used on a device can still play; the progress is sent when the server is back.",
+      "Old saves were reset for the new accounts: everyone starts fresh."
+    ]
+  },
+  {
+    "version": "1.22.3",
+    "date": "2026-11-20",
+    "changes": [
+      "The Realm server rests while nobody is online, so it uses almost no power when empty."
+    ]
+  },
+  {
+    "version": "1.22.2",
+    "date": "2026-11-19",
+    "changes": [
+      "The Realm remembers its address by itself, so Enter the Realm works without setting anything."
+    ]
+  },
+  {
+    "version": "1.22.1",
+    "date": "2026-11-19",
+    "changes": [
+      "The Realm can send gifts: Soul Shards and Ashen Marks from the Realm arrive right away while you play (or the next time you enter the Realm)."
+    ]
+  },
+  {
+    "version": "1.22.0",
+    "date": "2026-11-19",
+    "changes": [
+      "The Realm: one shared online world that runs on a dedicated server. Enter the Realm on the main menu puts you in the same world as everyone who is online; you see the players and monsters near you. Your own world (solo and with friends) is still there.",
+      "Dungeons, raids and the Dungeon Finder take your group into the leader's world as before and bring everyone back to the Realm afterwards. Friends, groups, chat and voice work in the Realm too.",
+      "Your save is copied to the Realm server every minute. If the server goes down you keep playing in your own world and return when it is back."
+    ]
+  },
+  {
+    "version": "1.21.0",
+    "date": "2026-11-19",
+    "changes": [
+      "Android app 1.1: the game is inside the app — it opens in seconds instead of downloading 10 MB each time, plays solo without internet, and quietly downloads new versions in the background (they start the next time you open it). Your saves stay where they were.",
+      "Graphics are picked for your phone on the first start (strong, mid-range or older phone, from its graphics chip). Change them any time in Settings. PCs are not affected.",
+      "App polish: a splash screen while it starts, no accidental zoom, text selection or long-press menus, and the screen may sleep when you are in menus or paused.",
+      "Controller support on PC and phones (Xbox, PlayStation, Bluetooth pads): left stick moves, right stick looks, RT attacks, LT blocks, A jump, B dodge, X/Y/RB skills, LB interact, Menu pause; in menus a cursor follows the stick (A click, B back). Full layout in Help."
+    ]
+  },
+  {
+    "version": "1.20.3",
+    "date": "2026-11-19",
+    "changes": [
+      "Skills that measured near zero now do real work: Sanguine Pact erupts for damage and heals the warden 30% before its buff; Tombstone Wall stuns and hurts enemies where it rises; Soothing Current heals 170 (was 70) and cuts damage taken by 15%; Ember Step burns enemies where you leave and land and its fire trail hurts more; Shadowstep gives +40% damage for 3 s.",
+      "Talents that did nothing were replaced: tanks' Deep Well (resource regeneration — Rage never regenerates) is now Fury, +10% Rage from every hit per rank; Unshaken is now −4% damage taken from bosses per rank; Apothecary's Friend gives +30% draught healing and every draught refills 15% resource; Light Feet −20% dodge recharge per rank."
+    ]
+  },
+  {
+    "version": "1.20.2",
+    "date": "2026-11-19",
+    "changes": [
+      "Phones: skill icons fill the whole round button."
+    ]
+  },
+  {
+    "version": "1.20.1",
+    "date": "2026-11-19",
+    "changes": [
+      "Phones: the attack and skill buttons show each skill's own icon with its key and a cooldown sweep (instead of ⚔, 🛡, Q, E, R); press and hold a button to see the skill's name, cooldown, cost and what it does.",
+      "Phones: the talent reminder says ☰ → Talents instead of \"press N\". Greek: the time of day (Midday, Witching Hour) and the talent reminder are translated."
+    ]
+  },
+  {
+    "version": "1.20.0",
+    "date": "2026-11-19",
+    "changes": [
+      "Sound: every skill has its own sound (before, all of a class's spells shared one); zones have living ambience — surf on the coast, forest and night insects, sand, mountain gusts, cave hum and dripping water; dungeons and raids echo like stone halls; boss fights get war drums, a brass ostinato and choir.",
+      "Greek: items, materials, recipes, cosmetics, mounts, companions, furniture, lore pages, rare enemies and shrines are now in Greek too (item names are composed with proper Greek grammar).",
+      "Companions plan routes: when walls or houses block the straight way they find a path around (out of dead ends too) instead of sliding along the wall.",
+      "Mythic+: enemies now match your group's level on every dungeon (a level-60 group in a level-12 dungeon used to face level-12 enemies), and the old level bump that made +8 to +10 impossible is gone; each tier adds 9% health and 6.5% damage, Quaking hits for 18%, keys from +7 get 10% more time.",
+      "Arena: rating now moves fairly (you are matched near your own rating — before, a win at 1600+ gave +3 and a loss −29), and the gladiators that fill the other team get stronger as you climb.",
+      "Phones: frame cap (60 by default — 90/120 Hz phones were drawing up to 120 frames a second), adaptive resolution when the phone struggles, and lighter shadow updates. Settings → Phone. PCs are unchanged.",
+      "Set items are named after their piece (Rimeguard Helm) instead of a random word."
+    ]
+  },
+  {
+    "version": "1.19.3",
+    "date": "2026-11-19",
+    "changes": [
+      "Android app: phones on Android get a Download Android app (APK) button in the main menu — a real app that opens Vigilfall full screen and updates itself with the game.",
+      "Phones: the main menu scrolls when it does not fit the screen, and Install as app sits right under the first buttons (it was below the bottom of a phone held sideways)."
+    ]
+  },
+  {
+    "version": "1.19.2",
+    "date": "2026-11-19",
+    "changes": [
+      "Pop-ups are no longer hidden behind open windows: the yes/no question (Salvage all, party invites, trades), the short messages at the bottom of the screen and the Dungeon Finder box now always show above the inventory, shops and the pause menu."
+    ]
+  },
+  {
+    "version": "1.19.1",
+    "date": "2026-11-19",
+    "changes": [
+      "Phones: the on-screen controls no longer disappear after Change Hero; the desktop key list no longer covers the main menu; the start screen fits a phone held upright.",
+      "Install as app is always in the main menu on the website; when the browser has no ready install prompt it shows the steps (Android: Chrome ⋮ → Install app).",
+      "Sister Nerys holds only her staff, the right way up. Cinder Maeve's casting light sits on the tip of her wand, not on the grip.",
+      "Characters are drawn merged (each one in a single piece instead of 5–8): about 5× fewer draw calls for characters. Settings → Troubleshooting → Merged characters switches it off.",
+      "Greek: a few interface lines that stayed in English (level line, quest arrow, seasons, start screen) are translated."
+    ]
+  },
+  {
+    "version": "1.19.0",
+    "date": "2026-11-19",
+    "changes": [
+      "Raids and a new dungeon: the Drowned Deep, Throne of Storms and Reckoning bosses now use the full raid mechanics (tank swaps, interrupts, soak and spread marks, shield phases). New dungeon: The Obsidian Foundry (level 18, south-east of the Black Citadel) with Forgewarden Kraal, and a quest from Brannoc.",
+      "Crafting depth: reforge a stat on any item, temper items (+2 item level, three times) with Obsidian Lumps, Grandmaster recipes for level-60 legendaries from Abyssal Cores, and three saved outfits per hero in the Wardrobe.",
+      "Install as an app: opened from the website, Vigilfall can be installed (Chrome, Edge, Android; on iPhone: Share → Add to Home Screen). It starts full screen, works offline after the first load and updates itself.",
+      "Greek language: Settings → Language. Quests, heroes, skills, talents, people, places, enemies, achievements, help, tutorial and the interface are in Greek; item and cosmetic names stay English.",
+      "Talents & passives: Persistence talents now also lengthen buffs (Vanish, Sanguine Pact, Undying…); Static Charge chains to 5 enemies for 35; Saint's Lantern really gives 10% less damage near the cleric; Bulwark +35% armor; Gravebound also weakens nearby enemies.",
+      "Bug hunt from a long soak test: visited dungeons no longer stay loaded after you leave (thousands of objects), companions that chase enemies far away come back, and companions catch up straight after a teleport."
+    ]
+  },
+  {
+    "version": "1.18.6",
+    "date": "2026-11-19",
+    "changes": [
+      "Skill balance pass — every skill of every hero was measured in the same test fight at level 20. Damage dealers now clearly out-damage tanks and healers with their basic attacks (witch, ranger, warlock and assassin up; cleric, druid and apothecary attacks down).",
+      "Reworked weak skills: Aegis of Last Dawn now shields every ally for 40% of the templar's health and turns nearby enemies on the templar; Inferno Requiem's fireballs now land on enemies instead of random ground (more than twice the damage); Panacea heals 40% of each ally's health; Smoke of Oblivion now makes enemies miss half their attacks; Soul Siphon drains twice as much and heals three times as much; Elixir Toss heals 60% more; Wildgrowth heals 70% more; Doom, Plague of Rot and Curse of Agony hit harder.",
+      "Toned down: Death Lotus (it out-damaged every other ultimate by a third), Twin Fangs no longer sweeps whole packs (narrower thrust, harder hits), Vile Vial's splash.",
+      "Skill tooltips show the new numbers."
+    ]
+  },
+  {
+    "version": "1.18.5",
+    "date": "2026-11-18",
+    "changes": [
+      "Dungeon Finder companions play like real players: they walk around walls, rocks and pillars instead of through them, step out of fire, poison and telegraphed blasts, and rejoin you if they get stuck or left far behind.",
+      "Companions use their hero's skills by role — tanks stun casters (cancelling wind-ups), taunt packs with a blast and brace when low; healers keep heal-over-time on the tank, group-heal and save the party in emergencies; damage dealers kick casters, cleave packs and burst bosses and elites.",
+      "Companions follow the enemy-level rule like you do: they cannot carry you through enemies far above your level.",
+      "Companions feel like people: player-style names, titles under their names, no \"(companion)\" tag, they greet the group, call pulls, ask for heals, cheer boss kills, groan at wipes, thank you for a revive and say gg when leaving — and hop around and look about while waiting.",
+      "Interface: long zone names no longer wrap over the quest pointer; the party list sits below the quest pointer."
+    ]
+  },
+  {
+    "version": "1.18.4",
+    "date": "2026-11-18",
+    "changes": [
+      "Enemy level gap tripled: an enemy 2 levels above you hits about 3× as hard and takes about 40% damage; at +4 it hits about 8× as hard and takes under 20%; from +6 it is hopeless (a level-2 hero dies to a level-6 enemy in about 7 seconds). Enemies at or below your level are unchanged."
+    ]
+  },
+  {
+    "version": "1.18.3",
+    "date": "2026-11-18",
+    "changes": [
+      "Every townsperson now looks like their own person: each NPC gets a unique skin tone, hair colour and outfit colours (repainted on the original character pack, no new models) and a slightly different head size — no two NPCs built on the same body share the same face colouring.",
+      "Enemies no longer wear the townsfolk/hero bodies: cultists, archers, stalkers, brutes and the bosses that used them (Malgareth, the Generals, Hrimgar, Varek, the Thornmother and others) are now undead built on the skeleton set, with their own weapons, colours and glows.",
+      "Enemy level matters: an enemy above your level hits harder and takes less damage from you — slightly at +1/+2, very dangerous at +4, hopeless from +6 (a level-2 hero cannot beat a level-8 enemy). Enemies 5+ levels above you show a ☠ next to their level.",
+      "Chests: the lid now swings open on the box's back edge instead of flipping off onto the ground."
+    ]
+  },
+  {
+    "version": "1.18.2",
+    "date": "2026-11-18",
+    "changes": [
+      "Phones: the pause menu is compact and the touch buttons no longer sit on top of it; panel tabs stay on one row you can swipe sideways; the inventory fits the screen (no sideways scrolling, smaller portrait, filter buttons wrap); the tutorial card is narrower so it clears the minimap and attack button; the last tutorial step no longer points to a lantern button that phones do not have."
+    ]
+  },
+  {
+    "version": "1.18.1",
+    "date": "2026-11-18",
+    "changes": [
+      "Phones: the tutorial card no longer stretches over the whole screen; it is smaller, sits between the HUD and the buttons, its steps are worded for touch controls (stick, swipe, ⚔/🛡 buttons) and you tap it to skip. Hint cards, tooltips and achievement pop-ups had the same positioning slip."
+    ]
+  },
+  {
+    "version": "1.18.0",
+    "date": "2026-11-18",
+    "changes": [
+      "Interface overhaul: a unified ornate look across the title screen, HUD, every panel, NPC dialogs and the pause menu — Cinzel headings with EB Garamond body text, gilded corner-bracket frames with engraved dark panels, custom-drawn buttons, dropdowns, checkboxes and sliders, framed minimap, health and skill bar, gradient gold banners, styled scrollbars and tooltips."
+    ]
+  },
+  {
+    "version": "1.17.1",
+    "date": "2026-11-18",
+    "changes": [
+      "Riding: the rider's arms no longer windmill (the seated pose was being re-applied every frame on bones the idle animation does not reset) — this was the hero \"doing circles\" on every mount.",
+      "The 1.17 NPCs (Wren, Finn, Old Maud, Aldo, Sister Petra, Corvin and the eight Drake Wayfarers) now use the character pack models; Aldo and the Mire Wayfarer moved out of the chapel ruin.",
+      "Houses on slopes get step tiers around their plinth instead of a door hanging in the air.",
+      "Mobile: the touch controls hide while any dialog or panel is open (you could not reach Accept), bigger buttons in dialogs, bigger HUD/name/prompt text, the PC skill bar no longer overlaps the touch buttons.",
+      "Empty world fixed: while a world boss was alive the spawn director thinned enemies across the whole map; now it only does so within 120 m of the boss. Open-world density around you is also higher (solo cap 12 → 16).",
+      "Kennel master moved off the house plot; a glowing lantern and a map pin mark your house door after you buy a deed, and the door prompt reaches further."
+    ]
+  },
+  {
+    "version": "1.17.0",
+    "date": "2026-11-18",
+    "changes": [
+      "Performance: draw calls per frame roughly halved with no change to the picture — herb/ore nodes, torch flames and glow sprites are instanced, settlement props are batched, static scene nodes stop recomposing matrices, HUD text only touches the DOM when it changes. The FPS counter now reads \"cpu x ms / y ms\": if the cpu number is far below the frame time, your GPU (resolution scale, SSAO, shadows) is the limit.",
+      "Housing: furnish your home. The workbench inside sells 30+ pieces — tables, chairs, beds, rugs, lights, banners, weapon displays, garden plants, a fountain — plus free trophies of every boss you have killed. Pieces follow where you look; LMB/F places, Q/E or the wheel rotates, R stores, F on a placed piece moves it. Saved per account.",
+      "Raids: real mechanics for The Reckoning and the Throne of Storms — Sunder/Doom tank stacks (swap tanks at ×3), interruptible casts (stun it or burn 6% of its health, bar under the boss frame), blue soak circles, purple spread marks, tremors you must jump, green safe zones, shield phases with guards, pack calls, and a hard enrage. Banners and marks reach every player; companions know the mechanics too.",
+      "Enemies: four new kinds — Bone Archers kite, Hooded Stalkers circle to your back (backstabs hurt 50% more), Grave Shamans heal their pack, Ashen Brutes cleave and charge; wolves surround you; casters keep their distance; a third of open-world packs patrol routes.",
+      "Stories: six new named NPCs with quest chains (Wren, Finn, Old Maud, Aldo the Ferryman, Sister Petra, Corvin the Deserter) — 22 quests with new objective kinds (go somewhere, talk to someone, gather) and three decisions that change greetings, later quests and two titles.",
+      "Fast travel: Drake Wayfarers in the Hamlet, the four ports and the three inner shrines fly you (third person, on a drake) to any Wayfarer you have met; cost by distance. Shrines still teleport with G.",
+      "Titles & meta-achievements: 21 titles from deeds, worn under your name for everyone to see (Achievements, K); achievements for collecting achievements.",
+      "Photo mode (F8 or the pause menu): free camera, hidden interface, your hero in the shot, six filters, PNG capture.",
+      "Weather & seasons: snow over Frostpeak (and the inner lands in winter), falling leaves in Thornwood (and in autumn), blowing sand in the Wastes, longer storms over Stormcrown, petals in spring. The real calendar sets the season.",
+      "First-time hints: a short card the first time you meet each system (gathering, fishing, shrines, chests, the Dungeon Finder, raids, home, mounts, companions, guilds, auction, events, PvP, furnishing); Settings can show them again.",
+      "Mobile: button size slider, left-handed layout, aim assist, auto-run and sprint lock, cooldowns on the skill buttons, furnishing buttons, vibration on hits.",
+      "Levelling is about 5× slower: levels 1–5 keep their pace, the brake eases in up to level 20 (all experience sources). Ilse's kennel moved off the house plot; the house door has a lamp, a bigger prompt radius and a map pin."
+    ]
+  },
+  {
+    "version": "1.16.1",
+    "date": "2026-11-17",
+    "changes": [
+      "Riding is third person: the camera sits behind and above your mount and you see your own hero in the saddle; it returns to first person when you dismount (Z).",
+      "Companions are cosmetic now: a third of your size, they follow you and wait at a random spot about 5 m away (no circling when you turn), never fight and are ignored by enemies. Pet bouts, levels and abilities are gone; the kennel just lists companions. The Stone Golem has a proper body.",
+      "First person: casters always have something in hand — the warlock, witch and mystic hold a wand in the right hand, staff wielders carry the staff fully in view with a glowing focus in the left hand; the knight's sword sits closer; melee swings travel further across the screen with a slight camera roll.",
+      "Steady Aim roots the archer while held; Vanish makes your weapons 70% transparent. The target frame shows damage-over-time stacks (Agony ×3). Salvage all asks with an in-game prompt.",
+      "Chest lids are hinged the moment a chest is built. Ilse's kennel is beside the stable, inside the wards. A hero's weapons no longer linger in view after changing hero from the menu.",
+      "Performance: draw calls per frame roughly halved with no change to the picture — herb/ore nodes, torch flames and every glow sprite are drawn as a handful of instanced meshes, fence posts and the props placed in settlements and dungeons are merged into static batches, ambient occlusion is computed at 60% resolution, the vignette is part of the colour grade (one screen pass less) and shadow maps refresh every other frame."
+    ]
+  },
+  {
+    "version": "1.16.0",
+    "date": "2026-11-17",
+    "changes": [
+      "Interface pass. Buffs are icons with timers and bars (debuffs in red), including Well Rested, Well Fed, scrolls and your mount. The target frame shows health numbers, a ⚠ when the enemy winds up an attack, and stays for 4 s after you look away (and whatever you last hit). Skill slots show their resource cost.",
+      "Inventory: drag an item onto its slot to equip, drag an equipped item into the bag to unequip; right-click opens a menu (Equip, Lock, Deposit in guild bank, Salvage with its value). Locked items are skipped by Salvage all and cannot be salvaged by accident. Filters (All / Weapons / Armour / Relics / Upgrades). Equipment slots show icons and item levels.",
+      "Help & Controls: press F1, the Help tab, or the pause menu — every key and a short guide to each system (lantern, shrines, shards, Dungeon Finder, professions, events, guilds, PvP, housing, alts).",
+      "Settings explain each option; checkboxes, sliders and lists use the game's colours. Panel tabs wrap on narrow screens. Styled tooltips replace browser tooltips inside panels and on buffs."
+    ]
+  },
+  {
+    "version": "1.15.2",
+    "date": "2026-11-17",
+    "changes": [
+      "Quests are now per hero: every class runs the whole quest chain (and gets its XP and rewards) instead of sharing one log. Your current hero keeps the quests you had.",
+      "Veteran's Boon: any hero below your highest hero's level earns +50% experience (shown in the inventory stats).",
+      "Companions walk ahead to your right where you can see them, instead of behind you.",
+      "Chest lids swing on a hinge at the back of the chest instead of flipping through it.",
+      "Other players' spell effects (bursts, beams, trails) are now shown to everyone in the world, including guest to guest.",
+      "Items have icons (by slot and weapon type) in vendor shops and in your bag; every item tooltip shows its salvage value. 'Salvage all' now salvages everything in your bag (equipped gear is kept) after a confirmation.",
+      "Social when offline: a clear OFFLINE strip with a Reconnect button, automatic reconnect attempts every 45 s, friend requests you send while offline are queued and delivered when you are both online, and accepting a request offline completes once you reconnect.",
+      "First person: weapons never cross the near plane during lunges, and have a breathing sway at rest and a lean while running."
+    ]
+  },
+  {
+    "version": "1.15.1",
+    "date": "2026-11-17",
+    "changes": [
+      "Typing in any text box (guild name, auction price, chat…) no longer triggers hotkeys.",
+      "First person shows weapons only — no hands — held closer and larger so they fill the view.",
+      "Dawnmere: a real stable (Gellert) and kennel (Ilse) with horses and hounds east of the square, a signpost on the square pointing to them, both on the map. Townsfolk standing inside or behind walls are moved to open ground.",
+      "Old Marta no longer sells Lantern Oil or Tincture of Calm (shrines refill your oil and sanity; oil flasks still drop).",
+      "World map is now drawn at 1 m per pixel (sharp at full zoom) with houses, fences and tree cover; it is prepared in the background after the world opens.",
+      "Materials hint on your first gather: everything you pick goes to the Professions book (B) and is crafted from there."
+    ]
+  },
+  {
+    "version": "1.15.0",
+    "date": "2026-11-17",
+    "changes": [
+      "Guilds: found one at Registrar Mara in Dawnmere (500 shards). Guilds need no server — the roster, bank and ledger are shared by the members themselves and merge whenever two of them meet (same world, invitations, friend pings). Invite players in your world or friends by code, four ranks (Initiate, Member, Officer, Guild Master), a message of the day, a banner colour, hand-over and disband.",
+      "Guild bank (60 item slots + shards), guild chat with /g in the chat box (reaches guild mates in your world and online elsewhere), <TAG> after guild mates' names, a guild hall (enter from Mara, in your own world) with the bank chest and the ledger, a log of everything that happens.",
+      "Weekly guild quests: three a week drawn for your guild, everyone's progress counts; each completion gives every contributor 150 shards and 10 Vigil Tokens, and raises the guild level (+1% XP per level for all members, up to +10%). Ten guild achievements, three personal ones.",
+      "Polish pass: wisp companions have real bodies now (core, rings, tail, motes), creature idle voices are quieter and rarer, world-event clocks pause while you are in a dungeon or arena, guild/quest sync traffic is rate-limited, the removed soft-shadow mode no longer logs a warning. Headless sweep of all 12 heroes, every panel, NPC, instance, mount, companion and skill: no errors."
+    ]
+  },
+  {
+    "version": "1.14.0",
+    "date": "2026-11-17",
+    "changes": [
+      "Riders sit in the saddle: mounted players (and gladiators) now ride with bent legs, feet in the stirrups and hands on the reins, seated at each creature's real saddle height instead of standing on its back.",
+      "Sound & music pass: every zone has its own music (lute in Dawnmere, glass bells in the Reaches, hand drums and flute in the Wastes, flute in Thornwood, organ and thunder on the Heights, swells at sea, pulses in dungeons, war drums in the arena), combat stingers when a fight starts, ends or a boss appears, victory fanfares and a defeat theme. Creatures have voices — skeletons moan, wolves snarl, wraiths wail, bosses roar — when idle, hurt and dying. Footsteps on snow, sand, wood and stone; hooves, paws and claws when mounted; drakes beat their wings. Mounts call when summoned. Potions gulp, gear clinks or rustles, menus tick and click.",
+      "World events every 6–8 minutes (shared by everyone in your world): a World Boss walks the roads of a zone matched to your level (The Gallows Warden, Skadi's Revenant, Ash-Marauder Khaz, Old Greatbriar, Gale-Warden Ysolde), or a Caravan leaves a camp for the coast town and needs an escort — it only moves while someone is near, ambushes hit it every 20 s, and it can be lost. Everyone within 90 m at the end earns Vigil Tokens, shards and an epic (world bosses: 15% legendary). A gold marker on the compass and map shows the way.",
+      "Quartermaster Brann in Dawnmere trades Vigil Tokens for the Caravan Mule mount, the Market Goat companion, the Wayfarer's Cloak, crates of ingredients and sealed gear caches.",
+      "Fishing and Cooking (Professions book, B): cast from any shore facing the water, hook when the float dips — fish, junk, and sometimes a sunken coffer with shards and gear. Cook fish and meat (wolves and beasts now drop it) over any fire for a 20-minute Well Fed buff (max health, damage or speed). Eight professions in all.",
+      "Film grain removed from the game entirely (the setting is gone; the soft vignette stays).",
+      "Map and minimap zoom: mouse wheel or pinch on the minimap (and +/− buttons under it), and on the world map wheel/pinch to zoom at the cursor, drag to pan, +/−/reset buttons; the map opens centred on you.",
+      "Auction board: Broker Odile in Dawnmere. List items from your bag at a price; everyone playing in your world sees the board and buys with shards that go straight to you. Listings keep between sessions until bought or taken back."
+    ]
+  },
+  {
+    "version": "1.13.0",
+    "date": "2026-11-17",
+    "changes": [
+      "Mounts are real creatures now: every one of the 24 has its own body and gait — horses in barding, a skeletal charger, a nightmare with a mane of fire, elk with broad antlers, wargs, a desert lion, a boar, a ram, bears, a giant spider, drakes with beating wings and a crab that scuttles. New: Thornback Boar and Frostpeak Ram at the stable, Frostmaw Bear (Hrimgar), Mire Weaver (Thornmother), Ember Drake (The Reckoning), Storm Drake (Throne of Storms), Drowned Crab (The Deep), Vigil Warbear (10 invasions defended), Champion's Destrier (2000 rating).",
+      "Companions: real bodies too, each with an ability on a cooldown (Savage Bite, Pounce, Shield Wall, Mend, Quake, Fire Spit, Shock), companion levels 1–30 (+4% damage per level, XP from your kills) and pet bouts at the kennel (3 a day, XP and marks). New: Barrow Cat, Thornback Boarlet, Frostpeak Lamb (kennel), Clockwork Beetle (10 Mythic+ runs), Tide Hatchling (The Deep), Frost Pup (Pilgrim of Ash), Ember Drakekin (5 invasions).",
+      "Ranked PvP: parties now face each other — two players or two groups queuing separately are seated on opposite sides, gladiators fill the rest. Monthly seasons: rating is halved toward 1200 and your peak earns a title (1600 Duelist, 1800 Gladiator, 2000 Champion + the Champion's Destrier). A friends leaderboard in Kessa's dialog.",
+      "Wardfall (8v8 battleground): queue at Kessa. Three wards on a walled field; stand alone on one for 8 s to take it, each held ward scores every 2 s, first to 150 or best after 10 minutes; the fallen return at their base after 8 s. Gladiators fill empty seats when nobody else queues."
+    ]
+  },
+  {
+    "version": "1.12.0",
+    "date": "2026-11-17",
+    "changes": [
+      "PvP Arena — The Pit: talk to Arena Master Kessa by the sand ring west of Dawnmere to queue ranked 2v2 or 3v3 (best of three). Your group is one team; empty seats on both sides are filled by gladiators after 20 s. Rating, Arena Marks, a weekly chest at 5 wins, Gladiator's gear (−4% damage from players per piece), the Pit Hound at 10 wins, the Gladiator's Warhorse at 25 wins and the Gladiator's Glory aura at 1800 rating.",
+      "First hour: a quest compass under the zone name points at your next objective (or the nearest quest giver), the tutorial can no longer get stuck (steps also pass after 45 s), townsfolk greet you when you walk up, melee hits kick the camera and spark in your weapon's colour, footsteps vary."
+    ]
+  },
+  {
+    "version": "1.11.3",
+    "date": "2026-11-17",
+    "changes": [
+      "Fixed the half-black screen inside villages: the ward dome's rim shader produced NaN pixels when you looked straight at the dome from near its centre (the bonfire square), and bloom smeared them across the screen. The colour grade now also scrubs any NaN/Inf pixel as a safety net."
+    ]
+  },
+  {
+    "version": "1.11.2",
+    "date": "2026-11-17",
+    "changes": [
+      "Settings → Troubleshooting: live switches for sun shadows, point lights, your lantern, water, wards, vegetation, batched props, first-person hands, sky, glow sprites and flames — to isolate the half-black-screen problem."
+    ]
+  },
+  {
+    "version": "1.11.1",
+    "date": "2026-11-17",
+    "changes": [
+      "Fixed the coloured rings around bright lights and the black flicker near torches and lanterns: the colour grade was applying its film curve to raw HDR light values, which went negative around hot spots.",
+      "The lantern burns no oil in daylight or within 14 m of any lit flame. Resting at a flame refills oil, sanity and potions only — never health or mana (tutorial text corrected)."
+    ]
+  },
+  {
+    "version": "1.11.0",
+    "date": "2026-11-17",
+    "changes": [
+      "The Drowned Deep: a new 8-player raid at Mossend with four bosses — Morvath the Tidecaller, the Drowned Leviathan, the Abyssal Choir and Ythar, the Drowned King — each with its own mechanic, and a new Mythic loot tier above Relic.",
+      "Branching instances: raids are a hub with wings and a sealed gate before the last boss; dungeons gained hidden side rooms with treasure chests or a Vault Warden.",
+      "Collections: a new journal (Esc → Collections, or press ,) tracks mounts, companions, cosmetics, item sets, appearances and achievements. Four new mounts and four new companions from achievements, vendors and bosses.",
+      "Cosmetics pass: fuller feathered wings sitting lower on the back, a full Skull helm, fixed Horned Helm, cloak colours now true to their name, armour finishes with real surface differences, a Stormcrown aura with crackling bolts, every aura with its own particle motion, and enchanted weapons glow with their enchant's colour (motes along the blade, first person too).",
+      "World & movement: slopes steeper than ~50° can no longer be walked up (you slide back down), villages sit on terraces and houses get stone foundations — no more buildings hanging off hillsides.",
+      "Performance: the world is now drawn in chunks (vegetation, terrain, props and gathering nodes are batched per area) so only what the camera and the shadow camera can see is submitted — about 3× fewer triangles and roughly half the draw calls per frame with an identical picture.",
+      "Graphics fixes: no more colour fringing at screen edges, daylight exposure toned down (no blown-out sky), camera near plane and house collisions fixed so the view can no longer end up inside a wall; lantern shadows are now an opt-in setting (they were costing a lot of frames)."
+    ]
+  },
+  {
+    "version": "1.10.0",
+    "date": "2026-11-17",
+    "changes": [
+      "Online: STUN/TURN relays so strict home networks can connect, automatic rejoin after a dropped connection (migration only when the host is really gone), smoother movement of other players, a connection indicator (bottom left) and a reconnecting notice.",
+      "Mythic+: clearing a dungeon awards a Keystone; press F at its portal to run it on Mythic +N with affixes (Fortified, Tyrannical, Bolstering, Sanguine, Quaking), a par timer, keystone upgrades and tier-scaled loot.",
+      "The Great Vault: Vault Keeper Edith in Dawnmere offers one weekly reward for timed Mythic+ runs and raid kills.",
+      "Duels: aim at a player and press U (or use the Social panel). Invasions: every ~25 minutes a nearby village is attacked in three waves — defend the ward or it falls for 90 seconds.",
+      "Depth: enemies steer around walls, instance bosses use Shockwave and Hunter's Mark, four item sets with 2/4-piece bonuses from dungeons and raids, Broker Garrick (buy/sell materials, open your stash) and 12 new quests in the inner kingdom."
+    ]
+  },
+  {
+    "version": "1.9.0",
+    "date": "2026-11-17",
+    "changes": [
+      "Graphics: filmic grade, god rays and a real sun, soft shore foam and deeper water, wind in the trees, sharper textures, 4K shadows on High/Ultra.",
+      "Animation: weapon trails, hit flinches, NPCs turn their heads to you, footstep dust and splashes, camera roll when strafing and landing.",
+      "Professions: Herbalism, Mining, Skinning (gathering) and Blacksmithing, Enchanting, Inscription (crafting), skill 1–300 in zone tiers, all six on every character. Press B for the professions book.",
+      "Housing: your house, stash and upgrades are shared by all your heroes; every player visits only their own house; Change Hero from the Esc menu anywhere outside combat.",
+      "Multiplayer (1.8): online-only worlds, friend codes, groups and raids, trading, proximity voice, Dungeon Finder with companions, host migration, WoW-style threat and taunts.",
+      "World (1.8): a continent bounded by the Sundering Sea, rivers and bridges, four port towns with quests, village wards, no grass in settlements.",
+      "Mobile: touch controls and a phone HUD."
+    ]
+  }
+]
