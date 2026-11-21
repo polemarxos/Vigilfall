@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.27.1",
+    "date": "2026-11-21",
+    "changes": [
+      "Playing on Android? Vigilfall also plays on a PC: the game now shows the link with a Copy button. Sign in with the same account and your character is there."
+    ]
+  },
+  {
     "version": "1.27.0",
     "date": "2026-11-21",
     "changes": [
