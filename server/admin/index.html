@@ -94,7 +94,7 @@ const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) 
 const norm = (s) => { s = String(s || "").trim().replace(/\/+$/, ""); if (!s) return ""; if (!/^https?:\/\//i.test(s)) s = (/^(\d+\.){3}\d+(:\d+)?$|localhost/.test(s) ? "http://" : "https://") + s; return s.replace(/\/(admin|realm)$/, ""); };
 const IN_APP = /VigilfallAdmin/.test(navigator.userAgent);
 // the app downloads this page from GitHub by itself; APP_LATEST is the newest app shell (asks to install it when older)
-const PAGE_VERSION = "1.21";
+const PAGE_VERSION = "1.22";
 const APP_LATEST = "1.10";
 let APP_URL = "https://github.com/polemarxos/Vigilfall/raw/main/VigilfallAdmin.apk";
 const APP_VER = (navigator.userAgent.match(/VigilfallAdmin\/([\d.]+)/) || [])[1] || "";
@@ -421,7 +421,7 @@ async function players() {
       L.innerHTML = r.players.length ? "" : '<div class="muted">No players yet.</div>';
       for (const p of r.players) {
         const d = document.createElement("div"); d.className = "it tap";
-        d.innerHTML = `<div class="nm"><b>${esc(p.name || "?")}</b><span>${esc(p.pid)} · Lv ${p.lv} · ${p.heroes} hero(es) · ◆ ${(p.shards || 0).toLocaleString()} · ${p.online ? "online" : ago(p.lastSeen)}</span></div>${p.flags ? `<span class="pill ban" title="refused saves">⚠ ${p.flags}</span>` : ""}${p.banned ? '<span class="pill ban">banned</span>' : p.online ? '<span class="pill on">online</span>' : ""}`;
+        d.innerHTML = `<div class="nm"><b>${esc(p.name || "?")}</b><span>${esc(p.pid)} · Lv ${p.lv} · ${p.heroes} hero(es) · ◆ ${(p.shards || 0).toLocaleString()} · ${p.online ? "online" : ago(p.lastSeen)}</span></div>${p.gm ? '<span class="pill on" title="Game Master">GM</span>' : ""}${p.flags ? `<span class="pill ban" title="refused saves">⚠ ${p.flags}</span>` : ""}${p.banned ? '<span class="pill ban">banned</span>' : p.online ? '<span class="pill on">online</span>' : ""}`;
         d.onclick = () => push(() => player(p.pid));
         L.appendChild(d);
       }
@@ -441,7 +441,7 @@ async function player(pid) {
   const heroes = p ? Object.entries(p.heroes || {}) : [];
   M().innerHTML = `
     <div class="card"><div class="row" style="justify-content:space-between"><div><b style="font-size:18px">${esc(r.name)}</b><div class="muted">Friend code ${esc(pid)} · joined ${ago(r.created)} · last seen ${r.online ? "now" : ago(r.lastSeen)}</div><div class="muted">Game ${esc(r.ver || "?")}${r.adminRev ? " · edited " + r.adminRev + "×" : ""}${r.acct ? "" : " · old save (before accounts)"}</div></div>
-      <div>${r.banned ? `<span class="pill ban">banned</span>` : r.online ? '<span class="pill on">online</span>' : ""}</div></div>
+      <div>${r.gm ? '<span class="pill on">GM</span> ' : ""}${r.banned ? `<span class="pill ban">banned</span>` : r.online ? '<span class="pill on">online</span>' : ""}</div></div>
       ${r.banned && r.banReason ? `<p class="muted">Reason: ${esc(r.banReason)}</p>` : ""}
       ${r.acct ? `<p class="muted">Recovery code: ${r.rc ? "set" : "not set yet"} · Email: ${r.email ? esc(r.email) + (r.emailOk ? " ✔ confirmed" : " (not confirmed)") : "none"}${r.needEmail && !r.emailOk ? " · <b style='color:#ffb060'>can't play until confirmed</b>" : ""}</p>` : ""}
       ${(r.flags || []).length ? `<div style="margin-top:8px"><b style="color:#ff8a7a">⚠ Anti-cheat refused ${r.flags.length} save(s)</b>${r.flags.slice(-5).reverse().map((f) => `<div class="muted">${ago(f.at)} — ${esc(f.why)}</div>`).join("")}<div class="muted">Each refused save is kept in Backups ("refused"). If it was real progress, restore it from there.</div></div>` : ""}
@@ -450,6 +450,7 @@ async function player(pid) {
         ${r.banned ? '<button class="b s" data-x="unban">Unban</button>' : '<button class="b s d" data-x="ban">Ban</button>'}
         <button class="b s" data-x="newpw" title="For a player who forgot the password">Reset password</button>
         ${r.acct ? '<button class="b s" data-x="email" title="Set or confirm the email by hand">Email…</button>' : ""}
+        ${r.acct ? `<button class="b s ${r.gm ? "d" : ""}" data-x="gm" title="Game Master: GM menu in the game, max levels, test tools, no anti-cheat, [GM] name in the Realm">${r.gm ? "Remove Game Master" : "Make Game Master"}</button>` : ""}
         ${p ? '<button class="b s" data-x="view">View save</button>' : ""}
         <button class="b s" data-x="backups">Backups</button>
         ${p ? '<button class="b s" data-x="backupnow">Back up now</button><button class="b s" data-x="gift">Gift</button><button class="b s" data-x="dlsave">Download save</button>' : ""}
@@ -476,6 +477,11 @@ async function player(pid) {
       if (x === "ban") { const why = prompt("Ban reason (shown to the player):", ""); if (why === null) return; await call(`players/${pid}/ban`, "POST", { why }); toast("Banned"); }
       if (x === "unban") { await call(`players/${pid}/unban`, "POST"); toast("Unbanned"); }
       if (x === "newpw") { const pw = prompt(`New password for ${r.name} (at least 6 characters, empty = make one up):`, ""); if (pw === null) return; const x2 = await call(`players/${pid}/password`, "POST", { password: pw }); alert(`New password for ${r.name}: ${x2.password}\nGive it to the player; they can sign in with it now.`); }
+      if (x === "gm") {
+        const on = !r.gm;
+        if (!confirm(on ? `Make ${r.name} a Game Master?\n\nThey get the GM menu in the game (max levels, items, god mode, teleport, spawning monsters, kick/mute in the Realm), no anti-cheat, and [GM] in front of their name in the Realm.` : `Remove Game Master from ${r.name}?`)) return;
+        await call(`players/${pid}/gm`, "POST", { on }); toast(on ? "Game Master on — they see the GM menu within a minute" : "Game Master removed");
+      }
       if (x === "email") {
         const e = prompt(`Email for ${r.name} (empty = remove):`, r.email || ""); if (e === null) return;
         const ok = e.trim() ? confirm("Mark this email as confirmed? (OK = confirmed, so the player can play and reset the password by email; Cancel = the player must confirm it with a code)") : false;

@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.26.1</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.27.0</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33781,8 +33781,9 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.26.1";
+  X.VERSION = "1.27.0";
   X.CHANGELOG = {
+    "1.27.0": ["Game Masters: accounts the Realm admin chooses get a GM menu for testing and running the Realm, and show [GM] in the Realm."],
     "1.26.1": ["Fixed: numbers could not be typed into the email code box (and on some keyboards into the password boxes)."],
     "1.26.0": ["Realm events: the Realm can run double XP or double Soul Shards for a while. The main menu shows when an event is on and how long it lasts."],
     "1.25.2": ["Email never arrives, or you lost that address? Your recovery code gets you in (and still resets a forgotten password). Add a working email later from Account."],
@@ -49525,6 +49526,11 @@ X.EL.quests = {
           net._incoming(c);
           c._fire("data", { t: "join", pid: f.pid, name: f.name });
         } else if (f.o === "msg") {
+          // Game Master commands (the Realm server only passes them on for GM accounts, marked _gm)
+          if (f.m?.t === "gm") {
+            if (f.m._gm) try { X.gmWorld?.(f.m, f.id); } catch (e) { console.warn("gm", e); }
+            return;
+          }
           fakes.get(f.id)?._fire("data", f.m);
         } else if (f.o === "close") {
           const c = fakes.get(f.id);
@@ -49688,7 +49694,7 @@ X.EL.quests = {
     const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
     const getS = () => { try { return JSON.parse(LS.getItem("vf_session") || "null"); } catch (e) { return null; } };
     const setS = (s) => (s ? LS.setItem("vf_session", JSON.stringify(s)) : LS.removeItem("vf_session"));
-    const mailOf = (r) => ("needConfirm" in r ? { email: r.email || "", emailOk: !!r.emailOk, needConfirm: !!r.needConfirm, mail: !!r.mail } : {});
+    const mailOf = (r) => ({ ...("needConfirm" in r ? { email: r.email || "", emailOk: !!r.emailOk, needConfirm: !!r.needConfirm, mail: !!r.mail } : {}), ...("gm" in r ? { gm: !!r.gm } : {}) });
     const sessOf = (r, extra) => ({ name: r.name, pid: r.pid, token: r.token, rev: r.rev || 0, hash: "", rc: !!r.rc, ...mailOf(r), ...extra });
     const strip = (p) => JSON.stringify(p, (k, v) => (k === "savedAt" || k === "adminRev" || k === "ckey" ? void 0 : v));
     const hash = (p) => { let h = 2166136261; const s = strip(p); for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return (h >>> 0).toString(36) + ":" + s.length; };
@@ -50201,6 +50207,345 @@ X.EL.quests = {
     };
     X.HELP?.systems?.push?.(["Your account", "You sign in with a name and password. Your character is kept on the Vigilfall server: sign in on any PC or phone and continue where you stopped. Progress is sent every minute and when you close the game. Vigilfall is played online only: without a connection to the server the game pauses until it is back. Forgot your password? Get a code by email (if your account has a confirmed email) or use your recovery code. Main menu → Account: add or change your email, make a new recovery code, change your password. The server refuses saves with impossible jumps and loads your last good save."]);
   }
+}
+
+/* ---- FQ_gm.js ---- */
+/* 1.27.0 — Game Master. An account the Realm admin marks as Game Master (Vigilfall Admin → Players → Make Game Master)
+   gets a GM menu: hero & items, test cheats, world & travel, Realm moderation. In the Realm its name shows [GM]
+   (set by the server) and world commands go to the Realm's world through the server, which only passes them on for GMs. */
+
+// ---- world commands, run where the world is simulated (own world, or the Realm's server page) ----
+X.gmWorld = function (m) {
+  const g = window.__app?.game;
+  if (!g) return;
+  const env = g.env || {};
+  if (m.op === "tod") env.tod = ((+m.v % 24) + 24) % 24;
+  if (m.op === "rain") (env.rainTarget = +m.v), (env.rain = +m.v), (env.weatherT = 900);
+  if (m.op === "blood") g.setBloodMoon?.(!!m.v);
+  if (m.op === "spawn" && rw[m.type]) {
+    const n = Math.max(1, Math.min(10, +m.n || 1)), lv = Math.max(1, Math.min(60, +m.lv || 10));
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * 6.28, d = 6 + Math.random() * 4;
+      try { g.spawnEnemy(m.type, +m.x + Math.cos(a) * d, +m.z + Math.sin(a) * d, lv, {}); } catch (e) { console.warn("spawn", e); }
+    }
+  }
+  if (m.op === "clear") {
+    const pk = g.pocket;
+    g.pocket = !0; // no town ward between the GM and the monsters
+    try { for (const e of [...g.enemies.values()]) if (e.alive && Math.hypot(e.pos.x - m.x, e.pos.z - m.z) < (+m.r || 40)) try { g.hitEnemy(e, 1e9, { noCrit: !0 }); } catch (x) {} }
+    finally { g.pocket = pk; }
+  }
+};
+
+if (!X.realmServer) {
+  const T = (s) => (X.EL?.T && X.lang === "el" ? X.EL.T(s) : s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const app = () => window.__app, G = () => app()?.game;
+  const isGM = () => !!X.acct?.session?.()?.gm;
+  const inRealm = () => G()?.net?.hostPid === "@realm";
+  const S = (() => { try { return JSON.parse(sessionStorage.getItem("vf_gm") || "{}"); } catch (e) { return {}; } })();
+  const keep = () => sessionStorage.setItem("vf_gm", JSON.stringify(S));
+  const toast = (t, c = "#ffd070") => (G()?.running ? G().toast(t, c) : app()?.ui?.toastMenu?.(t));
+  X.gm = { isGM, state: S };
+
+  // ---------------- cheats (only for Game Masters) ----------------
+  const GP = SC.prototype;
+  const hurt0 = GP.hurtPlayer, hit0 = GP.hitEnemy, up0 = GP.updatePlayer, buff0 = GP.buff;
+  GP.hurtPlayer = function (A, i) {
+    if (isGM() && S.god) return;
+    return hurt0.call(this, A, i);
+  };
+  GP.hitEnemy = function (A, i, I) {
+    if (isGM() && S.onehit && A && A.alive) i = Math.max(i, (A.maxHp || A.hp || 100) * 3);
+    return hit0.call(this, A, i, I);
+  };
+  GP.buff = function (name) {
+    if (name === "vanish" && isGM() && S.invis) return buff0.call(this, name) || { name: "vanish", t: 1e9, max: 1e9, data: { stealth: !0 } };
+    return buff0.call(this, name);
+  };
+  GP.updatePlayer = function (dt) {
+    if (!isGM()) return up0.call(this, dt);
+    const p = this.player, st = this.stats, sp = st?.speed;
+    if (st && S.speed > 1) st.speed = sp * S.speed;
+    let r;
+    try { r = up0.call(this, dt); } finally { if (st && S.speed > 1) st.speed = sp; }
+    if (S.fly && p && !p.dead) {
+      const k = this.keys || {};
+      S.flyY ??= p.pos.y + 6;
+      if (k.Space || flyDir > 0) S.flyY += 14 * dt;
+      if (k.KeyX || k.ControlLeft || flyDir < 0) S.flyY -= 14 * dt;
+      const ground = this.world.heightAt(p.pos.x, p.pos.z);
+      S.flyY = Math.max(ground + 0.2, Math.min(ground + 120, S.flyY));
+      p.pos.y = S.flyY;
+      p.vel.y = 0;
+    }
+    if (S.nocd && p) { for (const k in p.cds || {}) p.cds[k] = 0; p.maxRes && (p.res = p.maxRes); }
+    if (S.god && p && !p.dead) p.hp = Math.max(p.hp, p.maxHp);
+    return r;
+  };
+  let flyDir = 0;
+
+  // ---------------- helpers ----------------
+  const places = () => {
+    const L = [];
+    for (const t of X.SETTLE || []) t?.pos && L.push({ n: t.name, x: t.pos[0], z: t.pos[1], k: "town" });
+    for (const id in X.TOWNS || {}) { const t = X.TOWNS[id]; t?.pos && !L.some((q) => q.n === t.name) && L.push({ n: t.name, x: t.pos[0], z: t.pos[1], k: "town" }); }
+    for (const id in X.DUNGEONS || {}) { const d = X.DUNGEONS[id]; d?.portal && L.push({ n: d.name + " (Lv " + d.lv + ")", x: d.portal[0], z: d.portal[1], k: "dungeon" }); }
+    for (const id in X.RAIDS || {}) { const d = X.RAIDS[id]; d?.portal && L.push({ n: d.name + " (raid)", x: d.portal[0], z: d.portal[1], k: "raid" }); }
+    return L;
+  };
+  const tp = (x, z) => {
+    const g = G();
+    if (!g?.running) return toast(T("Start the game first."), "#ff8a7a");
+    if (g.instance || g.inInstance) return toast(T("Leave the dungeon first."), "#ff8a7a");
+    S.flyY = undefined;
+    g.teleport(ii(+x, 0, +z));
+    toast(T("Teleported"));
+  };
+  const world = (m) => {
+    const g = G();
+    if (!g?.running) return toast(T("Start the game first."), "#ff8a7a");
+    const p = g.player.pos;
+    m = { t: "gm", x: p.x, z: p.z, ...m };
+    if (inRealm()) g.net.send(m);
+    else if (g.net && !g.isHost) return toast(T("Only the host of this world can change it."), "#ff8a7a");
+    else X.gmWorld(m);
+    toast(T("Done"));
+  };
+  const saveP = () => { try { app().saveProfile(); } catch (e) {} };
+  const heroSave = (id) => (app().profile.heroes[id] ||= { level: 1, xp: 0, gear: {}, potions: 3 });
+  const afterHero = () => {
+    const g = G();
+    if (g?.running) { try { g.recalcStats(); g.player.hp = g.player.maxHp; } catch (e) {} }
+    saveP();
+  };
+  const api = async (path, body) => {
+    const base = X.realmHttp() || "https://vigilfall.duckdns.org";
+    const r = await fetch(base + "/api/acct/gm/" + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: X.acct.token(), ...body }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(T(j.error || "HTTP " + r.status));
+    return j;
+  };
+
+  // ---------------- the panel ----------------
+  let panel = null, tab = S.tab || "hero", liveT = null;
+  const css = `#gmpanel{position:fixed;inset:4vh 50% auto auto;transform:translateX(50%);width:min(560px,94vw);max-height:90vh;overflow:auto;z-index:2147482000;background:rgba(14,11,8,.97);border:1px solid #8a6a3a;border-radius:12px;color:#e8dcc0;font:14px/1.4 system-ui,sans-serif;box-shadow:0 10px 40px #000;padding:10px 12px 14px}
+  #gmpanel h3{font:600 14px Georgia,serif;color:#e0b860;text-transform:uppercase;letter-spacing:.08em;margin:14px 0 6px}
+  #gmpanel .gtabs{display:flex;gap:4px;position:sticky;top:-10px;background:rgba(14,11,8,.98);padding:6px 0;z-index:1}
+  #gmpanel .gtabs button{flex:1;padding:7px 4px}
+  #gmpanel button{font:inherit;background:#2a241b;color:#e8dcc0;border:1px solid #4a3e2c;border-radius:8px;padding:6px 10px;margin:2px;cursor:pointer;text-transform:none;letter-spacing:0;min-height:0;width:auto}
+  #gmpanel button.on{background:#e0b860;color:#1b1408;border-color:#e0b860}
+  #gmpanel select,#gmpanel input{font:inherit;background:#0f0c09;color:#e8dcc0;border:1px solid #4a3e2c;border-radius:7px;padding:6px;margin:2px;width:auto;text-transform:none;min-height:0}
+  #gmpanel .gmr{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+  #gmpanel .gmr>*{flex:0 0 auto}
+  #gmpanel .gmm{color:#a89a80;font-size:12px}
+  #gmpanel .gmi{display:flex;align-items:center;gap:6px;border-top:1px solid #3a3226;padding:5px 0}
+  #gmpanel .gmi .gmn{flex:1}
+  #gmbtn{position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:2147481000;background:rgba(20,16,10,.85);color:#e0b860;border:1px solid #8a6a3a;border-radius:16px;padding:4px 12px;font:600 13px Georgia,serif;letter-spacing:.06em;cursor:pointer;display:none}
+  #gmfly{position:fixed;right:12px;top:40%;z-index:2147481000;display:none;flex-direction:column;gap:8px}
+  #gmfly button{width:52px;height:52px;border-radius:50%;background:rgba(20,16,10,.8);color:#e0b860;border:1px solid #8a6a3a;font-size:22px}`;
+  const st = document.createElement("style");
+  st.textContent = css;
+  document.head.appendChild(st);
+  const btn = document.createElement("button");
+  btn.id = "gmbtn";
+  btn.textContent = "⚜ GM";
+  btn.onclick = (e) => { e.stopPropagation(); toggle(); };
+  const fly = document.createElement("div");
+  fly.id = "gmfly";
+  fly.innerHTML = `<button data-f="1">▲</button><button data-f="-1">▼</button>`;
+  fly.querySelectorAll("button").forEach((b) => {
+    const d = +b.dataset.f;
+    b.addEventListener("touchstart", (e) => (e.preventDefault(), (flyDir = d)), { passive: !1 });
+    b.addEventListener("touchend", () => (flyDir = 0));
+    b.addEventListener("mousedown", () => (flyDir = d));
+    b.addEventListener("mouseup", () => (flyDir = 0));
+  });
+  addEventListener("load", () => document.body.append(btn, fly));
+  document.body ? document.body.append(btn, fly) : 0;
+  // F8 opens the menu on a PC
+  addEventListener("keydown", (e) => { if (e.code === "F8" && isGM()) { e.preventDefault(); toggle(); } });
+  setInterval(() => {
+    const on = isGM();
+    btn.style.display = on ? "block" : "none";
+    fly.style.display = on && S.fly && G()?.running && ("ontouchstart" in window) ? "flex" : "none";
+    if (!on && panel) close();
+  }, 1500);
+
+  function close() { panel?.remove(); panel = null; clearInterval(liveT); }
+  function toggle() {
+    if (panel) return close();
+    const g = G();
+    if (g?.running && !g.net) { try { app().paused = !0; } catch (e) {} }
+    document.exitPointerLock?.();
+    panel = document.createElement("div");
+    panel.id = "gmpanel";
+    ["keydown", "keyup"].forEach((ev) => panel.addEventListener(ev, (e) => e.stopPropagation()));
+    document.body.appendChild(panel);
+    draw();
+  }
+  const opt = (v, n, sel) => `<option value="${esc(v)}" ${sel ? "selected" : ""}>${esc(n)}</option>`;
+  function draw() {
+    if (!panel) return;
+    clearInterval(liveT);
+    const g = G(), p = app()?.profile || {}, running = !!g?.running;
+    const tabs = [["hero", T("Hero & items")], ["cheat", T("Cheats")], ["world", T("World")], ["realm", T("Realm")]];
+    let h = `<div class="gmr" style="justify-content:space-between"><b style="color:#e0b860;font-family:Georgia,serif">⚜ ${T("Game Master")}</b><button id="gmx">✕</button></div>
+      <div class="gtabs">${tabs.map(([k, n]) => `<button data-tab="${k}" class="${k === tab ? "on" : ""}">${n}</button>`).join("")}</div>`;
+    const need = running ? "" : `<p class="gmm">${T("Start the game (any hero) to use these.")}</p>`;
+    if (tab === "hero") {
+      const hs = g?.hsave;
+      h += `<h3>${T("Levels")}</h3>
+        <div class="gmr"><button id="gm60">${T("All heroes to level")} ${Un}</button></div>
+        ${running ? `<div class="gmr">${esc(g.hero.name)}: ${T("level")} <input id="gmlv" type="number" min="1" max="${Un}" value="${hs.level}" style="width:70px"><button id="gmlvgo">${T("Set")}</button></div>` : ""}
+        <h3>${T("Currency")}</h3><p class="gmm">◆ ${(p.shards || 0).toLocaleString()} · ✦ ${(p.marks || 0).toLocaleString()}</p>
+        <div class="gmr"><button data-sh="10000">+10k ◆</button><button data-sh="100000">+100k ◆</button><button data-sh="1000000">+1M ◆</button><button data-mk="1000">+1k ✦</button><button data-mk="10000">+10k ✦</button></div>
+        <h3>${T("Items")}</h3>${need}
+        ${running ? `<div class="gmr"><select id="gmslot">${opt("", T("Any slot"))}${XB.map((s) => opt(s, T(s))).join("")}</select><select id="gmrar">${ui.map((r) => opt(r.id, T(r.name) + " (" + r.id + ")", r.id === "legendary")).join("")}</select>
+          ${T("level")} <input id="gmilv" type="number" min="1" max="${Un}" value="${hs.level}" style="width:64px"><button id="gmitem">${T("Give")}</button></div>
+          <div class="gmr"><button id="gmset">${T("Full legendary set for this hero")}</button><span class="gmm">${T("Bag")}: ${(p.inventory || []).length}/40</span></div>` : ""}
+        <h3>${T("Unlock")}</h3>
+        <div class="gmr"><button id="gmunl">${T("All mounts, companions and cosmetics")}</button>${running ? `<button id="gmpot">${T("Max potion belt")}</button>` : ""}</div>`;
+    }
+    if (tab === "cheat") {
+      const tg = (k, n) => `<button data-tg="${k}" class="${S[k] ? "on" : ""}">${n}</button>`;
+      h += need + `<h3>${T("Toggles")}</h3>
+        <div class="gmr">${tg("god", "🛡 " + T("God mode"))}${tg("onehit", "⚔ " + T("One-hit kills"))}${tg("invis", "👻 " + T("Invisible to monsters"))}${tg("nocd", "⚡ " + T("No cooldowns"))}${tg("fly", "🕊 " + T("Fly"))}</div>
+        <p class="gmm">${T("Fly: Space goes up, X goes down (on a phone: the ▲ ▼ buttons). Toggles stay on until you turn them off or close the game.")}</p>
+        <h3>${T("Speed")}</h3><div class="gmr">${[1, 2, 3, 5].map((v) => `<button data-sp="${v}" class="${(S.speed || 1) === v ? "on" : ""}">${v}×</button>`).join("")}</div>
+        <h3>${T("Now")}</h3><div class="gmr"><button id="gmfill">❤ ${T("Refill health, oil and potions")}</button><button id="gmrev">${T("Revive")}</button><button id="gmkill">☠ ${T("Kill monsters around me")}</button></div>`;
+    }
+    if (tab === "world") {
+      const mons = Object.keys(rw).map((k) => [k, rw[k]]).filter(([, d]) => d && d.name).sort((a, b) => (!!a[1].boss - !!b[1].boss) || a[1].name.localeCompare(b[1].name));
+      h += need + `<h3>${T("Teleport")}</h3>
+        <canvas id="gmmap" width="600" height="600" style="width:100%;max-width:360px;aspect-ratio:1;display:block;margin:0 auto;background:#0f0c09;border-radius:10px;cursor:crosshair"></canvas>
+        <p class="gmm" style="text-align:center">${T("Tap the map to go there.")}</p>
+        <div class="gmr"><select id="gmplace" style="flex:1">${places().map((q, i) => opt(i, (q.k === "dungeon" ? "⛓ " : q.k === "raid" ? "☠ " : "🏠 ") + q.n)).join("")}</select><button id="gmgo">${T("Go")}</button></div>
+        <h3>${T("Time & weather")}${inRealm() ? " · " + T("for the whole Realm") : ""}</h3>
+        <div class="gmr"><button data-tod="6">🌅 ${T("Dawn")}</button><button data-tod="12">☀ ${T("Noon")}</button><button data-tod="19">🌇 ${T("Dusk")}</button><button data-tod="0">🌙 ${T("Midnight")}</button></div>
+        <div class="gmr"><button data-rain="0">${T("Clear")}</button><button data-rain="0.6">🌧 ${T("Rain")}</button><button data-rain="1">⛈ ${T("Storm")}</button><button data-blood="1">🌑 ${T("Blood moon on")}</button><button data-blood="0">${T("Blood moon off")}</button></div>
+        <h3>${T("Spawn monsters")}</h3>
+        <div class="gmr"><select id="gmmon" style="max-width:220px">${mons.map(([k, d]) => opt(k, (d.boss ? "👑 " : "") + d.name)).join("")}</select>${T("level")} <input id="gmmlv" type="number" min="1" max="60" value="${running ? g.hsave.level : 10}" style="width:60px"><select id="gmmn">${[1, 3, 5, 10].map((n) => opt(n, "×" + n)).join("")}</select><button id="gmspawn">${T("Spawn")}</button></div>
+        <h3>${T("Quests")}</h3><div class="gmr"><button id="gmq">${T("Finish my active quests")}</button></div>`;
+    }
+    if (tab === "realm") {
+      h += `<p class="gmm">${T("Players in the Realm right now. Your name shows [GM] there.")}</p>
+        <div id="gmlive"><p class="gmm">${T("Loading…")}</p></div>
+        <h3>${T("Message to everyone")}</h3><div class="gmr"><input id="gmann" placeholder="${T("Announcement")}" style="flex:1" maxlength="300"><button id="gmanngo">${T("Send")}</button></div>`;
+    }
+    panel.innerHTML = h;
+    const $ = (s) => panel.querySelector(s), on = (s, f) => panel.querySelectorAll(s).forEach((b) => (b.onclick = () => f(b)));
+    $("#gmx").onclick = close;
+    on("[data-tab]", (b) => { tab = S.tab = b.dataset.tab; keep(); draw(); });
+    // hero
+    $("#gm60") && ($("#gm60").onclick = () => { for (const h0 of FI) { const s = heroSave(h0.id); s.level = Math.max(s.level || 1, Un); s.xp = 0; } afterHero(); toast(T("All heroes are level") + " " + Un); draw(); });
+    $("#gmlvgo") && ($("#gmlvgo").onclick = () => { const s = G().hsave; s.level = Math.max(1, Math.min(Un, +$("#gmlv").value || 1)); s.xp = 0; afterHero(); toast(T("Level") + " " + s.level); draw(); });
+    on("[data-sh]", (b) => { app().profile.shards += +b.dataset.sh; saveP(); draw(); });
+    on("[data-mk]", (b) => { app().profile.marks += +b.dataset.mk; saveP(); draw(); });
+    const give = (slot, rar, lv) => {
+      const g = G(), inv = app().profile.inventory;
+      if (inv.length >= 40) return toast(T("The bag is full."), "#ff8a7a"), !1;
+      let it = null;
+      for (let i = 0; i < 80; i++) { const x = g.gen(lv, 2, rar); if (!slot || x.slot === slot) { it = x; break; } }
+      if (!it) return !1;
+      inv.push(it);
+      return it;
+    };
+    $("#gmitem") && ($("#gmitem").onclick = () => { const it = give($("#gmslot").value, $("#gmrar").value, Math.max(1, Math.min(Un, +$("#gmilv").value || 1))); it && (G().ui.lootToast?.(it, G()), saveP(), draw()); });
+    $("#gmset") && ($("#gmset").onclick = () => { const g = G(); let n = 0; for (const s of XB) { const it = give(s, "legendary", g.hsave.level); if (it) { n++; g.canEquip(it) && g.equip(it); } } afterHero(); toast(n + " " + T("legendary items equipped")); draw(); });
+    $("#gmunl") && ($("#gmunl").onclick = () => {
+      const p = app().profile;
+      p.mounts = [...new Set([...(p.mounts || []), ...Object.keys(X.MOUNTS || {})])];
+      p.mount ||= p.mounts[0];
+      p.companions = [...new Set([...(p.companions || []), ...Object.keys(X.COMPANIONS || {})])];
+      p.owned ||= [];
+      for (const cat in Zi) for (const c of Zi[cat] || []) { const k = c.id + ":" + cat; p.owned.includes(k) || p.owned.push(k); }
+      saveP(); toast(T("Everything unlocked"));
+    });
+    $("#gmpot") && ($("#gmpot").onclick = () => { const s = G().hsave; s.potCap = 6; s.potions = 6; saveP(); toast(T("Potion belt full")); });
+    // cheats
+    on("[data-tg]", (b) => { const k = b.dataset.tg; S[k] = !S[k]; if (k === "fly") S.flyY = undefined; keep(); draw(); });
+    on("[data-sp]", (b) => { S.speed = +b.dataset.sp; keep(); draw(); });
+    $("#gmfill") && ($("#gmfill").onclick = () => { const g = G(); if (!g?.running) return; const pl = g.player; pl.hp = pl.maxHp; pl.oil = 100; pl.maxRes && (pl.res = pl.maxRes); g.hsave.potions = Math.max(g.hsave.potions, g.hsave.potCap || 3); toast(T("Refilled")); });
+    $("#gmrev") && ($("#gmrev").onclick = () => { const g = G(); if (!g?.running) return; const pl = g.player; pl.dead = pl.downed = !1; pl.hp = pl.maxHp; document.getElementById("death")?.classList.remove("on"); toast(T("Revived")); });
+    $("#gmkill") && ($("#gmkill").onclick = () => world({ op: "clear", r: 40 }));
+    // world
+    const map = $("#gmmap");
+    if (map) {
+      const P = places(), c = map.getContext("2d"), W = map.width;
+      const R = Math.max(250, ...P.map((q) => Math.hypot(q.x, q.z))) * 1.12, sc = W / 2 / R, toS = (x, z) => [W / 2 + x * sc, W / 2 + z * sc];
+      const paint = () => {
+        c.clearRect(0, 0, W, W);
+        c.strokeStyle = "#3a3226"; c.lineWidth = 2; c.beginPath(); c.arc(W / 2, W / 2, (R / 1.12) * sc, 0, 7); c.stroke();
+        c.font = "15px system-ui"; c.textAlign = "center";
+        for (const q of P) { const [x, y] = toS(q.x, q.z); c.fillStyle = q.k === "town" ? "#c9a96a" : q.k === "raid" ? "#ff6a5a" : "#b08aff"; c.fillRect(x - 4, y - 4, 8, 8); c.fillStyle = "#a89a80"; c.textAlign = x > W - 80 ? "right" : x < 80 ? "left" : "center"; c.fillText(q.n.replace(/ \(.*/, ""), x, y - 8); }
+        const g = G();
+        if (g?.running) { const [x, y] = toS(g.player.pos.x, g.player.pos.z); c.fillStyle = "#7fe07f"; c.beginPath(); c.arc(x, y, 7, 0, 7); c.fill(); }
+      };
+      paint();
+      map.onclick = (e) => { const r = map.getBoundingClientRect(), x = ((e.clientX - r.left) / r.width) * W, y = ((e.clientY - r.top) / r.height) * W; tp((x - W / 2) / sc, (y - W / 2) / sc); setTimeout(paint, 100); };
+      $("#gmgo").onclick = () => { const q = P[+$("#gmplace").value]; q && tp(q.x + 3, q.z + 3); setTimeout(paint, 100); };
+    }
+    on("[data-tod]", (b) => world({ op: "tod", v: +b.dataset.tod }));
+    on("[data-rain]", (b) => world({ op: "rain", v: +b.dataset.rain }));
+    on("[data-blood]", (b) => world({ op: "blood", v: +b.dataset.blood }));
+    $("#gmspawn") && ($("#gmspawn").onclick = () => world({ op: "spawn", type: $("#gmmon").value, lv: +$("#gmmlv").value, n: +$("#gmmn").value }));
+    $("#gmq") && ($("#gmq").onclick = () => {
+      const g = G(); if (!g?.running) return toast(T("Start the game first."), "#ff8a7a");
+      const p = app().profile; let n = 0;
+      for (const q of gB) {
+        const s = p.quests?.[q.id];
+        if (!s || s.s !== "active") continue;
+        if (q.type === "abs") p.stats[q.stat] = Math.max(p.stats[q.stat] || 0, q.goal);
+        else if (q.type === "collect") s.n = q.goal;
+        else p.stats[q.stat] = Math.max(p.stats[q.stat] || 0, (s.base || 0) + q.goal);
+        try { if (g.questState(q) === "ready") (g.turnInQuest(q.id), n++); } catch (e) {}
+      }
+      saveP(); toast(n + " " + T("quests finished")); draw();
+    });
+    // realm
+    if (tab === "realm") {
+      const L = $("#gmlive");
+      const load = async () => {
+        if (!panel || tab !== "realm") return clearInterval(liveT);
+        try {
+          const d = await api("live", {});
+          const me = X.acct.session()?.pid;
+          L.innerHTML = (d.online.length ? d.online.map((o) => `<div class="gmi"><div class="gmn"><b>${esc(o.name)}</b> <span class="gmm">Lv ${o.lv || "?"}${d.mutes[o.pid] ? " · 🔇" : ""}</span></div>${o.pid !== me ? `${o.pos && inRealm() ? `<button data-go="${o.pos[0]},${o.pos[1]}">${T("Go to")}</button>` : ""}<button data-dm="${esc(o.pid)}">✉</button><button data-mu="${esc(o.pid)}" data-on="${d.mutes[o.pid] ? 1 : 0}">${d.mutes[o.pid] ? "🔊" : "🔇"}</button><button data-kick="${esc(o.pid)}">${T("Kick")}</button>` : `<span class="gmm">${T("you")}</span>`}</div>`).join("") : `<p class="gmm">${T("Nobody is in the Realm.")}</p>`)
+            + (d.chat.length ? `<h3>${T("Chat")}</h3><div class="gmm" style="max-height:160px;overflow:auto">${d.chat.slice(-30).map((m) => `<div><b>${esc(m.name)}</b>: ${esc(m.text)}</div>`).join("")}</div>` : "");
+          L.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => { const [x, z] = b.dataset.go.split(",").map(Number); tp(x + 2, z + 2); }));
+          L.querySelectorAll("[data-dm]").forEach((b) => (b.onclick = async () => { const t = prompt(T("Message (only they see it):")); if (!t) return; try { await api("dm", { pid: b.dataset.dm, text: t }); toast(T("Sent")); } catch (e) { toast(e.message, "#ff8a7a"); } }));
+          L.querySelectorAll("[data-mu]").forEach((b) => (b.onclick = async () => {
+            try {
+              if (b.dataset.on === "1") await api("mute", { pid: b.dataset.mu, off: !0 });
+              else { const m = prompt(T("Mute for how many minutes? (0 = until unmuted)"), "30"); if (m === null) return; await api("mute", { pid: b.dataset.mu, minutes: +m || 0, why: prompt(T("Reason (optional):")) || "" }); }
+              load();
+            } catch (e) { toast(e.message, "#ff8a7a"); }
+          }));
+          L.querySelectorAll("[data-kick]").forEach((b) => (b.onclick = async () => { const w = prompt(T("Reason (shown to the player):"), T("Removed by a Game Master.")); if (w === null) return; try { await api("kick", { pid: b.dataset.kick, why: w }); toast(T("Kicked")); load(); } catch (e) { toast(e.message, "#ff8a7a"); } }));
+        } catch (e) { L.innerHTML = `<p class="gmm">${esc(e.message)}</p>`; }
+      };
+      load();
+      liveT = setInterval(load, 5000);
+      $("#gmanngo").onclick = async () => { const t = $("#gmann").value.trim(); if (!t) return; try { await api("announce", { text: t }); $("#gmann").value = ""; toast(T("Sent")); } catch (e) { toast(e.message, "#ff8a7a"); } };
+    }
+  }
+
+  // ---- main menu: a Game Master button ----
+  const UP = XC.prototype, mm0 = UP.mainMenu;
+  UP.mainMenu = function (...a) {
+    const r = mm0.apply(this, a);
+    try {
+      const col = document.querySelector("#menu .menu-col");
+      if (isGM() && col && !col.querySelector("[data-a=gm]")) {
+        const acct = col.querySelector(".acctbox");
+        acct && acct.insertAdjacentHTML("afterend", `<button data-a="gm" class="ghost" style="border-color:#8a6a3a;color:#e0b860">⚜ ${T("Game Master")}</button>`);
+        col.querySelector("[data-a=gm]").onclick = (e) => { e.stopPropagation(); this.click?.(); toggle(); };
+      }
+    } catch (e) {}
+    return r;
+  };
+  X.HELP?.systems?.push?.(["Game Master", "Accounts the Realm admin makes Game Master get the ⚜ GM button (and F8 on a PC): max levels, currency, any item, unlocks, god mode, one-hit kills, fly, speed, invisibility, teleport, time and weather, spawning monsters, finishing quests, and kicking or muting players in the Realm. Their name shows [GM] in the Realm."]);
 }
 
 /* ---- FY_el_items.js ---- */
@@ -51006,6 +51351,24 @@ Object.assign(X.EL.ui, {
   "That code has expired. Ask for a new one.": "Ο κωδικός έληξε. Ζήτα νέο.", "Too many wrong codes. Ask for a new one.": "Πάρα πολλοί λάθος κωδικοί. Ζήτα νέο.",
   "Wrong code. Check the newest email and try again.": "Λάθος κωδικός. Κοίτα το πιο πρόσφατο email και δοκίμασε ξανά.",
   "Your password was changed. Sign in again.": "Ο κωδικός σου άλλαξε. Συνδέσου ξανά.",
+  "Game Master": "Αρχηγός Παιχνιδιού", "Hero & items": "Ήρωας & αντικείμενα", Cheats: "Κόλπα", World: "Κόσμος", Realm: "Βασίλειο",
+  "Start the game (any hero) to use these.": "Ξεκίνα το παιχνίδι (με οποιονδήποτε ήρωα) για να τα χρησιμοποιήσεις.", "Start the game first.": "Ξεκίνα πρώτα το παιχνίδι.",
+  Levels: "Επίπεδα", "All heroes to level": "Όλοι οι ήρωες στο επίπεδο", level: "επίπεδο", Level: "Επίπεδο", Set: "Ορισμός", Currency: "Νομίσματα", Items: "Αντικείμενα",
+  "Any slot": "Οποιαδήποτε θέση", Give: "Δώσε", "Full legendary set for this hero": "Πλήρες θρυλικό σετ για αυτόν τον ήρωα", Bag: "Τσάντα", Unlock: "Ξεκλείδωμα",
+  "All mounts, companions and cosmetics": "Όλα τα άλογα, οι σύντροφοι και τα διακοσμητικά", "Max potion belt": "Γεμάτη ζώνη φίλτρων", Toggles: "Διακόπτες",
+  "God mode": "Αθανασία", "One-hit kills": "Σκοτώνεις με ένα χτύπημα", "Invisible to monsters": "Αόρατος στα τέρατα", "No cooldowns": "Χωρίς αναμονή ικανοτήτων", Fly: "Πτήση",
+  "Fly: Space goes up, X goes down (on a phone: the ▲ ▼ buttons). Toggles stay on until you turn them off or close the game.": "Πτήση: το Space ανεβάζει, το X κατεβάζει (στο κινητό: τα κουμπιά ▲ ▼). Οι διακόπτες μένουν ενεργοί μέχρι να τους κλείσεις ή να κλείσεις το παιχνίδι.",
+  Speed: "Ταχύτητα", Now: "Τώρα", "Refill health, oil and potions": "Γέμισε ζωή, λάδι και φίλτρα", Revive: "Αναβίωση", "Kill monsters around me": "Σκότωσε τα τέρατα γύρω μου",
+  Teleport: "Τηλεμεταφορά", "Tap the map to go there.": "Πάτα στον χάρτη για να πας εκεί.", Go: "Πήγαινε", "Time & weather": "Ώρα & καιρός", "for the whole Realm": "για όλο το Βασίλειο",
+  Dawn: "Αυγή", Noon: "Μεσημέρι", Dusk: "Σούρουπο", Midnight: "Μεσάνυχτα", Clear: "Καθαρός", Rain: "Βροχή", Storm: "Καταιγίδα", "Blood moon on": "Ματωμένο φεγγάρι", "Blood moon off": "Χωρίς ματωμένο φεγγάρι",
+  "Spawn monsters": "Εμφάνισε τέρατα", Spawn: "Εμφάνιση", Quests: "Αποστολές", "Finish my active quests": "Ολοκλήρωσε τις ενεργές αποστολές μου", "quests finished": "αποστολές ολοκληρώθηκαν",
+  "Players in the Realm right now. Your name shows [GM] there.": "Παίκτες στο Βασίλειο τώρα. Το όνομά σου εμφανίζεται με [GM] εκεί.", "Message to everyone": "Μήνυμα σε όλους", Announcement: "Ανακοίνωση", Send: "Αποστολή",
+  "Go to": "Πήγαινε", Kick: "Διώξε", you: "εσύ", "Nobody is in the Realm.": "Δεν είναι κανείς στο Βασίλειο.", Chat: "Συνομιλία", Sent: "Στάλθηκε", Kicked: "Διώχτηκε",
+  Teleported: "Μεταφέρθηκες", Done: "Έγινε", Refilled: "Γέμισε", Revived: "Αναβίωσες", "Everything unlocked": "Όλα ξεκλειδώθηκαν", "Potion belt full": "Η ζώνη φίλτρων γέμισε",
+  "All heroes are level": "Όλοι οι ήρωες είναι επίπεδο", "legendary items equipped": "θρυλικά αντικείμενα φορέθηκαν", "The bag is full.": "Η τσάντα είναι γεμάτη.",
+  "Leave the dungeon first.": "Βγες πρώτα από το μπουντρούμι.", "Only the host of this world can change it.": "Μόνο ο οικοδεσπότης αυτού του κόσμου μπορεί να το αλλάξει.",
+  "Message (only they see it):": "Μήνυμα (το βλέπει μόνο αυτός):", "Mute for how many minutes? (0 = until unmuted)": "Σίγαση για πόσα λεπτά; (0 = μέχρι να αρθεί)", "Reason (optional):": "Λόγος (προαιρετικός):",
+  "Reason (shown to the player):": "Λόγος (τον βλέπει ο παίκτης):", "Removed by a Game Master.": "Απομακρύνθηκε από Αρχηγό Παιχνιδιού.", "This account is not a Game Master.": "Αυτός ο λογαριασμός δεν είναι Αρχηγός Παιχνιδιού.",
   "ends in": "λήγει σε", "starts in": "ξεκινά σε", Until: "Έως", "Double XP": "Διπλή εμπειρία", "Double Soul Shards": "Διπλά Θραύσματα Ψυχής",
   "Email never arrives? Use your recovery code": "Δεν έρχεται το email; Χρησιμοποίησε τον κωδικό ανάκτησης", "Play without email": "Παίξε χωρίς email",
   "You can add a working email later from Account.": "Μπορείς να προσθέσεις σωστό email αργότερα από τον Λογαριασμό.", "Wrong recovery code.": "Λάθος κωδικός ανάκτησης.",
@@ -51227,6 +51590,7 @@ Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑ
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.27.0"] && (X.CHANGELOG["1.27.0"] = ["Αρχηγοί Παιχνιδιού (GM): οι λογαριασμοί που ορίζει ο διαχειριστής έχουν μενού GM για δοκιμές και διαχείριση του Βασιλείου, και εμφανίζονται ως [GM] στο Βασίλειο."]);
       X.CHANGELOG && X.CHANGELOG["1.26.1"] && (X.CHANGELOG["1.26.1"] = ["Διορθώθηκε: δεν γράφονταν αριθμοί στο πεδίο του κωδικού email (και σε κάποια πληκτρολόγια στα πεδία κωδικού)."]);
       X.CHANGELOG && X.CHANGELOG["1.26.0"] && (X.CHANGELOG["1.26.0"] = ["Εκδηλώσεις του Βασιλείου: το Βασίλειο μπορεί να δίνει διπλή εμπειρία ή διπλά Θραύσματα Ψυχής για λίγο καιρό. Το κύριο μενού δείχνει πότε τρέχει μια εκδήλωση και πόσο κρατά."]);
       X.CHANGELOG && X.CHANGELOG["1.25.2"] && (X.CHANGELOG["1.25.2"] = ["Το email δεν έρχεται ποτέ ή έχασες αυτή τη διεύθυνση; Ο κωδικός ανάκτησης σε βάζει μέσα (και αλλάζει ξεχασμένο κωδικό). Πρόσθεσε σωστό email αργότερα από τον Λογαριασμό."]);

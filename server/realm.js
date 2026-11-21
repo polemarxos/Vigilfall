@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.10.0";
+const SERVER_VERSION = "1.11.0";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -416,7 +416,8 @@ async function onClientMsg(c, m) {
     c.authed = true;
     c.pid = pid;
     c.id = PFX + pid;
-    c.name = r.name;
+    c.gm = !!r.gm;
+    c.name = (c.gm ? "[GM] " : "") + r.name;
     c.since = now;
     c.ver = r.ver;
     c.lv = m.lv;
@@ -459,6 +460,16 @@ async function onClientMsg(c, m) {
     return;
   }
   if (m.t === "me") (c.lv = m.lv), (c.hero = m.hero), (c.pos = m.p);
+  // names come from the server: only a Game Master shows [GM], nobody can pretend
+  if ((m.t === "me" || m.t === "chat" || m.t === "join") && ("name" in m || "n" in m)) {
+    if ("name" in m) m.name = c.name;
+    if ("n" in m) m.n = c.name;
+  }
+  if (m.t === "gm") {
+    if (!c.gm) return;
+    m._gm = 1;
+    log("GM", c.name, m.op || "", m.type || "");
+  } else if (m._gm) delete m._gm;
   if (m.t === "chat") {
     const text = String(m.m || "").slice(0, 200);
     if (mutedUntil(c.pid)) return sendJ(c.ws, { t: "announce", from: "Realm", text: "You are muted" + (cfg.mutes[c.pid].why ? ": " + cfg.mutes[c.pid].why : "") + ". Your message was not sent." });
@@ -793,6 +804,8 @@ const codeOk = (r, kind, code) => {
   m.tries++;
   return false;
 };
+// Game Master accounts: no anti-cheat, [GM] name, moderation from inside the game
+const gmView = (r) => ({ gm: !!r.gm });
 const needConfirm = (r) => mailOn() && !!r.needEmail && !r.emailOk;
 
 // ---------------- phone alerts by Firebase Cloud Messaging (HTTP v1) ----------------
@@ -898,7 +911,7 @@ const nextEvent = () => { const now = Date.now(); const n = (cfg.events || []).f
 // gains during (and just after) an event may be bigger: the anti-cheat limits grow with the event
 const eventBoost = () => { const now = Date.now(); return Math.max(1, ...(cfg.events || []).filter((e) => e.start <= now && e.end > now - 3600e3).map((e) => e.mult)); };
 const mailView = (r) => ({ email: r.email || "", emailOk: !!r.emailOk, needConfirm: needConfirm(r), mail: mailOn() });
-const acctView = (r) => ({ name: r.name, pid: r.pid, rev: r.rev || 0, profile: r.profile || null, savedAt: r.savedAt || 0, gifts: r.gifts || [], rc: !!r.rcHash, ...mailView(r) });
+const acctView = (r) => ({ name: r.name, pid: r.pid, rev: r.rev || 0, profile: r.profile || null, savedAt: r.savedAt || 0, gifts: r.gifts || [], rc: !!r.rcHash, ...mailView(r), gm: !!r.gm });
 // recovery code: lets a player set a new password without the admin (shown once, kept only as a hash)
 const newRecovery = () => Array.from({ length: 3 }, () => Array.from(crypto.randomBytes(4), (b) => PIDCH[b % PIDCH.length]).join("")).join("-");
 const normRc = (c) => String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -909,7 +922,7 @@ const failed = (key) => { const f = acctFails.get(key); acctFails.set(key, { n: 
 const MAX_LEVEL = 60;
 const num = (v) => (typeof v === "number" && isFinite(v) ? v : NaN);
 function cheatCheck(r, prof) {
-  if (!cfg.antiCheat) return null;
+  if (!cfg.antiCheat || r.gm) return null;
   const tol = Math.max(1, +cfg.cheatTolerance || 1) * eventBoost();
   const old = r.profile || { shards: 0, marks: 0, heroes: {} };
   const sh = num(prof.shards), mk = num(prof.marks);
@@ -1036,7 +1049,48 @@ async function acctCall(req, res, url, p, b) {
   if (r.banned) return json(res, 403, { error: "This account is banned" + (r.banReason ? ": " + r.banReason : "."), signedOut: true });
   if (p === "me") return json(res, 200, acctView(r));
   // light "am I online" check the game makes every few seconds
-  if (p === "ping") return json(res, 200, { ok: true, rev: r.rev || 0, rc: !!r.rcHash, ...mailView(r), events: activeEvents(), nextEvent: nextEvent() });
+  if (p === "ping") return json(res, 200, { ok: true, rev: r.rev || 0, rc: !!r.rcHash, ...mailView(r), ...gmView(r), events: activeEvents(), nextEvent: nextEvent() });
+  // ---- Game Master tools (only accounts the admin made Game Master) ----
+  if (p.startsWith("gm/")) {
+    if (!r.gm) return json(res, 403, { error: "This account is not a Game Master." });
+    const op = p.slice(3);
+    for (const pid in cfg.mutes) mutedUntil(pid);
+    if (op === "live") return json(res, 200, { online: onlineList(), places: H.places || [], chat: CHAT.slice(-100), mutes: cfg.mutes });
+    const c = b.pid ? clientOfPid(String(b.pid)) : null;
+    if (op === "kick") {
+      if (!c) return json(res, 404, { error: "That player is not in the Realm." });
+      if (c.pid === r.pid) return json(res, 400, { error: "That's you." });
+      kick(c.id, String(b.why || "Removed by a Game Master.").slice(0, 160));
+      log("GM", r.name, "kicked", c.name);
+      return json(res, 200, { ok: true });
+    }
+    if (op === "mute") {
+      const pid = String(b.pid || "");
+      if (!okPid(pid)) return json(res, 400, { error: "bad id" });
+      if (b.off) { delete cfg.mutes[pid]; saveCfg(); log("GM", r.name, "unmuted", pid); return json(res, 200, { ok: true }); }
+      const mins = Math.max(0, Math.min(60 * 24 * 30, +b.minutes || 0));
+      cfg.mutes[pid] = { until: mins ? Date.now() + mins * 60e3 : 0, why: String(b.why || "").slice(0, 120), name: c?.name || String(b.name || "").slice(0, 20), by: r.name };
+      saveCfg();
+      c && sendJ(c.ws, { t: "announce", from: "Realm", text: "You are muted" + (mins ? " for " + (mins >= 60 ? Math.round(mins / 60) + " hour(s)" : mins + " minutes") : "") + (cfg.mutes[pid].why ? ": " + cfg.mutes[pid].why : "") + "." });
+      log("GM", r.name, "muted", pid, mins ? mins + " min" : "until unmuted");
+      return json(res, 200, { ok: true });
+    }
+    if (op === "dm") {
+      if (!c) return json(res, 404, { error: "That player is not in the Realm." });
+      const text = String(b.text || "").trim().slice(0, 300);
+      if (!text) return json(res, 400, { error: "Write a message." });
+      sendJ(c.ws, { t: "announce", text, from: "[GM] " + r.name + " → you" });
+      CHAT.push({ at: Date.now(), pid: c.pid, name: "[GM] " + r.name + " → " + c.name, text, admin: true });
+      return json(res, 200, { ok: true });
+    }
+    if (op === "announce") {
+      const text = String(b.text || "").trim().slice(0, 300);
+      if (!text) return json(res, 400, { error: "Write a message." });
+      announce(text, "[GM] " + r.name);
+      return json(res, 200, { ok: true });
+    }
+    return json(res, 404, { error: "unknown GM call" });
+  }
   // set or change the email: a code is sent to the new address
   if (p === "email") {
     const email = String(b.email || "").trim().toLowerCase();
@@ -1210,7 +1264,7 @@ async function api(req, res, url) {
     const q = (url.searchParams.get("q") || "").toLowerCase();
     const list = [...recs.values()]
       .filter((r) => !q || r.pid.toLowerCase().includes(q) || String(r.name || "").toLowerCase().includes(q) || String(r.email || "").includes(q))
-      .map((r) => ({ pid: r.pid, name: r.name, lastSeen: r.lastSeen, created: r.created, banned: !!r.banned, online: online.has(r.pid), ...r.sum, hero: r.hero, ver: r.ver, flags: (r.flags || []).length }))
+      .map((r) => ({ pid: r.pid, name: r.name, lastSeen: r.lastSeen, created: r.created, banned: !!r.banned, online: online.has(r.pid), ...r.sum, hero: r.hero, ver: r.ver, flags: (r.flags || []).length, gm: !!r.gm }))
       .sort((a, b) => b.online - a.online || (b.lastSeen || 0) - (a.lastSeen || 0));
     return json(res, 200, { players: list });
   }
@@ -1278,6 +1332,15 @@ async function api(req, res, url) {
       c && kick(c.id, "Your password was changed. Sign in again.");
       log("password reset by admin", pid);
       return json(res, 200, { ok: true, password: pw });
+    }
+    if (act === "gm" && M === "POST") {
+      const b = await body(req).catch(() => ({}));
+      r.gm = !!b.on;
+      await writeRec(r);
+      const c = clientOfPid(pid);
+      c && kick(c.id, r.gm ? "You are a Game Master now. Enter the Realm again." : "You are no longer a Game Master. Enter the Realm again.");
+      log(r.gm ? "Game Master on:" : "Game Master off:", r.name);
+      return json(res, 200, { ok: true, gm: r.gm });
     }
     // admin sets or confirms a player's email by hand
     if (act === "email" && M === "POST") {
