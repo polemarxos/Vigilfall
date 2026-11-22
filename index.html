@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.28.2</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.28.3</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33899,8 +33899,9 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.28.2";
+  X.VERSION = "1.28.3";
   X.CHANGELOG = {
+    "1.28.3": ["Fixed endless loading after playing on two devices: when the game loaded the newer save from the server, it also sent the old one back while restarting, so the two devices kept swapping saves and reloading."],
     "1.28.2": [
       "The connecting screen no longer appears at start on slower computers: it only shows when the server really does not answer.",
       "Entering the Realm retries the connection by itself before giving up, and a failure is shown in the game's own window (no browser pop-up) with a clearer explanation.",
@@ -49881,6 +49882,7 @@ X.EL.quests = {
     // store a save in slot 1 and restart into the menu
     const install = (p, rev, note) => {
       const ap = app(), s = getS();
+      X.acct && (X.acct._taking = !0);
       try {
         LS.setItem("vigilfall_slot", "0");
         LS.setItem($C(0), $M(p));
@@ -50025,6 +50027,9 @@ X.EL.quests = {
       onTake: (p, rev) => { const s = getS(); s && setS({ ...s, rev: rev ?? s.rev, hash: hash(p) }); },
       async sync(why) {
         const s = getS(), ap = app();
+        // 1.28.3: never send while a server save is being loaded. The page-hide/exit sync used to push the OLD in-memory
+        // save right after taking the newer one, so two devices overwrote each other on every reload (endless loading).
+        if (X.acct._taking || ap?._noSave) return;
         if (!s || !ap?.profile || syncing) return syncing;
         const p = ap.profile;
         p.name = s.name;
@@ -51880,6 +51885,7 @@ Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑ
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.28.3"] && (X.CHANGELOG["1.28.3"] = ["Διόρθωση της ατελείωτης φόρτωσης μετά από παιχνίδι σε δύο συσκευές: όταν το παιχνίδι φόρτωνε τη νεότερη αποθήκευση από τον διακομιστή, έστελνε πίσω και την παλιά κατά την επανεκκίνηση, έτσι οι δύο συσκευές άλλαζαν συνέχεια αποθηκεύσεις και ξαναφόρτωναν."]);
       X.CHANGELOG && X.CHANGELOG["1.28.2"] && (X.CHANGELOG["1.28.2"] = ["Η οθόνη σύνδεσης δεν εμφανίζεται πια στην εκκίνηση σε πιο αργούς υπολογιστές: εμφανίζεται μόνο όταν ο διακομιστής πραγματικά δεν απαντά.", "Η είσοδος στο Βασίλειο ξαναδοκιμάζει μόνη της τη σύνδεση πριν τα παρατήσει, και μια αποτυχία εμφανίζεται στο παράθυρο του παιχνιδιού (όχι αναδυόμενο του browser) με πιο καθαρή εξήγηση.", "Μια αποτυχημένη σύνδεση καταγράφεται στο αρχείο του διαχειριστή του Βασιλείου, για να βρεθεί τι τη μπλόκαρε."]);
       X.CHANGELOG && X.CHANGELOG["1.28.1"] && (X.CHANGELOG["1.28.1"] = ["Η οθόνη «Σύνδεση με τον διακομιστή του Vigilfall…» δεν εμφανίζεται πια σε κάθε εκκίνηση: η οθόνη φόρτωσης καλύπτει τον πρώτο έλεγχο, και η οθόνη σύνδεσης εμφανίζεται μόνο αν ο διακομιστής πραγματικά δεν απαντά."]);
       X.CHANGELOG && X.CHANGELOG["1.28.0"] && (X.CHANGELOG["1.28.0"] = ["Οι σύντροφοι σε μπουντρούμια και επιδρομές παίζουν σωστά τον ρόλο τους: μπουντρούμια με 1 tank, 1 healer και 2 DPS, επιδρομές με 2 tank, 2 healer και 4 DPS.", "Διόρθωση: τα τέρατα δεν μπορούσαν ποτέ να χτυπήσουν τους συντρόφους (τους θεωρούσαν μέσα σε σπίτι), οπότε ο tank δεν κρατούσε ποτέ την προσοχή τους και έτρωγες εσύ όλα τα χτυπήματα.", "Οι tank τραβούν εχθρούς μόνο όταν η ομάδα είναι έτοιμη, πιάνουν πρώτα τα αφεντικά που κυνηγούν την ομάδα, τα προκαλούν πίσω και γυρίζουν τους μεγάλους εχθρούς μακριά από όλους· στις επιδρομές ο δεύτερος tank αναλαμβάνει τους βοηθούς.", "Οι healer θεραπεύουν πρώτα τους tank, πρέπει να βλέπουν όποιον θεραπεύουν, μένουν 8–14 μ. πίσω από τον tank, μακριά από μάχη σώμα με σώμα, και μοιράζουν το mana τους.", "Οι DPS χτυπούν τον στόχο του tank, δεν ξεκινούν ποτέ μάχη όταν υπάρχει tank, και οι DPS σώμα με σώμα στέκονται πίσω από τον εχθρό.", "Οι σύντροφοι δεν πυροβολούν, δεν θεραπεύουν και δεν αποφεύγουν πια μέσα από τοίχους· οι μηχανισμοί των επιδρομών δεν τους στέλνουν ποτέ σε τοίχο· οι tank μένουν μέσα σε μικρά χτυπήματα και λακκούβες αντί να πηδούν έξω από κάθε μία."]);

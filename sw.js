@@ -1,6 +1,6 @@
 /* Vigilfall service worker: the game shell is served network-first (so a new build is picked up on the next load)
    with the cached copy as an offline fallback; fonts and icons are cached on first use. */
-const VERSION = "vf-1.28.2";
+const VERSION = "vf-1.28.3";
 const SHELL = ["./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL).catch(() => {})).then(() => self.skipWaiting()));

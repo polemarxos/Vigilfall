@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.28.3",
+    "date": "2026-11-22",
+    "changes": [
+      "Fixed endless loading after playing on two devices: when the game loaded the newer save from the server, it also sent the old one back while restarting, so the two devices kept swapping saves and reloading."
+    ]
+  },
+  {
     "version": "1.28.2",
     "date": "2026-11-22",
     "changes": [
