@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.13.1";
+const SERVER_VERSION = "1.14.0";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -981,7 +981,7 @@ async function acctCall(req, res, url, p, b) {
     const d = b.d && typeof b.d === "object" ? b.d : {};
     const clean = (v, n = 60) => String(v ?? "").replace(/[\r\n]/g, " ").slice(0, n);
     const ua = clean(d.ua, 160), br = (ua.match(/(Edg|OPR|Firefox|Chrome|Safari)\/[\d.]+/) || [""])[0], os = (ua.match(/Windows NT [\d.]+|Android [\d.]+|iPhone OS [\d_]+|Mac OS X [\d_]+|Linux/) || [""])[0];
-    log(`connection failed for ${r ? r.name : "a player"} (${clean(b.what, 20)}): close ${clean(d.code, 6)}${d.reason ? " " + clean(d.reason) : ""} after ${Math.round(+d.ms || 0)} ms, ${d.opened ? "opened then dropped" : "never opened"}, HTTPS ${d.https ? "works" : "also fails"}, ${d.tries || 1} tries · game ${clean(d.ver, 12)} · ${br} ${os} · ${ip}`);
+    log(`connection failed for ${r ? r.name : "a player"} (${clean(b.what, 20)}): close ${clean(d.code, 6)}${d.reason ? " " + clean(d.reason) : ""} after ${Math.round(+d.ms || 0)} ms, ${d.opened ? "opened then dropped" : "never opened"}, HTTPS ${d.https ? "works" : "also fails"}, ${d.tries || 1} tries${d.via ? " (last via " + clean(d.via, 5) + ")" : ""} · game ${clean(d.ver, 12)} · ${br} ${os} · ${ip}`);
     return json(res, 200, { ok: true });
   }
   if (p === "mailreset" || p === "mailresetdone") {
@@ -1775,7 +1775,9 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   try {
     if (req.method === "OPTIONS") return (res.writeHead(204, CORS), res.end());
-    if (url.pathname === "/health") return json(res, 200, { ok: true, name: cfg.name, online: [...clients.values()].filter((c) => c.authed).length, max: cfg.maxPlayers, ver: H.ver || gameVer, ready: H.ready, maintenance: cfg.maintenance, server: SERVER_VERSION });
+    if (url.pathname === "/health") return json(res, 200, { ok: true, name: cfg.name, online: [...clients.values()].filter((c) => c.authed).length, max: cfg.maxPlayers, ver: H.ver || gameVer, ready: H.ready, maintenance: cfg.maintenance, server: SERVER_VERSION, rt: true });
+    if (url.pathname === "/api/rt/open" && req.method === "GET") return rtOpen(req, res, url);
+    if (url.pathname === "/api/rt/send" && req.method === "POST") return await rtSend(req, res);
     if (url.pathname.startsWith("/api/acct/")) return await acctApi(req, res, url);
     if (url.pathname.startsWith("/api/")) {
       const m = url.pathname.match(/^\/api\/players\/([A-Za-z0-9-]{4,24})(\/|$)/);
@@ -1826,6 +1828,53 @@ server.on("upgrade", (req, sock, head) => {
 });
 
 let tmpN = 0;
+
+// ---------------- 1.14: the live connection over plain HTTP ----------------
+// Some browsers/networks cannot open the WebSocket through the web proxy (seen: Firefox and Chrome on Windows fail in
+// 8 ms while phones work). The game then falls back to this: server-to-player messages stream down as Server-Sent
+// Events, player-to-server messages go up in small batched POSTs. To the rest of the server it is just another socket.
+const EventEmitter = require("events");
+const RT = new Map();
+class HttpSock extends EventEmitter {
+  constructor(res) {
+    super();
+    this.res = res;
+    this.readyState = 1;
+    this.sid = crypto.randomBytes(18).toString("base64url");
+    this.seen = Date.now();
+  }
+  send(s) {
+    if (this.readyState !== 1) return;
+    try { this.res.write("data: " + s + "\n\n"); } catch (e) { this.close(); }
+  }
+  close() {
+    if (this.readyState !== 1) return;
+    this.readyState = 3;
+    RT.delete(this.sid);
+    clearInterval(this.beat);
+    try { this.res.end(); } catch (e) {}
+    this.emit("close");
+  }
+}
+function rtOpen(req, res, url) {
+  res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no", Connection: "keep-alive", ...CORS });
+  res.flushHeaders?.();
+  const ws = new HttpSock(res);
+  RT.set(ws.sid, ws);
+  res.write("retry: 600000\n\n");
+  ws.send(JSON.stringify({ t: "_sid", sid: ws.sid }));
+  ws.beat = setInterval(() => { try { res.write(": k\n\n"); } catch (e) {} }, 20e3);
+  req.on("close", () => ws.close());
+  onClient(ws, req);
+}
+async function rtSend(req, res) {
+  const b = await body(req).catch(() => null);
+  const ws = b && RT.get(String(b.sid || ""));
+  if (!ws) return json(res, 410, { error: "gone" });
+  ws.seen = Date.now();
+  for (const m of Array.isArray(b.m) ? b.m.slice(0, 200) : []) ws.emit("message", JSON.stringify(m));
+  return json(res, 200, { ok: true });
+}
 function onClient(ws, req) {
   const c = { ws, ip: ipOf(req), authed: false, tmpId: "tmp" + ++tmpN, n: 0, t0: Date.now() };
   clients.set(c.tmpId, c);

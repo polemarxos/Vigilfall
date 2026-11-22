@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.28.4",
+    "date": "2026-11-22",
+    "changes": [
+      "If the Realm's live connection cannot open in your browser (seen with Firefox on Windows), the game now switches by itself to a second way of connecting over normal web requests, and remembers it on that device."
+    ]
+  },
+  {
     "version": "1.28.3",
     "date": "2026-11-22",
     "changes": [
