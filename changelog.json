@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.29.0",
+    "date": "2026-11-23",
+    "changes": [
+      "Vigilfall for Windows: on a Windows PC the main menu offers \"Download for Windows (.exe)\" — an installer (no administrator rights) with desktop and Start menu icons. The app always opens the newest version of the game; F11 toggles full screen."
+    ]
+  },
+  {
     "version": "1.28.4",
     "date": "2026-11-22",
     "changes": [

@@ -1,0 +1,52 @@
+{
+  "name": "vigilfall",
+  "productName": "Vigilfall",
+  "version": "1.0.0",
+  "description": "Vigilfall \u2014 The Last Light of Aldmoor",
+  "author": "polemarxos",
+  "main": "main.js",
+  "build": {
+    "appId": "com.polemarxos.vigilfall",
+    "productName": "Vigilfall",
+    "copyright": "polemarxos",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "icon.png"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.png",
+      "signAndEditExecutable": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Vigilfall",
+      "artifactName": "Vigilfall-Setup.exe",
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico"
+    },
+    "compression": "maximum",
+    "electronLanguages": [
+      "en-US",
+      "el"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  }
+}
