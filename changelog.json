@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.28.2",
+    "date": "2026-11-22",
+    "changes": [
+      "The connecting screen no longer appears at start on slower computers: it only shows when the server really does not answer.",
+      "Entering the Realm retries the connection by itself before giving up, and a failure is shown in the game's own window (no browser pop-up) with a clearer explanation.",
+      "A failed connection is reported to the Realm's admin log, to help find out what blocked it."
+    ]
+  },
+  {
     "version": "1.28.1",
     "date": "2026-11-22",
     "changes": [

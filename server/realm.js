@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.13.0";
+const SERVER_VERSION = "1.13.1";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -716,6 +716,7 @@ async function latestServer() {
 }
 let selfUpdating = false;
 let latestCache = null;
+const diagAt = new Map();
 async function selfUpdate() {
   if (selfUpdating) throw new Error("Already updating.");
   selfUpdating = true;
@@ -969,6 +970,20 @@ async function acctApi(req, res, url) {
 async function acctCall(req, res, url, p, b) {
   const ip = ipOf(req);
   if (p === "info") return json(res, 200, { mail: mailOn() });
+  // 1.13.1: a player's game reports a connection problem it saw (no secrets: close code, timings, browser) — at most
+  // one line per address every 2 minutes, so the admin log shows what went wrong on that device
+  if (p === "diag") {
+    const now = Date.now(), k = "diag|" + ip;
+    if ((diagAt.get(k) || 0) > now - 120e3) return json(res, 200, { ok: true });
+    diagAt.set(k, now);
+    diagAt.size > 500 && diagAt.clear();
+    const pid = sessions[String(b.token || "")]?.pid, r = pid ? await readRec(pid) : null;
+    const d = b.d && typeof b.d === "object" ? b.d : {};
+    const clean = (v, n = 60) => String(v ?? "").replace(/[\r\n]/g, " ").slice(0, n);
+    const ua = clean(d.ua, 160), br = (ua.match(/(Edg|OPR|Firefox|Chrome|Safari)\/[\d.]+/) || [""])[0], os = (ua.match(/Windows NT [\d.]+|Android [\d.]+|iPhone OS [\d_]+|Mac OS X [\d_]+|Linux/) || [""])[0];
+    log(`connection failed for ${r ? r.name : "a player"} (${clean(b.what, 20)}): close ${clean(d.code, 6)}${d.reason ? " " + clean(d.reason) : ""} after ${Math.round(+d.ms || 0)} ms, ${d.opened ? "opened then dropped" : "never opened"}, HTTPS ${d.https ? "works" : "also fails"}, ${d.tries || 1} tries · game ${clean(d.ver, 12)} · ${br} ${os} · ${ip}`);
+    return json(res, 200, { ok: true });
+  }
   if (p === "mailreset" || p === "mailresetdone") {
     const name = String(b.name || "").trim(), key = ip + "|" + name.toLowerCase();
     if (tooMany(key)) return json(res, 429, { error: "Too many tries. Wait 10 minutes." });
