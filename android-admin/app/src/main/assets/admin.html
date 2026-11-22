@@ -365,7 +365,7 @@ function appBackupCard() {
     <ul class="muted" style="padding-left:18px;margin:4px 0"><li><b>This app:</b> your servers, the admin password, the SSH key for the Console, the servers it trusts, your settings and your notes below.</li>
     <li><b>The server</b> (when ticked): every player and their backups, all Realm settings, the admin password, the GitHub tokens, the Brevo API key and sender, the Firebase alert keys, the address with its DuckDNS token, and the server program itself (setup.sh and the other program files).</li></ul>
     <label>Your private notes (kept only in this app and inside this locked file)</label>
-    <textarea id="abnotes" rows="4" style="width:100%;height:auto;min-height:0;font:13px monospace" placeholder="e.g. Brevo login: … / Oracle Cloud login: … / DuckDNS: … / sender: vigilfall.noreply@outlook.com">${esc(store.get("vfa_notes") || "")}</textarea>
+    <textarea id="abnotes" rows="4" style="width:100%;height:auto;min-height:0;font:13px monospace" placeholder="e.g. Brevo login: … / Oracle Cloud login: … / DuckDNS: … / sender: your-sender@example.com">${esc(store.get("vfa_notes") || "")}</textarea>
     <p class="muted" style="margin-top:2px">Logins for websites (Brevo, Oracle, DuckDNS, GitHub, the Outlook sender) can't be read by the app, so write them here if you want them in the backup.</p>
     ${logged ? `<label style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="abserver" type="checkbox" style="width:auto" checked> Include the complete server backup</label>` : ""}
     <label>Password for the file (8+ characters)</label><input id="abpw" type="password" autocapitalize="off" autocorrect="off">
