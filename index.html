@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.28.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.28.1</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33888,8 +33888,9 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.28.0";
+  X.VERSION = "1.28.1";
   X.CHANGELOG = {
+    "1.28.1": ["The \"Connecting to the Vigilfall server…\" screen no longer flashes at every start: the loading screen covers the first check, and the screen only appears if the server really does not answer."],
     "1.28.0": [
       "Dungeon and raid companions now play their roles properly: dungeons are 1 tank, 1 healer and 2 DPS, raids 2 tanks, 2 healers and 4 DPS.",
       "Fixed: monsters could never attack companions (they were treated as if they were inside a house), so tanks never held aggro and you took every hit.",
@@ -49897,7 +49898,8 @@ X.EL.quests = {
       beating = !0;
       try {
         const t0 = Date.now();
-        const r = await post("ping", { token: s.token }, 8000);
+        // 1.28.1: the first answer can be slow while the world is still being built — give it longer
+        const r = await post("ping", { token: s.token }, verified ? 8000 : 20000);
         fails = 0;
         lostAt = 0;
         X.acct.online = !0;
@@ -49906,6 +49908,8 @@ X.EL.quests = {
         if (Array.isArray(r.events)) setEvents(r.events, r.nextEvent);
         const first = !verified;
         verified = !0;
+        clearTimeout(bootGateT);
+        first && hideGate(); // the server answered: never keep the connecting screen up during the first sync
         if (first) {
           // the server's save wins over whatever is on this device
           await X.acct.sync("boot");
@@ -49922,11 +49926,12 @@ X.EL.quests = {
         }
         fails++;
         X.acct.online = !1;
-        if (!verified) showGate("boot");
+        // at start-up one slow or failed answer is normal (the page is busy loading): retry quietly before showing anything
+        if (!verified) fails >= 2 ? showGate("boot") : setTimeout(() => beat(!0), 1500);
         else if (fails >= 2 || now) (lostAt ||= Date.now()), showGate("lost");
       } finally { beating = !1; }
     }
-    let beatT = null;
+    let beatT = null, bootGateT = null;
     const startBeat = () => {
       if (beatT) return;
       const tick = () => { beatT = setTimeout(tick, gate?.style.display === "flex" ? 5000 : 15000); beat(); };
@@ -50042,8 +50047,20 @@ X.EL.quests = {
       if (s && this.profile) (this.profile.name = s.name), (this.profile.pid = s.pid);
       const r = bt0.apply(this, a);
       // signed in: nothing can be played until the server answers
-      if (s) setTimeout(() => { verified || showGate("boot"); startBeat(); }, 0);
+      // 1.28.1: no "connecting" screen right away (players took it for a server problem): the loading screen covers the
+      // first check, and the screen only shows if the server has not answered after 8 s or failed twice
+      if (s) setTimeout(() => { startBeat(); bootGateT = setTimeout(() => verified || showGate("boot"), 8000); }, 0);
       return r;
+    };
+
+    const sg0 = AP.startGame;
+    AP.startGame = function (...a) {
+      if (getS() && !verified) {
+        showGate("boot");
+        beat(!0);
+        return;
+      }
+      return sg0.apply(this, a);
     };
 
     // ---------------- screens ----------------
@@ -51817,6 +51834,7 @@ Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑ
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.28.1"] && (X.CHANGELOG["1.28.1"] = ["Η οθόνη «Σύνδεση με τον διακομιστή του Vigilfall…» δεν εμφανίζεται πια σε κάθε εκκίνηση: η οθόνη φόρτωσης καλύπτει τον πρώτο έλεγχο, και η οθόνη σύνδεσης εμφανίζεται μόνο αν ο διακομιστής πραγματικά δεν απαντά."]);
       X.CHANGELOG && X.CHANGELOG["1.28.0"] && (X.CHANGELOG["1.28.0"] = ["Οι σύντροφοι σε μπουντρούμια και επιδρομές παίζουν σωστά τον ρόλο τους: μπουντρούμια με 1 tank, 1 healer και 2 DPS, επιδρομές με 2 tank, 2 healer και 4 DPS.", "Διόρθωση: τα τέρατα δεν μπορούσαν ποτέ να χτυπήσουν τους συντρόφους (τους θεωρούσαν μέσα σε σπίτι), οπότε ο tank δεν κρατούσε ποτέ την προσοχή τους και έτρωγες εσύ όλα τα χτυπήματα.", "Οι tank τραβούν εχθρούς μόνο όταν η ομάδα είναι έτοιμη, πιάνουν πρώτα τα αφεντικά που κυνηγούν την ομάδα, τα προκαλούν πίσω και γυρίζουν τους μεγάλους εχθρούς μακριά από όλους· στις επιδρομές ο δεύτερος tank αναλαμβάνει τους βοηθούς.", "Οι healer θεραπεύουν πρώτα τους tank, πρέπει να βλέπουν όποιον θεραπεύουν, μένουν 8–14 μ. πίσω από τον tank, μακριά από μάχη σώμα με σώμα, και μοιράζουν το mana τους.", "Οι DPS χτυπούν τον στόχο του tank, δεν ξεκινούν ποτέ μάχη όταν υπάρχει tank, και οι DPS σώμα με σώμα στέκονται πίσω από τον εχθρό.", "Οι σύντροφοι δεν πυροβολούν, δεν θεραπεύουν και δεν αποφεύγουν πια μέσα από τοίχους· οι μηχανισμοί των επιδρομών δεν τους στέλνουν ποτέ σε τοίχο· οι tank μένουν μέσα σε μικρά χτυπήματα και λακκούβες αντί να πηδούν έξω από κάθε μία."]);
       X.CHANGELOG && X.CHANGELOG["1.27.2"] && (X.CHANGELOG["1.27.2"] = ["Στο Android το κύριο μενού κρατά ένα μικρό κουμπί «💻 Παίξε σε υπολογιστή» για να ξαναδείς τον σύνδεσμο."]);
       X.CHANGELOG && X.CHANGELOG["1.27.1"] && (X.CHANGELOG["1.27.1"] = ["Παίζεις σε Android; Το Vigilfall παίζεται και σε υπολογιστή: το παιχνίδι δείχνει τώρα τον σύνδεσμο με κουμπί Αντιγραφής. Συνδέσου με τον ίδιο λογαριασμό και ο χαρακτήρας σου είναι εκεί."]);

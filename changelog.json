@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.28.1",
+    "date": "2026-11-22",
+    "changes": [
+      "The \"Connecting to the Vigilfall server…\" screen no longer flashes at every start: the loading screen covers the first check, and the screen only appears if the server really does not answer."
+    ]
+  },
+  {
     "version": "1.28.0",
     "date": "2026-11-21",
     "changes": [
