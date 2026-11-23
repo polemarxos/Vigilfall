@@ -1,7 +1,7 @@
 // Vigilfall Realm server: WebSocket relay + cloud saves + admin API + headless world host supervisor.
 // Run: node realm.js   (config in data/config.json, created on first start)
 "use strict";
-const SERVER_VERSION = "1.14.0";
+const SERVER_VERSION = "1.14.1";
 const http = require("http");
 const fs = require("fs");
 const fsp = fs.promises;
@@ -951,8 +951,10 @@ function cheatCheck(r, prof) {
   const allow = r.acAllow || { shards: 0, marks: 0 };
   const dS = Math.max(0, sh - (old.shards || 0) - allow.shards), dM = Math.max(0, mk - (old.marks || 0) - allow.marks);
   const w = r.acWin && now - r.acWin.t < 3600e3 ? r.acWin : { t: now, s: 0, m: 0, l: 0 };
-  const lim = { s: (60000 + 100000 * hrs) * tol, m: (600 + 800 * hrs) * tol, l: (8 + 20 * hrs) * tol };
-  const hour = { s: 250000 * tol, m: 2500 * tol, l: 30 * tol };
+  // 1.14.1: Ashen Marks come in bursts — achievements pay 100–1000 at once (Dawnbringer 1000 + the victory 600, level 40
+  // and 60, raids…) and several can finish together — so one save may bring up to 2,500 and an hour up to 6,000
+  const lim = { s: (60000 + 100000 * hrs) * tol, m: (2500 + 800 * hrs) * tol, l: (8 + 20 * hrs) * tol };
+  const hour = { s: 250000 * tol, m: 6000 * tol, l: 30 * tol };
   if (dS > lim.s || w.s + dS > hour.s) return "+" + Math.round(dS).toLocaleString("en") + " Soul Shards too fast";
   if (dM > lim.m || w.m + dM > hour.m) return "+" + Math.round(dM).toLocaleString("en") + " Ashen Marks too fast";
   if (lvUp > lim.l || w.l + Math.max(0, lvUp) > hour.l) return "+" + lvUp + " hero levels too fast";
