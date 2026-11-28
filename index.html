@@ -134,7 +134,7 @@ input,select{font-family:inherit;background:#120d0a;color:var(--gold2);border:1p
 #tt-tip{position:sticky;bottom:-18px;background:#0c0908;border:1px solid var(--gold);padding:10px 14px;margin-top:12px;min-height:58px;font-size:15px;box-shadow:0 -6px 20px #000}#tt-tip span{float:right;font-size:12px;opacity:.6}#tt-tip em{color:#9aff8a;font-style:normal}#tt-tip i{color:#ff9a8a;font-size:13px}
 #fps{position:fixed;left:6px;top:4px;font:12px monospace;color:#9f9;z-index:99;display:none}
 #cos-prev{position:fixed;z-index:10000;pointer-events:none;border:1px solid var(--gold);background:#0c0a09;box-shadow:0 6px 24px #000;display:none}#cos-prev img{display:block}#cos-prev div{font:12px Georgia,serif;color:#c9a96a;text-align:center;padding:3px 6px;letter-spacing:.08em}</style></head>
-<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.29.0</div>
+<body><div id="alpha" style="position:fixed;right:10px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1 Georgia,serif;letter-spacing:.18em;color:#c9a96a;opacity:.7;text-shadow:0 0 4px #000">ALPHA VERSION · 1.29.1</div>
 <div id="game"></div>
 <div id="ui">
   <div id="splash" class="screen"></div><div id="loading" class="screen on"><div class="load-t">Loading…</div></div><div id="menu" class="screen"></div><div id="story" class="screen"></div><div id="hud" class="screen"></div>
@@ -33899,8 +33899,9 @@ Object.assign(rw.unbound, { hp: 240000 });
   };
 
   // ---- changelog popup, once per version ----
-  X.VERSION = "1.29.0";
+  X.VERSION = "1.29.1";
   X.CHANGELOG = {
+    "1.29.1": ["NPCs no longer stand in water: Sister Petra and Wayfarer Petronel at the Charnel Gate were in a flooded hollow and now stand on dry ground nearby (drake flights land next to the Wayfarer). Every NPC is checked the same way when the world loads."],
     "1.29.0": ["Vigilfall for Windows: on a Windows PC the main menu offers \"Download for Windows (.exe)\" — an installer (no administrator rights) with desktop and Start menu icons. The app always opens the newest version of the game; F11 toggles full screen."],
     "1.28.4": ["If the Realm's live connection cannot open in your browser (seen with Firefox on Windows), the game now switches by itself to a second way of connecting over normal web requests, and remembers it on that device."],
     "1.28.3": ["Fixed endless loading after playing on two devices: when the game loaded the newer save from the server, it also sent the old one back while restarting, so the two devices kept swapping saves and reloading."],
@@ -41776,7 +41777,8 @@ Object.assign(X.COMPANIONS, {
   // ---------- NPCs: never inside a wall or a house, never hidden behind one ----------
   let freeSpot = (w, x, z, r = 0.9) => {
     let blocked = (px, pz) => {
-      if (w.isWater?.(px, pz)) return !0;
+      // 1.29.1: also never in a hollow below the water plane (it is drawn everywhere, so such a spot looks flooded)
+      if (w.isWater?.(px, pz) || w.heightAt(px, pz) < (w.waterLevel ?? 0.15) + 0.4) return !0;
       for (let [dx, dz] of [
         [0, 0],
         [r, 0],
@@ -41800,7 +41802,7 @@ Object.assign(X.COMPANIONS, {
     let best = null,
       bd = 1e9,
       toC = Math.atan2(hamlet[1] - z, hamlet[0] - x);
-    for (let d = 1.5; d <= 14 && !best; d += 1) {
+    for (let d = 1.5; d <= 45 && !best; d += d < 14 ? 1 : 2) {
       for (let k = 0; k < 16; k++) {
         let a = toC + (k / 16) * Math.PI * 2,
           px = x + Math.cos(a) * d,
@@ -41827,6 +41829,7 @@ Object.assign(X.COMPANIONS, {
       n.lbl?.forEach((l) => ((l.position.x = nx), (l.position.z = nz), (l.position.y += dy)));
       for (let k in n.mk) ((n.mk[k].position.x = nx), (n.mk[k].position.z = nz), (n.mk[k].position.y += dy));
       n.def.pos = [nx, nz];
+      n.def.way && X.WAY?.[n.def.way] && (X.WAY[n.def.way].pos = [nx, nz]); // flights land next to the Wayfarer
       // collider: retire the old one, add a new one
       for (let c of w.nearColliders(x, z)) c.type === "c" && c.r === 0.5 && Math.abs(c.x - x) < 0.01 && Math.abs(c.z - z) < 0.01 && (c.dead = !0);
       w.addCircle(nx, nz, 0.5, y + 2);
@@ -51987,6 +51990,7 @@ Object.assign(X.EL.msg, { "YOUR SAVE CHANGED": "Η ΑΠΟΘΗΚΕΥΣΗ ΑΛΛΑ
       }
     } catch (e) {}
     try {
+      X.CHANGELOG && X.CHANGELOG["1.29.1"] && (X.CHANGELOG["1.29.1"] = ["Οι NPC δεν στέκονται πια μέσα στο νερό: η Αδελφή Πέτρα και ο Ταξιδευτής Πετρονέλ στην Πύλη των Οστών ήταν σε πλημμυρισμένο βαθούλωμα και τώρα στέκονται σε στεγνό έδαφος εκεί κοντά (οι πτήσεις με δράκο προσγειώνονται δίπλα στον Ταξιδευτή). Κάθε NPC ελέγχεται με τον ίδιο τρόπο όταν φορτώνει ο κόσμος."]);
       X.CHANGELOG && X.CHANGELOG["1.29.0"] && (X.CHANGELOG["1.29.0"] = ["Vigilfall για Windows: σε υπολογιστή με Windows το κύριο μενού προσφέρει «Λήψη για Windows (.exe)» — πρόγραμμα εγκατάστασης (χωρίς δικαιώματα διαχειριστή) με εικονίδια στην επιφάνεια εργασίας και στο μενού Έναρξη. Η εφαρμογή ανοίγει πάντα την τελευταία έκδοση του παιχνιδιού· F11 για πλήρη οθόνη."]);
       X.CHANGELOG && X.CHANGELOG["1.28.4"] && (X.CHANGELOG["1.28.4"] = ["Αν η ζωντανή σύνδεση του Βασιλείου δεν μπορεί να ανοίξει στον browser σου (συνέβη με Firefox σε Windows), το παιχνίδι περνά μόνο του σε δεύτερο τρόπο σύνδεσης μέσω κανονικών αιτημάτων web, και τον θυμάται σε αυτή τη συσκευή."]);
       X.CHANGELOG && X.CHANGELOG["1.28.3"] && (X.CHANGELOG["1.28.3"] = ["Διόρθωση της ατελείωτης φόρτωσης μετά από παιχνίδι σε δύο συσκευές: όταν το παιχνίδι φόρτωνε τη νεότερη αποθήκευση από τον διακομιστή, έστελνε πίσω και την παλιά κατά την επανεκκίνηση, έτσι οι δύο συσκευές άλλαζαν συνέχεια αποθηκεύσεις και ξαναφόρτωναν."]);

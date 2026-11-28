@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.29.1",
+    "date": "2026-11-28",
+    "changes": [
+      "NPCs no longer stand in water: Sister Petra and Wayfarer Petronel at the Charnel Gate were in a flooded hollow and now stand on dry ground nearby (drake flights land next to the Wayfarer). Every NPC is checked the same way when the world loads."
+    ]
+  },
+  {
     "version": "1.29.0",
     "date": "2026-11-23",
     "changes": [
